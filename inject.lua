@@ -64,7 +64,7 @@ TitleLabel.Text = "TITLE NETWORK CONTROLLER"
 TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 255)
 TitleLabel.Font = Enum.Font.GothamBold -- Font lebih modern
 TitleLabel.TextSize = 12
-TitleLabel.TextSpacing = 1 -- Jarak antar huruf elegan
+-- Perbaikan: Baris 'TextSpacing' yang menyebabkan eror telah dihapus di sini
 TitleLabel.Parent = MainFrame
 
 -- Subtitle/Status kecil di bawah header
