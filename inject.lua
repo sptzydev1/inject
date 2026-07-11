@@ -43,7 +43,8 @@ MainFrame.Size = UDim2.new(0, 260, 0, 180)
 MainFrame.Position = UDim2.new(0.5, -130, 0.4, -90)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
+-- PERBAIKAN HP: Dimatikan agar tidak memblokir pendeteksian sentuhan drag
+MainFrame.Active = false 
 MainFrame.Parent = ScreenGui
 
 -- Rounded Corner
@@ -148,42 +149,45 @@ InputBox.FocusLost:Connect(function()
     TweenService:Create(InputStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {Color = Color3.fromRGB(45, 45, 60)}):Play()
 end)
 
--- [[ LOGIKA DRAGGABLE BARU (GESER LUAS & SUDAH DIPERBAIKI) ]]
-local dragging, dragInput, dragStart, startPos
 
-MainFrame.InputBegan:Connect(function(input)
+-- [[ LOGIKA DRAGGABLE MENYELURUH (SISTEM SENTUHAN HP / DELTA) ]]
+local dragging = false
+local dragStart = Vector3.new()
+local startPos = UDim2.new()
+
+-- Fungsi pendeteksi sentuhan pertama di Frame Utama atau Judul
+local function initDrag(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
         dragStart = input.Position
         startPos = MainFrame.Position
     end
-end)
+end
 
-MainFrame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then 
-        dragInput = input 
-    end
-end)
+MainFrame.InputBegan:Connect(initDrag)
+TitleLabel.InputBegan:Connect(initDrag)
 
+-- Menggunakan event global agar jari bisa geser seluas layar tanpa macet
 UIS.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then 
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
         local delta = input.Position - dragStart
-        -- PERBAIKAN DI SINI: Mengubah 'OutQuad' menjadi 'Quad' dengan EasingDirection 'Out'
-        TweenService:Create(MainFrame, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        -- Animasi perpindahan posisi yang sangat responsif di HP
+        TweenService:Create(MainFrame, TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Position = UDim2.new(
-                startPos.X.Scale, startPos.X.Offset + delta.X, 
+                startPos.X.Scale, startPos.X.Offset + delta.X,
                 startPos.Y.Scale, startPos.Y.Offset + delta.Y
             )
         }):Play()
     end
 end)
 
--- Deteksi lepas klik secara menyeluruh (Global) agar GUI mendukung geser luas tanpa macet
+-- Deteksi mutlak saat sentuhan dilepas di area mana pun di layar HP
 UIS.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = false
     end
 end)
+
 
 -- [[ LOGIKA ACTION TOMBOL ]]
 ApplyButton.MouseButton1Click:Connect(function()
