@@ -29,8 +29,7 @@ ScreenGui.Parent = PlayerGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 260, 1, -620) -- Otomatis menyesuaikan jika ditarik
-MainFrame.MinSize = Vector2.new(260, 180)
+MainFrame.Size = UDim2.new(0, 260, 0, 180) -- Perbaikan: Menggunakan ukuran tetap agar proporsional
 MainFrame.Position = UDim2.new(0.5, -130, 0.4, -90)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
@@ -117,6 +116,13 @@ ApplyButton.MouseLeave:Connect(function()
     TweenService:Create(ApplyButton, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {BackgroundColor3 = Color3.fromRGB(0, 130, 255)}):Play()
 end)
 
+InputBox.Focused:Connect(function()
+    TweenService:Create(InputStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {Color = Color3.fromRGB(150, 0, 255)}):Play()
+end)
+InputBox.FocusLost:Connect(function()
+    TweenService:Create(InputStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {Color = Color3.fromRGB(45, 45, 60)}):Play()
+end)
+
 -- [[ LOGIKA DRAGGABLE ]]
 local dragging, dragStart, startPos
 MainFrame.InputBegan:Connect(function(input)
@@ -149,12 +155,12 @@ ApplyButton.MouseButton1Click:Connect(function()
     if ApplyTitleEvent then
         ApplyButton.Text = "⚡ TRANSMITTING..."
         
-        -- FORMAT STRUKTUR REKAYASA DATA TABLE UNTUK LINE 1
+        -- FORMAT STRUKTUR DATA TABLE SESUAI DENGAN TITLESERVER V5.2
         local PayloadData = {
             ["Target"] = LocalPlayer.Name, -- Target ke diri sendiri
-            ["T1"] = text,                 -- Text Line 1
-            ["M1"] = "SOLID",             -- Mode: SOLID / GRADIENT
-            ["SI1"] = 2,                   -- Warna: Royal Gold (Index ke-2 dari Solid Colors)
+            ["T1"] = text,                 -- Mengisi Text Line 1
+            ["M1"] = "SOLID",              -- Mode warna: SOLID
+            ["SI1"] = 2,                   -- Index warna ke-2 (Royal Gold)
         }
         
         -- Tembakkan data terstruktur ke server
