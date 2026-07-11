@@ -19,13 +19,16 @@ if PlayerGui:FindFirstChild("ModernTitleGui") then
     PlayerGui.ModernTitleGui:Destroy()
 end
 
--- [[ REMOTE EVENT SCANNER ]]
+-- [[ REMOTE EVENT SCANNER (DIPERKUAT) ]]
 local ApplyTitleEvent = ReplicatedStorage:FindFirstChild("ApplyTitleEvent")
 if not ApplyTitleEvent then
     for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
-        if obj:IsA("RemoteEvent") and (obj.Name:match("Title") or obj.Name:match("Tag")) then
-            ApplyTitleEvent = obj
-            break
+        if obj:IsA("RemoteEvent") then
+            local nameLower = obj.Name:lower()
+            if nameLower:match("title") or nameLower:match("tag") or nameLower:match("name") then
+                ApplyTitleEvent = obj
+                break
+            end
         end
     end
 end
@@ -43,7 +46,6 @@ MainFrame.Size = UDim2.new(0, 260, 0, 180)
 MainFrame.Position = UDim2.new(0.5, -130, 0.4, -90)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 MainFrame.BorderSizePixel = 0
--- PERBAIKAN HP: Dimatikan agar tidak memblokir pendeteksian sentuhan drag
 MainFrame.Active = false 
 MainFrame.Parent = ScreenGui
 
@@ -80,7 +82,7 @@ local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 15)
 StatusLabel.Position = UDim2.new(0, 0, 0, 32)
 StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = ApplyTitleEvent and "● SYSTEM CONNECTED" or "○ SYSTEM DISCONNECTED"
+StatusLabel.Text = ApplyTitleEvent and "● SYSTEM CONNECTED ("..ApplyTitleEvent.Name..")" or "○ SYSTEM DISCONNECTED"
 StatusLabel.TextColor3 = ApplyTitleEvent and Color3.fromRGB(0, 255, 150) or Color3.fromRGB(255, 80, 80)
 StatusLabel.Font = Enum.Font.GothamMedium
 StatusLabel.TextSize = 8
@@ -113,7 +115,7 @@ InputStroke.Parent = InputBox
 local ApplyButton = Instance.new("TextButton")
 ApplyButton.Size = UDim2.new(0, 220, 0, 38)
 ApplyButton.Position = UDim2.new(0.5, -110, 0, 115)
-ApplyButton.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
+ApplyButton.BackgroundColor3 = Color3.fromRGB(0, 130, 255)
 ApplyButton.Text = "DEPLOY TITLE"
 ApplyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 ApplyButton.Font = Enum.Font.GothamBold
@@ -149,13 +151,11 @@ InputBox.FocusLost:Connect(function()
     TweenService:Create(InputStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {Color = Color3.fromRGB(45, 45, 60)}):Play()
 end)
 
-
--- [[ LOGIKA DRAGGABLE MENYELURUH (SISTEM SENTUHAN HP / DELTA) ]]
+-- [[ LOGIKA DRAGGABLE MENYELURUH ]]
 local dragging = false
 local dragStart = Vector3.new()
 local startPos = UDim2.new()
 
--- Fungsi pendeteksi sentuhan pertama di Frame Utama atau Judul
 local function initDrag(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = true
@@ -167,11 +167,9 @@ end
 MainFrame.InputBegan:Connect(initDrag)
 TitleLabel.InputBegan:Connect(initDrag)
 
--- Menggunakan event global agar jari bisa geser seluas layar tanpa macet
 UIS.InputChanged:Connect(function(input)
     if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
         local delta = input.Position - dragStart
-        -- Animasi perpindahan posisi yang sangat responsif di HP
         TweenService:Create(MainFrame, TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Position = UDim2.new(
                 startPos.X.Scale, startPos.X.Offset + delta.X,
@@ -181,15 +179,13 @@ UIS.InputChanged:Connect(function(input)
     end
 end)
 
--- Deteksi mutlak saat sentuhan dilepas di area mana pun di layar HP
 UIS.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         dragging = false
     end
 end)
 
-
--- [[ LOGIKA ACTION TOMBOL ]]
+-- [[ LOGIKA ACTION TOMBOL DENGAN MULTI-FALLBACK ARGS ]]
 ApplyButton.MouseButton1Click:Connect(function()
     local text = InputBox.Text
     if text == "" then 
@@ -201,9 +197,21 @@ ApplyButton.MouseButton1Click:Connect(function()
     
     if ApplyTitleEvent then
         ApplyButton.Text = "⚡ TRANSMITTING..."
-        ApplyTitleEvent:FireServer(text)
+        
+        -- [[ UJI COBA PARAMETER UTK MENEMBUS VALIDASI SERVER ]]
+        -- Opsi 1: Mengirim teks langsung (Normal)
+        ApplyTitleEvent:FireServer(text) 
+        
+        -- Opsi 2: Mengirim aksi spesifik & teks (Banyak dipakai di admin/title system)
+        ApplyTitleEvent:FireServer("SetTitle", text)
+        ApplyTitleEvent:FireServer("Equip", text)
+        ApplyTitleEvent:FireServer("Change", text)
+
+        -- Opsi 3: Mengirim tabel data berekstensi (Beberapa game RPG modern)
+        ApplyTitleEvent:FireServer({Text = text, Title = text})
+
         task.wait(0.5)
-        ApplyButton.Text = "✅ SUCCESS"
+        ApplyButton.Text = "✅ TRANSMITTED"
     else
         ApplyButton.Text = "❌ NODE NOT FOUND"
     end
