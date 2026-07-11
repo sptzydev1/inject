@@ -148,7 +148,7 @@ InputBox.FocusLost:Connect(function()
     TweenService:Create(InputStroke, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {Color = Color3.fromRGB(45, 45, 60)}):Play()
 end)
 
--- [[ LOGIKA DRAGGABLE BARU (GESER LUAS & ANTI-STUCK DI DELTA) ]]
+-- [[ LOGIKA DRAGGABLE BARU (GESER LUAS & SUDAH DIPERBAIKI) ]]
 local dragging, dragInput, dragStart, startPos
 
 MainFrame.InputBegan:Connect(function(input)
@@ -168,7 +168,8 @@ end)
 UIS.InputChanged:Connect(function(input)
     if input == dragInput and dragging then 
         local delta = input.Position - dragStart
-        TweenService:Create(MainFrame, TweenInfo.new(0.08, Enum.EasingStyle.OutQuad), {
+        -- PERBAIKAN DI SINI: Mengubah 'OutQuad' menjadi 'Quad' dengan EasingDirection 'Out'
+        TweenService:Create(MainFrame, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
             Position = UDim2.new(
                 startPos.X.Scale, startPos.X.Offset + delta.X, 
                 startPos.Y.Scale, startPos.Y.Offset + delta.Y
