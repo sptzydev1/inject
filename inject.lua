@@ -592,9 +592,9 @@ _G.UpdatePasteList = function()
                             end)
                         end
                         
-                        -- ==================================================
-                        --  INTEGRASI PROSES PASCA-PASTE (LANGZ ENGINE RUN)
-                        -- ==================================================
+                        -- =================================================
+                        --  PROSES PASCA-PASTE
+                        -- =================================================
                         setStatus("Status: Processing Parts...", Color3.fromRGB(255, 185, 55))
                         processParts(MasterFolder) -- Pengangkuran & Render Precise otomatis
                         
