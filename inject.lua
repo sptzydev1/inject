@@ -52,7 +52,7 @@ MainStroke.Parent = MainFrame
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, 0, 0, 40)
 Title.BackgroundTransparency = 1
-Title.Text = "🚀 COPY MAP BY SPYZYY V2.5 🚀"
+Title.Text = "🚀 COPY MAP BY SPYZYY V2.6 🚀"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 15
@@ -154,9 +154,9 @@ local function CreateScriptLabel(text, color, order)
     return label
 end
 
-CreateScriptLabel("✨ Script: Spyzyy Copy Map + Lighting", Color3.fromRGB(255, 255, 255), 1)
+CreateScriptLabel("✨ Script: Spyzyy Map + Anchor Support", Color3.fromRGB(255, 255, 255), 1)
 CreateScriptLabel("👑 Status: PREMIUM VERSION", Color3.fromRGB(255, 200, 0), 2)
-CreateScriptLabel("🛠️ Maker: @Spyzyy (V2.5)", Color3.fromRGB(0, 255, 200), 3)
+CreateScriptLabel("🛠️ Maker: @Spyzyy (V2.6)", Color3.fromRGB(0, 255, 200), 3)
 
 -- [[ TOMBOL & ELEMENT GUI SCRIPT ]]
 local CopyButton = Instance.new("TextButton")
@@ -277,7 +277,6 @@ CopyButton.MouseButton1Click:Connect(function()
     local uniqueID = math.random(1000, 9999) .. "_" .. os.date("%H%M%S")
     local fileName = FILE_PREFIX .. GameName .. "_" .. uniqueID .. ".json"
     
-    -- Ambil objek dari Workspace dan Lighting
     local objectsToScan = workspace:GetDescendants()
     for _, item in ipairs(Lighting:GetDescendants()) do
         table.insert(objectsToScan, item)
@@ -312,7 +311,7 @@ CopyButton.MouseButton1Click:Connect(function()
                         data.Properties.Material = obj.Material.Name
                         data.Properties.Transparency = obj.Transparency
                         data.Properties.Reflectance = obj.Reflectance
-                        data.Properties.Anchored = obj.Anchored
+                        data.Properties.Anchored = obj.Anchored -- Menyimpan status fisik asli
                         data.Properties.CanCollide = obj.CanCollide
                         data.Properties.CastShadow = obj.CastShadow
                         
@@ -338,7 +337,6 @@ CopyButton.MouseButton1Click:Connect(function()
                         pcall(function() data.Properties.Range = obj.Range end)
                         pcall(function() data.Properties.Intensity = obj.Intensity end)
                         pcall(function() data.Properties.Size = obj.Size end)
-                        -- Properti spesifik Skybox
                         pcall(function() data.Properties.SkyboxBk = obj.SkyboxBk end)
                         pcall(function() data.Properties.SkyboxDn = obj.SkyboxDn end)
                         pcall(function() data.Properties.SkyboxFt = obj.SkyboxFt end)
@@ -463,7 +461,6 @@ _G.UpdatePasteList = function()
                                 
                                 if AllowedSupportClasses[data.ClassName] then
                                     newObj = Instance.new(data.ClassName)
-                                    -- Memasukkan Properti Khusus Efek/Sky/Light
                                     pcall(function() if props.Texture then newObj.Texture = props.Texture end end)
                                     pcall(function() if props.TextureId then newObj.TextureId = props.TextureId end end)
                                     pcall(function() if props.Enabled ~= nil then newObj.Enabled = props.Enabled end end)
@@ -472,7 +469,6 @@ _G.UpdatePasteList = function()
                                     pcall(function() if props.Intensity then newObj.Intensity = props.Intensity end end)
                                     pcall(function() if props.Color3 then newObj.Color3 = Color3.fromRGB(unpack(props.Color3)) end end)
                                     pcall(function() if props.Color then newObj.Color = Color3.fromRGB(unpack(props.Color)) end end)
-                                    -- Sky properties paste
                                     pcall(function() if props.SkyboxBk then newObj.SkyboxBk = props.SkyboxBk end end)
                                     pcall(function() if props.SkyboxDn then newObj.SkyboxDn = props.SkyboxDn end end)
                                     pcall(function() if props.SkyboxFt then newObj.SkyboxFt = props.SkyboxFt end end)
@@ -485,14 +481,14 @@ _G.UpdatePasteList = function()
                                         newObj:PivotTo(CFrame.new(unpack(props.WorldPivot)))
                                     end
                                 elseif data.ClassName == "Part" or data.ClassName == "MeshPart" or data.ClassName == "UnionOperation" then
-                                    newObj = Instance.new("Part") -- Fallback aman ke Part biasa biar tidak crash saat runtime paste
+                                    newObj = Instance.new("Part") -- Fallback aman untuk executor non-Studio environment
                                 else
                                     newObj = Instance.new("Part")
                                 end
                                 
                                 newObj.Name = data.Name
                                 
-                                -- Pengaturan Part Base Properties
+                                -- Pengaturan Presisi Properti Fisik (Anchored & Unanchored)
                                 if newObj:IsA("BasePart") and props.CFrame then
                                     newObj.Size = Vector3.new(unpack(props.Size))
                                     newObj.CFrame = CFrame.new(unpack(props.CFrame))
@@ -500,14 +496,19 @@ _G.UpdatePasteList = function()
                                     pcall(function() newObj.Material = Enum.Material[props.Material] end)
                                     newObj.Transparency = props.Transparency
                                     newObj.Reflectance = props.Reflectance or 0
-                                    newObj.Anchored = props.Anchored
                                     newObj.CanCollide = props.CanCollide
                                     if props.CastShadow ~= nil then newObj.CastShadow = props.CastShadow end
+                                    
+                                    -- Menyesuaikan Status Anchored Secara Dinamis
+                                    if props.Anchored ~= nil then
+                                        newObj.Anchored = props.Anchored
+                                    else
+                                        newObj.Anchored = true -- Default safe state jika data properti corrupt
+                                    end
                                 end
                                 
                                 newObj.Parent = targetParent
                                 
-                                -- SINKRONISASI PRIMARY PART MODEL
                                 if data.ClassName == "Model" and props.PrimaryPartName then
                                     task.defer(function()
                                         local pPart = newObj:FindFirstChild(props.PrimaryPartName)
@@ -519,14 +520,11 @@ _G.UpdatePasteList = function()
                             end)
                         end
                         
-                        -- [[ FITUR UNGROUP OTOMATIS JIKA DIPERLUKAN ]]
-                        -- Membersihkan Folder Kosong atau meratakan objek hasil paste ke Workspace utama jika hancur
                         for _, child in ipairs(MasterFolder:GetChildren()) do
                             if child:IsA("Folder") and #child:GetChildren() == 0 then
                                 child:Destroy()
                             end
                         end
-                        
                     end)
                     
                     if success then
