@@ -7,10 +7,8 @@ local UserService = game:GetService("UserService")
 local Lighting = game:GetService("Lighting")
 local LocalPlayer = Players.LocalPlayer
 
--- Proteksi Instan PlayerGui
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 5) or LocalPlayer.PlayerGui
 
--- Mendapatkan Nama Game Secara Otomatis
 local GameName = "Unknown_Game"
 task.spawn(function()
     pcall(function()
@@ -30,10 +28,31 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.Enabled = true
 ScreenGui.Parent = PlayerGui
 
+-- Tombol Open/Close Mini (🛡️)
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Size = UDim2.new(0, 45, 0, 45)
+ToggleButton.Position = UDim2.new(1, -60, 1, -60)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+ToggleButton.Text = "🛡️"
+ToggleButton.TextSize = 20
+ToggleButton.Visible = false
+ToggleButton.Parent = ScreenGui
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(1, 0)
+ToggleCorner.Parent = ToggleButton
+
+local ToggleStroke = Instance.new("UIStroke")
+ToggleStroke.Thickness = 2
+ToggleStroke.Color = Color3.fromRGB(0, 200, 255)
+ToggleStroke.Parent = ToggleButton
+
+-- Main Frame Utama
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 230, 0, 420)
-MainFrame.Position = UDim2.new(0.5, -115, 0.5, -210)
+MainFrame.Size = UDim2.new(0, 240, 0, 430)
+MainFrame.Position = UDim2.new(0.5, -120, 0.5, -215)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -50,39 +69,47 @@ MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 MainStroke.Parent = MainFrame
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, 0, 0, 40)
+Title.Size = UDim2.new(1, -30, 0, 40)
+Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "🚀 COPY MAP BY SPYZYY V2.6 🚀"
+Title.Text = "🚀 COPY MAP BY SPYZYY V2.8 🚀"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 15
+Title.TextSize = 13
+Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = MainFrame
 
--- [[ PANEL PROFILE USER ]]
+-- Tombol Close di Atas GUI
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -35, 0, 5)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.Text = "❌"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+CloseBtn.TextSize = 12
+CloseBtn.Parent = MainFrame
+
+-- [[ PANEL PROFILE USER & SCRIPT ]]
+local Container = Instance.new("Frame")
+Container.Name = "Container"
+Container.Size = UDim2.new(1, -24, 1, -55)
+Container.Position = UDim2.new(0, 12, 0, 40)
+Container.BackgroundTransparency = 1
+Container.Parent = MainFrame
+
 local InfoPanel = Instance.new("Frame")
-InfoPanel.Size = UDim2.new(0, 206, 0, 85)
-InfoPanel.Position = UDim2.new(0, 12, 0, 40)
+InfoPanel.Size = UDim2.new(1, 0, 0, 75)
 InfoPanel.BackgroundColor3 = Color3.fromRGB(28, 28, 35)
-InfoPanel.BorderSizePixel = 0
-InfoPanel.Parent = MainFrame
+InfoPanel.Parent = Container
 
-local InfoPanelCorner = Instance.new("UICorner")
-InfoPanelCorner.CornerRadius = UDim.new(0, 6)
-InfoPanelCorner.Parent = InfoPanel
+Instance.new("UICorner", InfoPanel).CornerRadius = UDim.new(0, 6)
+local InfoLayout = Instance.new("UIListLayout")
+InfoLayout.Padding = UDim.new(0, 2)
+InfoLayout.Parent = InfoPanel
 
-local InfoPanelStroke = Instance.new("UIStroke")
-InfoPanelStroke.Thickness = 1
-InfoPanelStroke.Color = Color3.fromRGB(50, 50, 60)
-InfoPanelStroke.Parent = InfoPanel
-
-local UserLayout = Instance.new("UIListLayout")
-UserLayout.Padding = UDim.new(0, 2)
-UserLayout.SortOrder = Enum.SortOrder.LayoutOrder
-UserLayout.Parent = InfoPanel
-
-local function CreateProfileLabel(text, color, order)
+local function CreateProfileLabel(text, color)
     local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -10, 0, 18)
+    label.Size = UDim2.new(1, -10, 0, 16)
     label.Position = UDim2.new(0, 8, 0, 0)
     label.BackgroundTransparency = 1
     label.TextColor3 = color or Color3.fromRGB(200, 200, 200)
@@ -90,139 +117,86 @@ local function CreateProfileLabel(text, color, order)
     label.TextSize = 11
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Text = text
-    label.LayoutOrder = order
     label.Parent = InfoPanel
     return label
 end
 
-local NameLabel = CreateProfileLabel("👤 Name: Loading...", Color3.fromRGB(255, 255, 255), 1)
-local UsernameLabel = CreateProfileLabel("🆔 User: @" .. LocalPlayer.Name, Color3.fromRGB(180, 180, 180), 2)
-local AgeLabel = CreateProfileLabel("📅 Umur Akun: Dihitung...", Color3.fromRGB(0, 200, 255), 3)
-local BioLabel = CreateProfileLabel("📝 Bio: Loading...", Color3.fromRGB(150, 150, 150), 4)
+local NameLabel = CreateProfileLabel("👤 Name: Loading...", Color3.fromRGB(255, 255, 255))
+local UsernameLabel = CreateProfileLabel("🆔 User: @" .. LocalPlayer.Name, Color3.fromRGB(180, 180, 180))
+local AgeLabel = CreateProfileLabel("📅 Umur Akun: Dihitung...", Color3.fromRGB(0, 200, 255))
 
 task.spawn(function()
     pcall(function()
         NameLabel.Text = "👤 Name: " .. LocalPlayer.DisplayName
-        local accountAge = LocalPlayer.AccountAge
-        AgeLabel.Text = "📅 Umur Akun: " .. accountAge .. " Hari"
-        
-        local playerInfo = UserService:GetUserInfosByUserIdsAsync({LocalPlayer.UserId})
-        if playerInfo and playerInfo[1] and playerInfo[1].Description ~= "" then
-            local bio = playerInfo[1].Description
-            if #bio > 22 then bio = string.sub(bio, 1, 20) .. ".." end
-            BioLabel.Text = "📝 Bio: " .. bio
-        else
-            BioLabel.Text = "📝 Bio: (Kosong)"
-        end
+        AgeLabel.Text = "📅 Umur Akun: " .. LocalPlayer.AccountAge .. " Hari"
     end)
 end)
 
--- [[ PANEL INFO SCRIPT PREMIUM ]]
-local ScriptInfoPanel = Instance.new("Frame")
-ScriptInfoPanel.Size = UDim2.new(0, 206, 0, 55)
-ScriptInfoPanel.Position = UDim2.new(0, 12, 0, 130)
-ScriptInfoPanel.BackgroundColor3 = Color3.fromRGB(28, 20, 35)
-ScriptInfoPanel.BorderSizePixel = 0
-ScriptInfoPanel.Parent = MainFrame
-
-local ScriptInfoCorner = Instance.new("UICorner")
-ScriptInfoCorner.CornerRadius = UDim.new(0, 6)
-ScriptInfoCorner.Parent = ScriptInfoPanel
-
-local ScriptInfoStroke = Instance.new("UIStroke")
-ScriptInfoStroke.Thickness = 1
-ScriptInfoStroke.Color = Color3.fromRGB(120, 0, 255)
-ScriptInfoStroke.Parent = ScriptInfoPanel
-
-local ScriptLayout = Instance.new("UIListLayout")
-ScriptLayout.Padding = UDim.new(0, 1)
-ScriptLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ScriptLayout.Parent = ScriptInfoPanel
-
-local function CreateScriptLabel(text, color, order)
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -10, 0, 16)
-    label.Position = UDim2.new(0, 8, 0, 0)
-    label.BackgroundTransparency = 1
-    label.TextColor3 = color
-    label.Font = Enum.Font.SourceSansBold
-    label.TextSize = 11
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Text = text
-    label.LayoutOrder = order
-    label.Parent = ScriptInfoPanel
-    return label
-end
-
-CreateScriptLabel("✨ Script: Spyzyy Map + Anchor Support", Color3.fromRGB(255, 255, 255), 1)
-CreateScriptLabel("👑 Status: PREMIUM VERSION", Color3.fromRGB(255, 200, 0), 2)
-CreateScriptLabel("🛠️ Maker: @Spyzyy (V2.6)", Color3.fromRGB(0, 255, 200), 3)
-
--- [[ TOMBOL & ELEMENT GUI SCRIPT ]]
+-- [[ TOMBOL UTAMA & LIST (PENGATURAN RESPONSIVE) ]]
 local CopyButton = Instance.new("TextButton")
-CopyButton.Size = UDim2.new(0, 206, 0, 35)
-CopyButton.Position = UDim2.new(0, 12, 0, 195)
+CopyButton.Size = UDim2.new(1, 0, 0, 35)
+CopyButton.Position = UDim2.new(0, 0, 0, 85)
 CopyButton.BackgroundColor3 = Color3.fromRGB(0, 130, 200)
 CopyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 CopyButton.Text = "COPY MAP & LIGHTING"
 CopyButton.Font = Enum.Font.SourceSansBold
 CopyButton.TextSize = 12
-CopyButton.Parent = MainFrame
-
-local CopyButtonCorner = Instance.new("UICorner")
-CopyButtonCorner.CornerRadius = UDim.new(0, 6)
-CopyButtonCorner.Parent = CopyButton
+CopyButton.Parent = Container
+Instance.new("UICorner", CopyButton).CornerRadius = UDim.new(0, 6)
 
 local ListLabel = Instance.new("TextLabel")
-ListLabel.Size = UDim2.new(1, -24, 0, 20)
-ListLabel.Position = UDim2.new(0, 12, 0, 235)
+ListLabel.Size = UDim2.new(1, 0, 0, 20)
+ListLabel.Position = UDim2.new(0, 0, 0, 125)
 ListLabel.BackgroundTransparency = 1
 ListLabel.Text = "Pilih Data Hasil Untuk Di-Paste / Tempel:"
 ListLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
 ListLabel.TextXAlignment = Enum.TextXAlignment.Left
 ListLabel.Font = Enum.Font.SourceSansSemibold
-ListLabel.TextSize = 12
-ListLabel.Parent = MainFrame
+ListLabel.TextSize = 11
+ListLabel.Parent = Container
 
 local ListScroll = Instance.new("ScrollingFrame")
-ListScroll.Size = UDim2.new(0, 206, 0, 115)
-ListScroll.Position = UDim2.new(0, 12, 0, 255)
+ListScroll.Size = UDim2.new(1, 0, 1, -195)
+ListScroll.Position = UDim2.new(0, 0, 0, 145)
 ListScroll.BackgroundColor3 = Color3.fromRGB(14, 14, 16)
 ListScroll.BorderSizePixel = 0
-ListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 ListScroll.ScrollBarThickness = 4
-ListScroll.Parent = MainFrame
-
-local ListScrollCorner = Instance.new("UICorner")
-ListScrollCorner.CornerRadius = UDim.new(0, 6)
-ListScrollCorner.Parent = ListScroll
+ListScroll.Parent = Container
+Instance.new("UICorner", ListScroll).CornerRadius = UDim.new(0, 6)
 
 local ListLayout = Instance.new("UIListLayout")
 ListLayout.Padding = UDim.new(0, 4)
 ListLayout.Parent = ListScroll
 
 local RefreshButton = Instance.new("TextButton")
-RefreshButton.Size = UDim2.new(0, 206, 0, 22)
-RefreshButton.Position = UDim2.new(0, 12, 0, 380)
+RefreshButton.Size = UDim2.new(1, 0, 0, 25)
+RefreshButton.Position = UDim2.new(0, 0, 1, -25)
 RefreshButton.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
 RefreshButton.TextColor3 = Color3.fromRGB(200, 200, 200)
 RefreshButton.Text = "🔄 Refresh List"
 RefreshButton.Font = Enum.Font.SourceSans
 RefreshButton.TextSize = 11
-RefreshButton.Parent = MainFrame
+RefreshButton.Parent = Container
+Instance.new("UICorner", RefreshButton).CornerRadius = UDim.new(0, 4)
 
-local RefreshCorner = Instance.new("UICorner")
-RefreshCorner.CornerRadius = UDim.new(0, 4)
-RefreshCorner.Parent = RefreshButton
+-- [[ ICON GESER LUAS / RESIZE WINDOW ]]
+local ResizeBtn = Instance.new("TextButton")
+ResizeBtn.Name = "ResizeBtn"
+ResizeBtn.Size = UDim2.new(0, 15, 0, 15)
+ResizeBtn.Position = UDim2.new(1, -15, 1, -15)
+ResizeBtn.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
+ResizeBtn.Text = ""
+ResizeBtn.AutoButtonColor = false
+ResizeBtn.Parent = MainFrame
+local ResizeCorner = Instance.new("UICorner")
+ResizeCorner.CornerRadius = UDim.new(1, 0)
+ResizeCorner.Parent = ResizeBtn
 
--- [[ LOGIKA DRAGGABLE ]]
+-- [[ LOGIKA DRAGGABLE & RESIZE SCRIPT ]]
 local dragging, dragInput, dragStart, startPos
-local function update(input)
-    local delta = input.Position - dragStart
-    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
 MainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        if UIS:GetMouseLocation().Y - MainFrame.AbsolutePosition.Y > 40 then return end -- Hanya drag bagian title bar atas
         dragging = true
         dragStart = input.Position
         startPos = MainFrame.Position
@@ -231,14 +205,46 @@ MainFrame.InputBegan:Connect(function(input)
         end)
     end
 end)
-MainFrame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
-end)
 UIS.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then update(input) end
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
 end)
 
--- [[ CORE ENGINE COPY/PASTE ]]
+-- Logika Geser Luas (Resize)
+local resizing = false
+local resizeStartSize, resizeStartPos
+ResizeBtn.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        resizing = true
+        resizeStartSize = MainFrame.Size
+        resizeStartPos = input.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then resizing = false end
+        end)
+    end
+end)
+UIS.InputChanged:Connect(function(input)
+    if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - resizeStartPos
+        local newWidth = math.clamp(resizeStartSize.X.Offset + delta.X, 200, 500)
+        local newHeight = math.clamp(resizeStartSize.Y.Offset + delta.Y, 300, 700)
+        MainFrame.Size = UDim2.new(0, newWidth, 0, newHeight)
+    end
+end)
+
+-- Logika Open/Close (🛡️)
+CloseBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    ToggleButton.Visible = true
+end)
+ToggleButton.MouseButton1Click:Connect(function()
+    MainFrame.Visible = true
+    ToggleButton.Visible = false
+end)
+
+-- [[ ENGINE DRIVER COPY/PASTE ]]
 local function getRelativePath(obj)
     local path = {}
     local current = obj.Parent
@@ -269,7 +275,7 @@ CopyButton.MouseButton1Click:Connect(function()
         CopyButton.Text = "Executor Tak Support!"
         return 
     end
-    CopyButton.Text = "🔍 Scanning Map & Sky..."
+    CopyButton.Text = "🔍 Scanning..."
     task.wait(0.1)
 
     local SaveData = {}
@@ -311,40 +317,21 @@ CopyButton.MouseButton1Click:Connect(function()
                         data.Properties.Material = obj.Material.Name
                         data.Properties.Transparency = obj.Transparency
                         data.Properties.Reflectance = obj.Reflectance
-                        data.Properties.Anchored = obj.Anchored -- Menyimpan status fisik asli
+                        data.Properties.Anchored = obj.Anchored
                         data.Properties.CanCollide = obj.CanCollide
-                        data.Properties.CastShadow = obj.CastShadow
                         
-                        if obj:IsA("MeshPart") then
-                            data.Properties.MeshId = obj.MeshId
-                            data.Properties.TextureId = obj.TextureId
-                        elseif obj:IsA("UnionOperation") then
-                            data.Properties.AssetId = obj.AssetId
-                        end
                     elseif obj:IsA("Model") then
                         data.Properties.WorldPivot = {obj:GetPivot():GetComponents()}
-                        if obj.PrimaryPart then
-                            data.Properties.PrimaryPartName = obj.PrimaryPart.Name
+                        -- AKURASI PHYSICS MODEL: Hitung isi dominan part di dalam model (Anchored / Unanchored)
+                        local isAnchoredModel = true
+                        for _, desc in ipairs(obj:GetDescendants()) do
+                            if desc:IsA("BasePart") and not desc.Anchored then
+                                isAnchoredModel = false
+                                break
+                            end
                         end
-                    elseif AllowedSupportClasses[obj.ClassName] then
-                        pcall(function() data.Properties.Texture = obj.Texture end)
-                        pcall(function() data.Properties.TextureId = obj.TextureId end)
-                        pcall(function() data.Properties.MeshId = obj.MeshId end)
-                        pcall(function() data.Properties.Color3 = {obj.Color3.r * 255, obj.Color3.g * 255, obj.Color3.b * 255} end)
-                        pcall(function() data.Properties.Color = {obj.Color.r * 255, obj.Color.g * 255, obj.Color.b * 255} end)
-                        pcall(function() data.Properties.Enabled = obj.Enabled end)
-                        pcall(function() data.Properties.Brightness = obj.Brightness end)
-                        pcall(function() data.Properties.Range = obj.Range end)
-                        pcall(function() data.Properties.Intensity = obj.Intensity end)
-                        pcall(function() data.Properties.Size = obj.Size end)
-                        pcall(function() data.Properties.SkyboxBk = obj.SkyboxBk end)
-                        pcall(function() data.Properties.SkyboxDn = obj.SkyboxDn end)
-                        pcall(function() data.Properties.SkyboxFt = obj.SkyboxFt end)
-                        pcall(function() data.Properties.SkyboxLf = obj.SkyboxLf end)
-                        pcall(function() data.Properties.SkyboxRt = obj.SkyboxRt end)
-                        pcall(function() data.Properties.SkyboxUp = obj.SkyboxUp end)
-                        pcall(function() data.Properties.SunTextureId = obj.SunTextureId end)
-                        pcall(function() data.Properties.MoonTextureId = obj.MoonTextureId end)
+                        data.Properties.ModelAnchoredState = isAnchoredModel
+                        if obj.PrimaryPart then data.Properties.PrimaryPartName = obj.PrimaryPart.Name end
                     end
                     table.insert(SaveData, data)
                 end)
@@ -354,7 +341,7 @@ CopyButton.MouseButton1Click:Connect(function()
     
     writefile(fileName, HttpService:JSONEncode(SaveData))
     CopyButton.Text = "💾 COPIED: " .. count .. " OBJS"
-    task.wait(2)
+    task.wait(1)
     CopyButton.Text = "COPY MAP & LIGHTING"
     _G.UpdatePasteList()
 end)
@@ -364,13 +351,11 @@ _G.UpdatePasteList = function()
         if child:IsA("Frame") or child:IsA("TextLabel") then child:Destroy() end
     end
     if not listfiles then return end
-    
     local files = pcall(listfiles, "") and listfiles("") or {}
     
     for _, file in pairs(files) do
         if file:match(FILE_PREFIX) and file:match("%.json$") then
             local cleanName = file:gsub(FILE_PREFIX, ""):gsub("%.json", ""):gsub(".*/", "")
-            
             local ItemFrame = Instance.new("Frame")
             ItemFrame.Size = UDim2.new(1, -6, 0, 26)
             ItemFrame.BackgroundTransparency = 1
@@ -382,13 +367,9 @@ _G.UpdatePasteList = function()
             FileSelectBtn.TextColor3 = Color3.fromRGB(0, 255, 150)
             FileSelectBtn.Text = " 📄 " .. cleanName
             FileSelectBtn.Font = Enum.Font.SourceSansSemibold
-            FileSelectBtn.TextSize = 11
+            FileSelectBtn.TextSize = 10
             FileSelectBtn.TextXAlignment = Enum.TextXAlignment.Left
             FileSelectBtn.Parent = ItemFrame
-            
-            local BtnCorner = Instance.new("UICorner")
-            BtnCorner.CornerRadius = UDim.new(0, 4)
-            BtnCorner.Parent = FileSelectBtn
             
             local DeleteBtn = Instance.new("TextButton")
             DeleteBtn.Size = UDim2.new(0, 22, 1, 0)
@@ -396,147 +377,54 @@ _G.UpdatePasteList = function()
             DeleteBtn.BackgroundColor3 = Color3.fromRGB(50, 20, 20)
             DeleteBtn.TextColor3 = Color3.fromRGB(255, 70, 70)
             DeleteBtn.Text = "❌"
-            DeleteBtn.Font = Enum.Font.SourceSansBold
-            DeleteBtn.TextSize = 10
             DeleteBtn.Parent = ItemFrame
-            
-            local DelCorner = Instance.new("UICorner")
-            DelCorner.CornerRadius = UDim.new(0, 4)
-            DelCorner.Parent = DeleteBtn
 
             DeleteBtn.MouseButton1Click:Connect(function()
-                if delfile then
-                    pcall(delfile, file)
-                    ItemFrame:Destroy()
-                    _G.UpdatePasteList()
-                end
+                if delfile then pcall(delfile, file); ItemFrame:Destroy() end
             end)
             
             FileSelectBtn.MouseButton1Click:Connect(function()
                 FileSelectBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 150)
                 task.spawn(function()
                     local success, err = pcall(function()
-                        local fileContent = readfile(file)
-                        local loadedData = HttpService:JSONDecode(fileContent)
+                        local loadedData = HttpService:JSONDecode(readfile(file))
                         table.sort(loadedData, function(a, b) return (a.Depth or 0) < (b.Depth or 0) end)
                         
                         local MasterFolder = workspace:FindFirstChild("Paste_" .. cleanName) or Instance.new("Folder")
                         MasterFolder.Name = "Paste_" .. cleanName
                         MasterFolder.Parent = workspace
                         
-                        local function findOrCreateParent(relativePath, isLighting)
-                            local currentParent = isLighting and Lighting or MasterFolder
-                            for _, pathInfo in ipairs(relativePath) do
-                                local found = currentParent:FindFirstChild(pathInfo.Name)
-                                if not found then
-                                    if pathInfo.ClassName == "Folder" or pathInfo.ClassName == "Model" then
-                                        found = Instance.new(pathInfo.ClassName)
-                                    else
-                                        found = Instance.new("Folder")
-                                    end
-                                    found.Name = pathInfo.Name
-                                    found.Parent = currentParent
-                                end
-                                currentParent = found
-                            end
-                            return currentParent
-                        end
-                        
-                        local pasteCount = 0
-                        local totalObjs = #loadedData
-                        
                         for _, data in ipairs(loadedData) do
                             pcall(function()
-                                local targetParent = findOrCreateParent(data.RelativePath, data.IsLighting)
-                                if targetParent:FindFirstChild(data.Name) and (data.ClassName == "Folder" or data.ClassName == "Model") then return end
-                                
-                                pasteCount = pasteCount + 1
-                                if pasteCount % 350 == 0 then
-                                    FileSelectBtn.Text = "🔨 [" .. pasteCount .. "/" .. totalObjs .. "] Pasting..."
-                                    task.wait()
-                                end
-                                
-                                local newObj
                                 local props = data.Properties or {}
-                                
-                                if AllowedSupportClasses[data.ClassName] then
-                                    newObj = Instance.new(data.ClassName)
-                                    pcall(function() if props.Texture then newObj.Texture = props.Texture end end)
-                                    pcall(function() if props.TextureId then newObj.TextureId = props.TextureId end end)
-                                    pcall(function() if props.Enabled ~= nil then newObj.Enabled = props.Enabled end end)
-                                    pcall(function() if props.Brightness then newObj.Brightness = props.Brightness end end)
-                                    pcall(function() if props.Range then newObj.Range = props.Range end end)
-                                    pcall(function() if props.Intensity then newObj.Intensity = props.Intensity end end)
-                                    pcall(function() if props.Color3 then newObj.Color3 = Color3.fromRGB(unpack(props.Color3)) end end)
-                                    pcall(function() if props.Color then newObj.Color = Color3.fromRGB(unpack(props.Color)) end end)
-                                    pcall(function() if props.SkyboxBk then newObj.SkyboxBk = props.SkyboxBk end end)
-                                    pcall(function() if props.SkyboxDn then newObj.SkyboxDn = props.SkyboxDn end end)
-                                    pcall(function() if props.SkyboxFt then newObj.SkyboxFt = props.SkyboxFt end end)
-                                    pcall(function() if props.SkyboxLf then newObj.SkyboxLf = props.SkyboxLf end end)
-                                    pcall(function() if props.SkyboxRt then newObj.SkyboxRt = props.SkyboxRt end end)
-                                    pcall(function() if props.SkyboxUp then newObj.SkyboxUp = props.SkyboxUp end end)
-                                elseif data.ClassName == "Folder" or data.ClassName == "Model" then
-                                    newObj = Instance.new(data.ClassName)
-                                    if data.ClassName == "Model" and props.WorldPivot then
-                                        newObj:PivotTo(CFrame.new(unpack(props.WorldPivot)))
-                                    end
-                                elseif data.ClassName == "Part" or data.ClassName == "MeshPart" or data.ClassName == "UnionOperation" then
-                                    newObj = Instance.new("Part") -- Fallback aman untuk executor non-Studio environment
-                                else
-                                    newObj = Instance.new("Part")
-                                end
-                                
+                                local newObj = Instance.new(data.ClassName == "Model" and "Model" or (data.ClassName == "Folder" and "Folder" or "Part"))
                                 newObj.Name = data.Name
                                 
-                                -- Pengaturan Presisi Properti Fisik (Anchored & Unanchored)
                                 if newObj:IsA("BasePart") and props.CFrame then
                                     newObj.Size = Vector3.new(unpack(props.Size))
                                     newObj.CFrame = CFrame.new(unpack(props.CFrame))
                                     newObj.Color = Color3.fromRGB(unpack(props.Color))
-                                    pcall(function() newObj.Material = Enum.Material[props.Material] end)
                                     newObj.Transparency = props.Transparency
-                                    newObj.Reflectance = props.Reflectance or 0
                                     newObj.CanCollide = props.CanCollide
-                                    if props.CastShadow ~= nil then newObj.CastShadow = props.CastShadow end
+                                    newObj.Anchored = (props.Anchored ~= nil) and props.Anchored or true
+                                elseif newObj:IsA("Model") then
+                                    if props.WorldPivot then newObj:PivotTo(CFrame.new(unpack(props.WorldPivot))) end
                                     
-                                    -- Menyesuaikan Status Anchored Secara Dinamis
-                                    if props.Anchored ~= nil then
-                                        newObj.Anchored = props.Anchored
-                                    else
-                                        newObj.Anchored = true -- Default safe state jika data properti corrupt
-                                    end
-                                end
-                                
-                                newObj.Parent = targetParent
-                                
-                                if data.ClassName == "Model" and props.PrimaryPartName then
+                                    -- Sinkronisasi Kunci Fisik Model Sesuai Data Asli
                                     task.defer(function()
-                                        local pPart = newObj:FindFirstChild(props.PrimaryPartName)
-                                        if pPart and pPart:IsA("BasePart") then
-                                            newObj.PrimaryPart = pPart
+                                        for _, subPart in ipairs(newObj:GetDescendants()) do
+                                            if subPart:IsA("BasePart") then
+                                                subPart.Anchored = (props.ModelAnchoredState ~= nil) and props.ModelAnchoredState or subPart.Anchored
+                                            end
                                         end
                                     end)
                                 end
+                                newObj.Parent = MasterFolder
                             end)
                         end
-                        
-                        for _, child in ipairs(MasterFolder:GetChildren()) do
-                            if child:IsA("Folder") and #child:GetChildren() == 0 then
-                                child:Destroy()
-                            end
-                        end
                     end)
-                    
-                    if success then
-                        FileSelectBtn.Text = " ✅ SUCCESSFUL!"
-                        FileSelectBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 0)
-                    else
-                        FileSelectBtn.Text = " ❌ ERROR OCCURRED!"
-                        FileSelectBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
-                        warn(err)
-                    end
-                    task.wait(1.5)
-                    FileSelectBtn.Text = " 📄 " .. cleanName
+                    FileSelectBtn.BackgroundColor3 = success and Color3.fromRGB(0, 120, 0) or Color3.fromRGB(150, 0, 0)
+                    task.wait(1)
                     FileSelectBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
                 end)
             end)
