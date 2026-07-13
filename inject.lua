@@ -249,7 +249,7 @@ CopyButton.Size = UDim2.new(0, 206, 0, 35)
 CopyButton.Position = UDim2.new(0, 12, 0, 195)
 CopyButton.BackgroundColor3 = Color3.fromRGB(0, 130, 200)
 CopyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CopyButton.Text = "📸" -- DIUBAH: Hanya Menyisakan Icon
+CopyButton.Text = "COPYY OMM" -- DIUBAH: Hanya Menyisakan Icon
 CopyButton.Font = Enum.Font.SourceSansBold
 CopyButton.TextSize = 18 -- Ditinggikan sedikit agar icon terlihat pas
 CopyButton.Parent = MainFrame
@@ -338,7 +338,7 @@ ClearButton.MouseButton1Click:Connect(function()
             pcall(function() ch:Destroy() end)
         end
     end
-    setStatus("WS Dibersihkan! 🗑", Color3.fromRGB(255, 185, 55))
+    setStatus("WORKSPACE Dibersihkan!", Color3.fromRGB(255, 185, 55))
     task.wait(1.5)
     setStatus("Siap 🟢")
 end)
@@ -461,7 +461,7 @@ CopyButton.MouseButton1Click:Connect(function()
     CopyButton.Text = "✅"
     setStatus("Map Berhasil Disimpan! ✓", Color3.fromRGB(90, 235, 135))
     task.wait(2)
-    CopyButton.Text = "📸"
+    CopyButton.Text = "COPYY OMM"
     setStatus("Siap 🟢")
     _G.UpdatePasteList()
 end)
