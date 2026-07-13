@@ -1,3 +1,5 @@
+-- Support copy all part and yang ada di model mau pon folder
+
 -- [[ CONFIGURASI & VARIABLE UTAMA ]]
 local HttpService = game:GetService("HttpService")
 local UIS = game:GetService("UserInputService")
@@ -346,7 +348,7 @@ local AllowedSupportClasses = {
     ["SpecialMesh"] = true, ["BlockMesh"] = true, ["CylinderMesh"] = true,
     ["ParticleEmitter"] = true, ["PointLight"] = true, ["SpotLight"] = true, ["SurfaceLight"] = true,
     ["Sky"] = true, ["Atmosphere"] = true, ["Clouds"] = true, ["SunRaysEffect"] = true, ["BloomEffect"] = true,
-    ["BlurEffect"] = true, ["ColorCorrectionEffect"] = true, ["Sound"] = true -- Menambahkan Support Audio
+    ["BlurEffect"] = true, ["ColorCorrectionEffect"] = true, ["Sound"] = true
 }
 
 CopyButton.MouseButton1Click:Connect(function()
@@ -372,11 +374,11 @@ CopyButton.MouseButton1Click:Connect(function()
     local totalObjects = #objectsToScan
     
     for idx, obj in pairs(objectsToScan) do
+        -- Mengubah pengecekan agar mensupport SEMUA jenis BasePart (Part, MeshPart, Union, Wedge, dll.)
         if obj:IsA("Folder") or obj:IsA("Model") or obj:IsA("BasePart") or AllowedSupportClasses[obj.ClassName] then
             if not obj:IsDescendantOf(Players) and not obj:IsA("Camera") and not obj:IsA("Terrain") and not isAPlayerCharacter(obj) then
                 count = count + 1
                 
-                -- Update Progress Bar per data item secara akurat %
                 if idx % 200 == 0 or idx == totalObjects then
                     local pct = math.floor((idx / totalObjects) * 100)
                     ProgressBar.Size = UDim2.new(pct / 100, 0, 1, 0)
@@ -433,19 +435,17 @@ CopyButton.MouseButton1Click:Connect(function()
                         pcall(function() data.Properties.Size = obj.Size end)
                         pcall(function() data.Properties.Face = obj.Face.Name end)
                         
-                        -- Ekstraksi Properti Sound secara Aman
                         if obj:IsA("Sound") then
                             pcall(function() data.Properties.SoundId = obj.SoundId end)
                             pcall(function() data.Properties.Volume = obj.Volume end)
                             pcall(function() data.Properties.PlaybackSpeed = obj.PlaybackSpeed end)
-                            pcall(function() data.Properties.Playing = obj.IsPlaying end) -- Status putar awal
+                            pcall(function() data.Properties.Playing = obj.IsPlaying end)
                             pcall(function() data.Properties.Looped = obj.Looped end)
                             pcall(function() data.Properties.TimePosition = obj.TimePosition end)
                             pcall(function() data.Properties.RollOffMaxDistance = obj.RollOffMaxDistance end)
                             pcall(function() data.Properties.RollOffMinDistance = obj.RollOffMinDistance end)
                         end
 
-                        -- Ambil data SurfaceAppearance
                         if obj:IsA("SurfaceAppearance") then
                             pcall(function() data.Properties.AlphaMode = obj.AlphaMode.Name end)
                             pcall(function() data.Properties.ColorMap = obj.ColorMap end)
@@ -454,7 +454,6 @@ CopyButton.MouseButton1Click:Connect(function()
                             pcall(function() data.Properties.RoughnessMap = obj.RoughnessMap end)
                         end
 
-                        -- Properti Skybox
                         pcall(function() data.Properties.SkyboxBk = obj.SkyboxBk end)
                         pcall(function() data.Properties.SkyboxDn = obj.SkyboxDn end)
                         pcall(function() data.Properties.SkyboxFt = obj.SkyboxFt end)
@@ -540,23 +539,20 @@ _G.UpdatePasteList = function()
                         local fileContent = readfile(file)
                         local loadedData = HttpService:JSONDecode(fileContent)
                         
-                        -- Mengurutkan hierarki agar parent dibuat terlebih dahulu sebelum objek di dalamnya
+                        -- Mengurutkan hierarki terkecil dulu (agar Folder & Model induk terbuat duluan)
                         table.sort(loadedData, function(a, b) return (a.Depth or 0) < (b.Depth or 0) end)
                         
                         local MasterFolder = workspace:FindFirstChild("Paste_" .. cleanName) or Instance.new("Folder")
                         MasterFolder.Name = "Paste_" .. cleanName
                         MasterFolder.Parent = workspace
                         
+                        -- Perbaikan fungsi penemu parent agar menjaga Model & Folder asli tidak teracak
                         local function findOrCreateParent(relativePath, isLighting)
                             local currentParent = isLighting and Lighting or MasterFolder
                             for _, pathInfo in ipairs(relativePath) do
                                 local found = currentParent:FindFirstChild(pathInfo.Name)
                                 if not found then
-                                    if pathInfo.ClassName == "Folder" or pathInfo.ClassName == "Model" then
-                                        found = Instance.new(pathInfo.ClassName)
-                                    else
-                                        found = Instance.new("Folder")
-                                    end
+                                    found = Instance.new(pathInfo.ClassName)
                                     found.Name = pathInfo.Name
                                     found.Parent = currentParent
                                     print("⚙️ Created Hierarchy Parent: " .. pathInfo.Name .. " [" .. pathInfo.ClassName .. "]")
@@ -573,8 +569,15 @@ _G.UpdatePasteList = function()
                             pcall(function()
                                 local targetParent = findOrCreateParent(data.RelativePath, data.IsLighting)
                                 
-                                -- Cegah duplikasi struktur folder/model dasar
-                                if targetParent:FindFirstChild(data.Name) and (data.ClassName == "Folder" or data.ClassName == "Model") then return end
+                                -- Mencegah duplikasi folder/model jika sudah dibuat otomatis oleh hierarki anak
+                                local existingObj = targetParent:FindFirstChild(data.Name)
+                                if existingObj and (data.ClassName == "Folder" or data.ClassName == "Model") then 
+                                    -- Jika objek model, atur pivot aslinya
+                                    if data.ClassName == "Model" and data.Properties.WorldPivot then
+                                        existingObj:PivotTo(CFrame.new(unpack(data.Properties.WorldPivot)))
+                                    end
+                                    return 
+                                end
                                 
                                 pasteCount = pasteCount + 1
                                 if pasteCount % 200 == 0 then
@@ -582,15 +585,13 @@ _G.UpdatePasteList = function()
                                     task.wait()
                                 end
                                 
-                                -- Console Log output Studio
                                 print(string.format("🔨 [%d/%d] Generating: %s (%s)", pasteCount, totalObjs, data.Name, data.ClassName))
                                 
                                 local newObj
                                 local props = data.Properties or {}
                                 
-                                -- [ LOGIKA AKTIF UNGROUP DECAL/STIKER BERLAPIS ]
                                 if AllowedSupportClasses[data.ClassName] then
-                                    -- Jika terdeteksi struktur berlapis (Parent berupa Model/Folder kosong hasil render), carikan BasePart terdekat di dalamnya.
+                                    -- Memastikan Decal/Texture/Light menempel langsung ke BasePart terdekat di dalam struktur modelnya
                                     if targetParent:IsA("Model") or targetParent:IsA("Folder") then
                                         local fallbackPart = targetParent:FindFirstChildWhichIsA("BasePart", true)
                                         if fallbackPart then
@@ -609,7 +610,6 @@ _G.UpdatePasteList = function()
                                     pcall(function() if props.Color then newObj.Color = Color3.fromRGB(unpack(props.Color)) end end)
                                     pcall(function() if props.Face then newObj.Face = Enum.NormalId[props.Face] end end)
                                     
-                                    -- Sinkronisasi Objek Sound agar Aktif Otomatis
                                     if data.ClassName == "Sound" then
                                         pcall(function() if props.SoundId then newObj.SoundId = props.SoundId end end)
                                         pcall(function() if props.Volume then newObj.Volume = props.Volume end end)
@@ -618,7 +618,6 @@ _G.UpdatePasteList = function()
                                         pcall(function() if props.RollOffMaxDistance then newObj.RollOffMaxDistance = props.RollOffMaxDistance end end)
                                         pcall(function() if props.RollOffMinDistance then newObj.RollOffMinDistance = props.RollOffMinDistance end end)
                                         
-                                        -- Jika sound aslinya sedang berputar, trigger ulang setelah dipasang ke workspace
                                         if props.Playing == true then
                                             task.defer(function()
                                                 pcall(function() 
@@ -629,7 +628,6 @@ _G.UpdatePasteList = function()
                                         end
                                     end
 
-                                    -- Tempel data SurfaceAppearance secara dinamis
                                     if data.ClassName == "SurfaceAppearance" then
                                         pcall(function() if props.AlphaMode then newObj.AlphaMode = Enum.AlphaMode[props.AlphaMode] end end)
                                         pcall(function() if props.ColorMap then newObj.ColorMap = props.ColorMap end end)
@@ -638,7 +636,6 @@ _G.UpdatePasteList = function()
                                         pcall(function() if props.RoughnessMap then newObj.RoughnessMap = props.RoughnessMap end end)
                                     end
 
-                                    -- Sky properties paste
                                     pcall(function() if props.SkyboxBk then newObj.SkyboxBk = props.SkyboxBk end end)
                                     pcall(function() if props.SkyboxDn then newObj.SkyboxDn = props.SkyboxDn end end)
                                     pcall(function() if props.SkyboxFt then newObj.SkyboxFt = props.SkyboxFt end end)
@@ -651,19 +648,19 @@ _G.UpdatePasteList = function()
                                         newObj:PivotTo(CFrame.new(unpack(props.WorldPivot)))
                                     end
                                 else
-                                    -- Fallback aman part penampung aset luar
-                                    if props.MeshId then
-                                        newObj = Instance.new("MeshPart")
+                                    -- Disini support untuk SEMUA part (WedgePart, CornerWedgePart, Part, MeshPart, Union, dll.)
+                                    newObj = Instance.new(data.ClassName)
+                                    if data.ClassName == "MeshPart" and props.MeshId then
                                         pcall(function() newObj.MeshId = props.MeshId end)
                                         pcall(function() if props.TextureId then newObj.TextureId = props.TextureId end end)
-                                    else
-                                        newObj = Instance.new("Part")
+                                    elseif data.ClassName == "UnionOperation" and props.AssetId then
+                                        pcall(function() newObj.AssetId = props.AssetId end)
                                     end
                                 end
                                 
                                 newObj.Name = data.Name
                                 
-                                -- Pengaturan Part Base Properties
+                                -- Pengaturan properti fisik dasar part
                                 if newObj:IsA("BasePart") and props.CFrame then
                                     newObj.Size = Vector3.new(unpack(props.Size))
                                     newObj.CFrame = CFrame.new(unpack(props.CFrame))
@@ -676,10 +673,8 @@ _G.UpdatePasteList = function()
                                     if props.CastShadow ~= nil then newObj.CastShadow = props.CastShadow end
                                 end
                                 
-                                -- Penempatan posisi parent terdalam secara otomatis
                                 newObj.Parent = targetParent
                                 
-                                -- Sinkronisasi PrimaryPart Model
                                 if data.ClassName == "Model" and props.PrimaryPartName then
                                     task.defer(function()
                                         local pPart = newObj:FindFirstChild(props.PrimaryPartName)
@@ -689,13 +684,6 @@ _G.UpdatePasteList = function()
                                     end)
                                 end
                             end)
-                        end
-                        
-                        -- Membersihkan Folder Kosong sisa render objek terurai
-                        for _, child in ipairs(MasterFolder:GetChildren()) do
-                            if child:IsA("Folder") and #child:GetChildren() == 0 then
-                                child:Destroy()
-                            end
                         end
                     end)
                     
