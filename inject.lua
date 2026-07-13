@@ -340,13 +340,13 @@ GuiIcon.BackgroundColor3 = Color3.fromRGB(15, 12, 25)
 GuiIcon.Text = "🛠️"
 GuiIcon.TextSize = 22
 GuiIcon.TextColor3 = Color3.fromRGB(255, 255, 255)
-GuiIcon.Visible = false -- Tersembunyi saat awal terbuka
+GuiIcon.Visible = false
 GuiIcon.Active = true
 GuiIcon.ZIndex = 10
 GuiIcon.Parent = ScreenGui
 
 local IconCorner = Instance.new("UICorner")
-IconCorner.CornerRadius = UDim.new(1, 0) -- Lingkaran Sempurna
+IconCorner.CornerRadius = UDim.new(1, 0)
 IconCorner.Parent = GuiIcon
 
 local IconStroke = Instance.new("UIStroke")
@@ -354,13 +354,11 @@ IconStroke.Thickness = 2
 IconStroke.Color = Color3.fromRGB(0, 200, 255)
 IconStroke.Parent = GuiIcon
 
--- Logika Membuka/Menutup GUI utama lewat Icon
 GuiIcon.MouseButton1Click:Connect(function()
     MainFrame.Visible = true
     GuiIcon.Visible = false
 end)
 
--- Tombol Close di MainFrame (Opsional ditambahkan di pojok kanan atas)
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 30, 0, 30)
 CloseBtn.Position = UDim2.new(1, -35, 0, 5)
@@ -375,7 +373,6 @@ CloseBtn.MouseButton1Click:Connect(function()
     GuiIcon.Visible = true
 end)
 
--- Draggable Logic Fungsi Umum untuk Frame dan Icon
 local function makeDraggable(frame)
     local dragging, dragInput, dragStart, startPos
     frame.InputBegan:Connect(function(input)
@@ -402,16 +399,14 @@ end
 makeDraggable(MainFrame)
 makeDraggable(GuiIcon)
 
--- Fitur Geser Luas Ukuran Icon Menggunakan Scroll Mouse / Input Wheel
 GuiIcon.InputChanged:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseWheel then
         local currentSize = GuiIcon.Size.X.Offset
-        local newSize = math.clamp(currentSize + (input.Position.Z * 5), 35, 100) -- Batas min 35px, max 100px
+        local newSize = math.clamp(currentSize + (input.Position.Z * 5), 35, 100)
         GuiIcon.Size = UDim2.new(0, newSize, 0, newSize)
-        GuiIcon.TextSize = newSize * 0.45 -- Menyesuaikan skala icon di dalamnya
+        GuiIcon.TextSize = newSize * 0.45
     end
 end)
-
 
 ClearButton.MouseButton1Click:Connect(function()
     for _, ch in ipairs(workspace:GetChildren()) do
@@ -442,14 +437,6 @@ local function isAPlayerCharacter(obj)
     return false
 end
 
-local AllowedSupportClasses = {
-    ["Texture"] = true, ["Decal"] = true, ["SurfaceAppearance"] = true, 
-    ["SpecialMesh"] = true, ["BlockMesh"] = true, ["CylinderMesh"] = true,
-    ["ParticleEmitter"] = true, ["PointLight"] = true, ["SpotLight"] = true, ["SurfaceLight"] = true,
-    ["Sky"] = true, ["Atmosphere"] = true, ["Clouds"] = true,
-    ["LocalScript"] = true, ["Script"] = true, ["ModuleScript"] = true
-}
-
 CopyButton.MouseButton1Click:Connect(function()
     if not writefile then 
         CopyButton.Text = "❌"
@@ -465,61 +452,64 @@ CopyButton.MouseButton1Click:Connect(function()
     local fileName = FILE_PREFIX .. GameName .. "_" .. uniqueID .. ".json"
     local objectsToScan = TargetFolder:GetDescendants()
     
-    -- Loading loop variables
+    -- DAFTAR FRAME ANIMASI LOOP LOADING (BERPUTAR)
     local loadingFrames = {"|", "/", "-", "\\"}
     local frameIdx = 1
 
     for _, obj in pairs(objectsToScan) do
-        if obj:IsA("Folder") or obj:IsA("Model") or obj:IsA("BasePart") or AllowedSupportClasses[obj.ClassName] then
-            if not obj:IsDescendantOf(Players) and not obj:IsA("Camera") and not obj:IsA("Terrain") and not isAPlayerCharacter(obj) then
-                count = count + 1
-                
-                -- Loop Loading rapi per 200 item agar responsif & tampilkan nama item
-                if count % 200 == 0 then 
-                    frameIdx = (frameIdx % #loadingFrames) + 1
-                    local cleanName = #obj.Name > 15 and string.sub(obj.Name, 1, 13) .. ".." or obj.Name
-                    setStatus(loadingFrames[frameIdx] .. " Copying: " .. cleanName, Color3.fromRGB(255, 180, 50))
-                    task.wait() 
-                end
-                
-                local relPath = getRelativePath(obj)
-                local data = {
-                    Name = obj.Name,
-                    ClassName = obj.ClassName,
-                    RelativePath = relPath,
-                    Depth = #relPath,
-                    Properties = {}
-                }
-                
-                pcall(function()
-                    if obj:IsA("BasePart") then
-                        data.Properties.Size = {obj.Size.X, obj.Size.Y, obj.Size.Z}
-                        data.Properties.CFrame = {obj.CFrame:GetComponents()}
-                        data.Properties.Color = {obj.Color.r * 255, obj.Color.g * 255, obj.Color.b * 255}
-                        data.Properties.Material = obj.Material.Name
-                        data.Properties.Transparency = obj.Transparency
-                        data.Properties.Reflectance = obj.Reflectance
-                        data.Properties.Anchored = obj.Anchored
-                        data.Properties.CanCollide = obj.CanCollide
-                        
-                        if obj:IsA("MeshPart") then
-                            data.Properties.MeshId = obj.MeshId
-                            data.Properties.TextureId = obj.TextureId
-                        elseif obj:IsA("UnionOperation") then
-                            data.Properties.AssetId = obj.AssetId
-                        end
-                    elseif obj:IsA("Model") then
-                        data.Properties.WorldPivot = {obj:GetPivot():GetComponents()}
-                    elseif AllowedSupportClasses[obj.ClassName] then
-                        pcall(function() data.Properties.Texture = obj.Texture end)
-                        pcall(function() data.Properties.TextureId = obj.TextureId end)
-                        pcall(function() data.Properties.MeshId = obj.MeshId end)
-                        pcall(function() data.Properties.Color3 = {obj.Color3.r * 255, obj.Color3.g * 255, obj.Color3.b * 255} end)
-                        pcall(function() data.Properties.Enabled = obj.Enabled end)
-                    end
-                    table.insert(SaveData, data)
-                end)
+        if not obj:IsDescendantOf(Players) and not obj:IsA("Camera") and not obj:IsA("Terrain") and not isAPlayerCharacter(obj) then
+            count = count + 1
+            
+            -- ANIMASI BERPUTAR SETIAP KELIPATAN 100 ITEM AGAR LEBIH SMOOTH
+            if count % 100 == 0 then 
+                frameIdx = (frameIdx % #loadingFrames) + 1
+                local cleanName = #obj.Name > 12 and string.sub(obj.Name, 1, 10) .. ".." or obj.Name
+                -- Update teks dengan icon animasi loop loading berputar di depan status
+                setStatus(loadingFrames[frameIdx] .. " Copying: " .. cleanName .. " (" .. count .. ")", Color3.fromRGB(255, 180, 50))
+                task.wait() 
             end
+            
+            local relPath = getRelativePath(obj)
+            local data = {
+                Name = obj.Name,
+                ClassName = obj.ClassName,
+                RelativePath = relPath,
+                Depth = #relPath,
+                Properties = {}
+            }
+            
+            pcall(function()
+                if obj:IsA("BasePart") then
+                    data.Properties.Size = {obj.Size.X, obj.Size.Y, obj.Size.Z}
+                    data.Properties.CFrame = {obj.CFrame:GetComponents()}
+                    data.Properties.Color = {obj.Color.r * 255, obj.Color.g * 255, obj.Color.b * 255}
+                    data.Properties.Material = obj.Material.Name
+                    data.Properties.Transparency = obj.Transparency
+                    data.Properties.Reflectance = obj.Reflectance
+                    data.Properties.Anchored = obj.Anchored
+                    data.Properties.CanCollide = obj.CanCollide
+                    
+                    if obj:IsA("MeshPart") then
+                        data.Properties.MeshId = obj.MeshId
+                        data.Properties.TextureId = obj.TextureId
+                    elseif obj:IsA("UnionOperation") then
+                        data.Properties.AssetId = obj.AssetId
+                    end
+                elseif obj:IsA("Model") then
+                    data.Properties.WorldPivot = {obj:GetPivot():GetComponents()}
+                else
+                    pcall(function() data.Properties.Texture = obj.Texture end)
+                    pcall(function() data.Properties.TextureId = obj.TextureId end)
+                    pcall(function() data.Properties.MeshId = obj.MeshId end)
+                    pcall(function() data.Properties.Color3 = {obj.Color3.r * 255, obj.Color3.g * 255, obj.Color3.b * 255} end)
+                    pcall(function() data.Properties.Enabled = obj.Enabled end)
+                    pcall(function() data.Properties.Value = obj.Value end)
+                    pcall(function() data.Properties.Volume = obj.Volume end)
+                    pcall(function() data.Properties.SoundId = obj.SoundId end)
+                    pcall(function() data.Properties.Image = obj.Image end)
+                end
+                table.insert(SaveData, data)
+            end)
         end
     end
     
@@ -604,11 +594,10 @@ _G.UpdatePasteList = function()
                             for _, pathInfo in ipairs(relativePath) do
                                 local found = currentParent:FindFirstChild(pathInfo.Name)
                                 if not found then
-                                    if pathInfo.ClassName == "Folder" or pathInfo.ClassName == "Model" then
+                                    pcall(function()
                                         found = Instance.new(pathInfo.ClassName)
-                                    else
-                                        found = Instance.new("Folder")
-                                    end
+                                    end)
+                                    if not found then found = Instance.new("Folder") end
                                     found.Name = pathInfo.Name
                                     found.Parent = currentParent
                                 end
@@ -627,27 +616,26 @@ _G.UpdatePasteList = function()
                                 if targetParent:FindFirstChild(data.Name) and (data.ClassName == "Folder" or data.ClassName == "Model") then return end
                                 
                                 pasteCount = pasteCount + 1
-                                if pasteCount % 200 == 0 then
+                                if pasteCount % 100 == 0 then
                                     frameIdx = (frameIdx % #loadingFrames) + 1
-                                    local itemCleanName = #data.Name > 15 and string.sub(data.Name, 1, 13) .. ".." or data.Name
+                                    local itemCleanName = #data.Name > 12 and string.sub(data.Name, 1, 10) .. ".." or data.Name
                                     setStatus(loadingFrames[frameIdx] .. " Pasting: " .. itemCleanName, Color3.fromRGB(255, 185, 55))
                                     task.wait()
                                 end
                                 
                                 local newObj
                                 local props = data.Properties or {}
-                                if AllowedSupportClasses[data.ClassName] then
+                                
+                                local createSuccess = pcall(function()
                                     newObj = Instance.new(data.ClassName)
-                                    pcall(function() if props.Texture then newObj.Texture = props.Texture end end)
-                                    pcall(function() if props.TextureId then newObj.TextureId = props.TextureId end end)
-                                    pcall(function() if props.Enabled ~= nil then newObj.Enabled = props.Enabled end end)
-                                elseif data.ClassName == "Folder" or data.ClassName == "Model" or data.ClassName == "Part" then
-                                    newObj = Instance.new(data.ClassName)
-                                else
+                                end)
+                                
+                                if not createSuccess or not newObj then
                                     newObj = Instance.new("Part")
                                 end
                                 
                                 newObj.Name = data.Name
+                                
                                 if newObj:IsA("BasePart") and props.CFrame then
                                     newObj.Size = Vector3.new(unpack(props.Size))
                                     newObj.CFrame = CFrame.new(unpack(props.CFrame))
@@ -656,6 +644,25 @@ _G.UpdatePasteList = function()
                                     newObj.Transparency = props.Transparency
                                     newObj.Anchored = props.Anchored
                                     newObj.CanCollide = props.CanCollide
+                                    
+                                    if newObj:IsA("MeshPart") and props.MeshId then
+                                        pcall(function() newObj.MeshId = props.MeshId end)
+                                        pcall(function() newObj.TextureId = props.TextureId end)
+                                    elseif newObj:IsA("UnionOperation") and props.AssetId then
+                                        pcall(function() newObj.AssetId = props.AssetId end)
+                                    end
+                                elseif newObj:IsA("Model") and props.WorldPivot then
+                                    pcall(function() newObj:PivotTo(CFrame.new(unpack(props.WorldPivot))) end)
+                                else
+                                    pcall(function() if props.Texture then newObj.Texture = props.Texture end end)
+                                    pcall(function() if props.TextureId then newObj.TextureId = props.TextureId end end)
+                                    pcall(function() if props.MeshId then newObj.MeshId = props.MeshId end end)
+                                    pcall(function() if props.Enabled ~= nil then newObj.Enabled = props.Enabled end end)
+                                    pcall(function() if props.Value ~= nil then newObj.Value = props.Value end end)
+                                    pcall(function() if props.Volume then newObj.Volume = props.Volume end end)
+                                    pcall(function() if props.SoundId then newObj.SoundId = props.SoundId end end)
+                                    pcall(function() if props.Image then newObj.Image = props.Image end end)
+                                    pcall(function() if props.Color3 then newObj.Color3 = Color3.fromRGB(unpack(props.Color3)) end end)
                                 end
                                 
                                 newObj.Parent = targetParent
