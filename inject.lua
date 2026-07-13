@@ -239,7 +239,7 @@ local function CreateScriptLabel(text, color, order)
     return label
 end
 
-CreateScriptLabel("✨ Script: Spyzyy Copy + Langz", Color3.fromRGB(255, 255, 255), 1)
+CreateScriptLabel("✨ Script: Spyzyy Copyy", Color3.fromRGB(255, 255, 255), 1)
 CreateScriptLabel("👑 Status: PREMIUM", Color3.fromRGB(255, 200, 0), 2)
 CreateScriptLabel("🛠️ Engine: v2.1", Color3.fromRGB(0, 255, 200), 3)
 
