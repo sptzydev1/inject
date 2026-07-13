@@ -117,7 +117,7 @@ ScreenGui.Parent = PlayerGui
 
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 230, 0, 510) -- DIUBAH: Ditinggikan ke 510 agar muat tombol Clear & List
+MainFrame.Size = UDim2.new(0, 230, 0, 510)
 MainFrame.Position = UDim2.new(0.5, -115, 0.5, -255)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 12, 25)
 MainFrame.BorderSizePixel = 0
@@ -249,9 +249,9 @@ CopyButton.Size = UDim2.new(0, 206, 0, 35)
 CopyButton.Position = UDim2.new(0, 12, 0, 195)
 CopyButton.BackgroundColor3 = Color3.fromRGB(0, 130, 200)
 CopyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CopyButton.Text = "COPYY OMM" -- DIUBAH: Hanya Menyisakan Icon
+CopyButton.Text = "COPYY OMM"
 CopyButton.Font = Enum.Font.SourceSansBold
-CopyButton.TextSize = 18 -- Ditinggikan sedikit agar icon terlihat pas
+CopyButton.TextSize = 18
 CopyButton.Parent = MainFrame
 
 local CopyButtonCorner = Instance.new("UICorner")
@@ -270,7 +270,7 @@ ListLabel.TextSize = 12
 ListLabel.Parent = MainFrame
 
 local ListScroll = Instance.new("ScrollingFrame")
-ListScroll.Size = UDim2.new(0, 206, 0, 140) -- Diperpanjang sedikit
+ListScroll.Size = UDim2.new(0, 206, 0, 140)
 ListScroll.Position = UDim2.new(0, 12, 0, 255)
 ListScroll.BackgroundColor3 = Color3.fromRGB(14, 14, 16)
 ListScroll.BorderSizePixel = 0
@@ -291,7 +291,7 @@ RefreshButton.Size = UDim2.new(0, 98, 0, 26)
 RefreshButton.Position = UDim2.new(0, 12, 0, 405)
 RefreshButton.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
 RefreshButton.TextColor3 = Color3.fromRGB(200, 200, 200)
-RefreshButton.Text = "🔄" -- DIUBAH: Hanya Menyisakan Icon
+RefreshButton.Text = "🔄"
 RefreshButton.Font = Enum.Font.SourceSansBold
 RefreshButton.TextSize = 14
 RefreshButton.Parent = MainFrame
@@ -300,13 +300,12 @@ local RefreshCorner = Instance.new("UICorner")
 RefreshCorner.CornerRadius = UDim.new(0, 4)
 RefreshCorner.Parent = RefreshButton
 
--- INTEGRASI BARU: Tombol Clear Workspace
 local ClearButton = Instance.new("TextButton")
 ClearButton.Size = UDim2.new(0, 102, 0, 26)
 ClearButton.Position = UDim2.new(0, 116, 0, 405)
 ClearButton.BackgroundColor3 = Color3.fromRGB(180, 35, 35)
 ClearButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-ClearButton.Text = "🗑" -- DIUBAH: Hanya Menyisakan Icon
+ClearButton.Text = "🗑"
 ClearButton.Font = Enum.Font.SourceSansBold
 ClearButton.TextSize = 14
 ClearButton.Parent = MainFrame
@@ -323,7 +322,7 @@ StatusLabel.BackgroundTransparency = 1
 StatusLabel.Text = "Status: Siap 🟢"
 StatusLabel.TextColor3 = Color3.fromRGB(95, 235, 140)
 StatusLabel.Font = Enum.Font.SourceSansBold
-StatusLabel.TextSize = 12
+StatusLabel.TextSize = 11
 StatusLabel.TextXAlignment = Enum.TextXAlignment.Center
 StatusLabel.Parent = MainFrame
 
@@ -331,6 +330,88 @@ local function setStatus(msg, col)
     StatusLabel.Text = "Status: " .. msg
     StatusLabel.TextColor3 = col or Color3.fromRGB(95, 235, 140)
 end
+
+-- [[ INTEGRASI FITUR: ICON OPEN/CLOSE GUI & RESIZABLE ]]
+local GuiIcon = Instance.new("TextButton")
+GuiIcon.Name = "GuiToggleButton"
+GuiIcon.Size = UDim2.new(0, 50, 0, 50)
+GuiIcon.Position = UDim2.new(0, 20, 0, 20)
+GuiIcon.BackgroundColor3 = Color3.fromRGB(15, 12, 25)
+GuiIcon.Text = "🛠️"
+GuiIcon.TextSize = 22
+GuiIcon.TextColor3 = Color3.fromRGB(255, 255, 255)
+GuiIcon.Visible = false -- Tersembunyi saat awal terbuka
+GuiIcon.Active = true
+GuiIcon.ZIndex = 10
+GuiIcon.Parent = ScreenGui
+
+local IconCorner = Instance.new("UICorner")
+IconCorner.CornerRadius = UDim.new(1, 0) -- Lingkaran Sempurna
+IconCorner.Parent = GuiIcon
+
+local IconStroke = Instance.new("UIStroke")
+IconStroke.Thickness = 2
+IconStroke.Color = Color3.fromRGB(0, 200, 255)
+IconStroke.Parent = GuiIcon
+
+-- Logika Membuka/Menutup GUI utama lewat Icon
+GuiIcon.MouseButton1Click:Connect(function()
+    MainFrame.Visible = true
+    GuiIcon.Visible = false
+end)
+
+-- Tombol Close di MainFrame (Opsional ditambahkan di pojok kanan atas)
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 30, 0, 30)
+CloseBtn.Position = UDim2.new(1, -35, 0, 5)
+CloseBtn.BackgroundTransparency = 1
+CloseBtn.Text = "❌"
+CloseBtn.TextSize = 14
+CloseBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+CloseBtn.Parent = MainFrame
+
+CloseBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    GuiIcon.Visible = true
+end)
+
+-- Draggable Logic Fungsi Umum untuk Frame dan Icon
+local function makeDraggable(frame)
+    local dragging, dragInput, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
+    end)
+    UIS.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+end
+
+makeDraggable(MainFrame)
+makeDraggable(GuiIcon)
+
+-- Fitur Geser Luas Ukuran Icon Menggunakan Scroll Mouse / Input Wheel
+GuiIcon.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseWheel then
+        local currentSize = GuiIcon.Size.X.Offset
+        local newSize = math.clamp(currentSize + (input.Position.Z * 5), 35, 100) -- Batas min 35px, max 100px
+        GuiIcon.Size = UDim2.new(0, newSize, 0, newSize)
+        GuiIcon.TextSize = newSize * 0.45 -- Menyesuaikan skala icon di dalamnya
+    end
+end)
+
 
 ClearButton.MouseButton1Click:Connect(function()
     for _, ch in ipairs(workspace:GetChildren()) do
@@ -341,29 +422,6 @@ ClearButton.MouseButton1Click:Connect(function()
     setStatus("WORKSPACE Dibersihkan!", Color3.fromRGB(255, 185, 55))
     task.wait(1.5)
     setStatus("Siap 🟢")
-end)
-
--- [[ LOGIKA DRAGGABLE ]]
-local dragging, dragInput, dragStart, startPos
-local function update(input)
-    local delta = input.Position - dragStart
-    MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-end
-MainFrame.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        dragStart = input.Position
-        startPos = MainFrame.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then dragging = false end
-        end)
-    end
-end)
-MainFrame.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
-end)
-UIS.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then update(input) end
 end)
 
 -- [[ CORE ENGINE COPY/PASTE ]]
@@ -389,7 +447,7 @@ local AllowedSupportClasses = {
     ["SpecialMesh"] = true, ["BlockMesh"] = true, ["CylinderMesh"] = true,
     ["ParticleEmitter"] = true, ["PointLight"] = true, ["SpotLight"] = true, ["SurfaceLight"] = true,
     ["Sky"] = true, ["Atmosphere"] = true, ["Clouds"] = true,
-    ["LocalScript"] = true, ["Script"] = true, ["ModuleScript"] = true -- Ditambahkan agar script ikut tercopy jika disupport executor
+    ["LocalScript"] = true, ["Script"] = true, ["ModuleScript"] = true
 }
 
 CopyButton.MouseButton1Click:Connect(function()
@@ -407,12 +465,20 @@ CopyButton.MouseButton1Click:Connect(function()
     local fileName = FILE_PREFIX .. GameName .. "_" .. uniqueID .. ".json"
     local objectsToScan = TargetFolder:GetDescendants()
     
+    -- Loading loop variables
+    local loadingFrames = {"|", "/", "-", "\\"}
+    local frameIdx = 1
+
     for _, obj in pairs(objectsToScan) do
         if obj:IsA("Folder") or obj:IsA("Model") or obj:IsA("BasePart") or AllowedSupportClasses[obj.ClassName] then
             if not obj:IsDescendantOf(Players) and not obj:IsA("Camera") and not obj:IsA("Terrain") and not isAPlayerCharacter(obj) then
                 count = count + 1
-                if count % 400 == 0 then 
-                    CopyButton.Text = "⏳" 
+                
+                -- Loop Loading rapi per 200 item agar responsif & tampilkan nama item
+                if count % 200 == 0 then 
+                    frameIdx = (frameIdx % #loadingFrames) + 1
+                    local cleanName = #obj.Name > 15 and string.sub(obj.Name, 1, 13) .. ".." or obj.Name
+                    setStatus(loadingFrames[frameIdx] .. " Copying: " .. cleanName, Color3.fromRGB(255, 180, 50))
                     task.wait() 
                 end
                 
@@ -552,7 +618,8 @@ _G.UpdatePasteList = function()
                         end
                         
                         local pasteCount = 0
-                        local totalObjs = #loadedData
+                        local loadingFrames = {"|", "/", "-", "\\"}
+                        local frameIdx = 1
                         
                         for _, data in ipairs(loadedData) do
                             pcall(function()
@@ -560,7 +627,10 @@ _G.UpdatePasteList = function()
                                 if targetParent:FindFirstChild(data.Name) and (data.ClassName == "Folder" or data.ClassName == "Model") then return end
                                 
                                 pasteCount = pasteCount + 1
-                                if pasteCount % 350 == 0 then
+                                if pasteCount % 200 == 0 then
+                                    frameIdx = (frameIdx % #loadingFrames) + 1
+                                    local itemCleanName = #data.Name > 15 and string.sub(data.Name, 1, 13) .. ".." or data.Name
+                                    setStatus(loadingFrames[frameIdx] .. " Pasting: " .. itemCleanName, Color3.fromRGB(255, 185, 55))
                                     task.wait()
                                 end
                                 
@@ -592,14 +662,11 @@ _G.UpdatePasteList = function()
                             end)
                         end
                         
-                        -- =================================================
-                        --  PROSES PASCA-PASTE
-                        -- =================================================
-                        setStatus("Status: Processing Parts...", Color3.fromRGB(255, 185, 55))
-                        processParts(MasterFolder) -- Pengangkuran & Render Precise otomatis
+                        setStatus("Processing Parts...", Color3.fromRGB(255, 185, 55))
+                        processParts(MasterFolder)
                         
-                        setStatus("Status: Unlocking Scripts...", Color3.fromRGB(255, 185, 55))
-                        unlockAllInTree(MasterFolder) -- Decompile otomatis jika ada script didalamnya
+                        setStatus("Unlocking Scripts...", Color3.fromRGB(255, 185, 55))
+                        unlockAllInTree(MasterFolder)
                     end)
                     
                     if success then
@@ -619,6 +686,4 @@ _G.UpdatePasteList = function()
 end
 
 RefreshButton.MouseButton1Click:Connect(_G.UpdatePasteList)
-
--- Jalankan inisialisasi list awal
 _G.UpdatePasteList()
