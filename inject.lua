@@ -5,7 +5,6 @@ local Players = game:GetService("Players")
 local MarketplaceService = game:GetService("MarketplaceService")
 local UserService = game:GetService("UserService")
 local Lighting = game:GetService("Lighting")
-local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Proteksi Instan PlayerGui
@@ -44,7 +43,7 @@ ToggleButton.Active = true
 ToggleButton.Parent = ScreenGui
 
 local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(1, 0)
+ToggleCorner.CornerRadius = UDim.new(1, 0) -- Lingkaran sempurna
 ToggleCorner.Parent = ToggleButton
 
 local ToggleStroke = Instance.new("UIStroke")
@@ -52,11 +51,11 @@ ToggleStroke.Thickness = 2
 ToggleStroke.Color = Color3.fromRGB(0, 200, 255)
 ToggleStroke.Parent = ToggleButton
 
--- Main Frame (Ukuran Y ditinggikan ke 520 untuk menampung fitur baru)
+-- Main Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 240, 0, 520)
-MainFrame.Position = UDim2.new(0.5, -120, 0.5, -260)
+MainFrame.Size = UDim2.new(0, 240, 0, 460)
+MainFrame.Position = UDim2.new(0.5, -120, 0.5, -230)
 MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
 MainFrame.BorderSizePixel = 0
 MainFrame.Active = true
@@ -195,51 +194,11 @@ CreateScriptLabel("✨ Script: Spyzyy Copy Map + Lighting", Color3.fromRGB(255, 
 CreateScriptLabel("👑 Status: PREMIUM VERSION", Color3.fromRGB(255, 200, 0), 2)
 CreateScriptLabel("🛠️ Maker: @Spyzyy (V2.5)", Color3.fromRGB(0, 255, 200), 3)
 
--- [[ FITUR UTALITAS BARU: FLY & INVISIBLE ]]
-local UtilityPanel = Instance.new("Frame")
-UtilityPanel.Size = UDim2.new(0, 216, 0, 35)
-UtilityPanel.Position = UDim2.new(0, 12, 0, 192)
-UtilityPanel.BackgroundColor3 = Color3.fromRGB(20, 30, 35)
-UtilityPanel.BorderSizePixel = 0
-UtilityPanel.Parent = MainFrame
-
-local UtilCorner = Instance.new("UICorner")
-UtilCorner.CornerRadius = UDim.new(0, 6)
-UtilCorner.Parent = UtilityPanel
-
-local FlyToggle = Instance.new("TextButton")
-FlyToggle.Size = UDim2.new(0, 104, 1, -6)
-FlyToggle.Position = UDim2.new(0, 4, 0, 3)
-FlyToggle.BackgroundColor3 = Color3.fromRGB(40, 50, 60)
-FlyToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-FlyToggle.Text = "🪶 Fly: OFF"
-FlyToggle.Font = Enum.Font.SourceSansBold
-FlyToggle.TextSize = 11
-FlyToggle.Parent = UtilityPanel
-
-local FlyCorner = Instance.new("UICorner")
-FlyCorner.CornerRadius = UDim.new(0, 4)
-FlyCorner.Parent = FlyToggle
-
-local InvisibleToggle = Instance.new("TextButton")
-InvisibleToggle.Size = UDim2.new(0, 104, 1, -6)
-InvisibleToggle.Position = UDim2.new(0, 110, 0, 3)
-InvisibleToggle.BackgroundColor3 = Color3.fromRGB(40, 50, 60)
-InvisibleToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
-InvisibleToggle.Text = "👻 Invisible: OFF"
-InvisibleToggle.Font = Enum.Font.SourceSansBold
-InvisibleToggle.TextSize = 11
-InvisibleToggle.Parent = UtilityPanel
-
-local InvCorner = Instance.new("UICorner")
-InvCorner.CornerRadius = UDim.new(0, 4)
-InvCorner.Parent = InvisibleToggle
-
 -- [[ ELEMENT PROGRESS BAR LOADING ]]
 local ProgressContainer = Instance.new("Frame")
 ProgressContainer.Name = "ProgressContainer"
 ProgressContainer.Size = UDim2.new(0, 216, 0, 18)
-ProgressContainer.Position = UDim2.new(0, 12, 0, 234)
+ProgressContainer.Position = UDim2.new(0, 12, 0, 192)
 ProgressContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
 ProgressContainer.BorderSizePixel = 0
 ProgressContainer.Parent = MainFrame
@@ -271,7 +230,7 @@ ProgressText.Parent = ProgressContainer
 -- [[ TOMBOL & ELEMENT GUI SCRIPT ]]
 local CopyButton = Instance.new("TextButton")
 CopyButton.Size = UDim2.new(0, 216, 0, 32)
-CopyButton.Position = UDim2.new(0, 12, 0, 257)
+CopyButton.Position = UDim2.new(0, 12, 0, 215)
 CopyButton.BackgroundColor3 = Color3.fromRGB(0, 130, 200)
 CopyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 CopyButton.Text = "COPY MAP & LIGHTING"
@@ -285,7 +244,7 @@ CopyButtonCorner.Parent = CopyButton
 
 local ListLabel = Instance.new("TextLabel")
 ListLabel.Size = UDim2.new(1, -24, 0, 20)
-ListLabel.Position = UDim2.new(0, 12, 0, 294)
+ListLabel.Position = UDim2.new(0, 12, 0, 252)
 ListLabel.BackgroundTransparency = 1
 ListLabel.Text = "Pilih Data Hasil Untuk Di-Paste / Tempel:"
 ListLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
@@ -295,8 +254,8 @@ ListLabel.TextSize = 12
 ListLabel.Parent = MainFrame
 
 local ListScroll = Instance.new("ScrollingFrame")
-ListScroll.Size = UDim2.new(0, 216, 0, 145)
-ListScroll.Position = UDim2.new(0, 12, 0, 317)
+ListScroll.Size = UDim2.new(0, 216, 0, 125)
+ListScroll.Position = UDim2.new(0, 12, 0, 275)
 ListScroll.BackgroundColor3 = Color3.fromRGB(14, 14, 16)
 ListScroll.BorderSizePixel = 0
 ListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
@@ -313,7 +272,7 @@ ListLayout.Parent = ListScroll
 
 local RefreshButton = Instance.new("TextButton")
 RefreshButton.Size = UDim2.new(0, 216, 0, 24)
-RefreshButton.Position = UDim2.new(0, 12, 0, 470)
+RefreshButton.Position = UDim2.new(0, 12, 0, 410)
 RefreshButton.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
 RefreshButton.TextColor3 = Color3.fromRGB(200, 200, 200)
 RefreshButton.Text = "🔄 Refresh List"
@@ -349,9 +308,10 @@ local function MakeDraggable(frame)
     end)
 end
 
-MakeDraggable(MainFrame)
-MakeDraggable(ToggleButton)
+MakeDraggable(MainFrame) -- Geser luas GUI Utama
+MakeDraggable(ToggleButton) -- Geser luas Icon 🛡️
 
+-- Logika Open & Close GUI
 CloseButton.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
     ToggleButton.Visible = true
@@ -360,130 +320,6 @@ end)
 ToggleButton.MouseButton1Click:Connect(function()
     MainFrame.Visible = true
     ToggleButton.Visible = false
-end)
-
--- [[ LOGIKA SISTEM FLY & INVISIBLE ]]
-local Flying = false
-local FlySpeed = 50
-local InvisibleActive = false
-local FlyConnection
-
-local function ToggleFly()
-    Flying = not Flying
-    if Flying then
-        FlyToggle.Text = "🪶 Fly: ON"
-        FlyToggle.BackgroundColor3 = Color3.fromRGB(0, 150, 255)
-        
-        local Character = LocalPlayer.Character
-        if not Character then return end
-        local Humanoid = Character:FindFirstChildOfClass("Humanoid")
-        local RootPart = Character:FindFirstChild("HumanoidRootPart")
-        if not RootPart or not Humanoid then return end
-        
-        -- Memanfaatkan State bawaan Roblox & Velocity Control Luas
-        Humanoid.PlatformStand = true
-        
-        local BodyVelocity = Instance.new("BodyVelocity")
-        BodyVelocity.Name = "SpyzyyFlyVelocity"
-        BodyVelocity.Velocity = Vector3.new(0, 0, 0)
-        BodyVelocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-        BodyVelocity.Parent = RootPart
-        
-        local BodyGyro = Instance.new("BodyGyro")
-        BodyGyro.Name = "SpyzyyFlyGyro"
-        BodyGyro.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-        BodyGyro.CFrame = RootPart.CFrame
-        BodyGyro.Parent = RootPart
-
-        FlyConnection = RunService.RenderStepped:Connect(function()
-            if not Flying or not RootPart.Parent or not Humanoid.Parent then 
-                if FlyConnection then FlyConnection:Disconnect() end
-                return 
-            end
-            
-            -- Mendapatkan arah pergerakan dari kontrol bawaan (PC/Mobile analog)
-            local MoveDirection = Humanoid.MoveDirection
-            local CameraCFrame = workspace.CurrentCamera.CFrame
-            
-            local Velocity = Vector3.new(0, 0, 0)
-            
-            -- Pergerakan Horizontal (Mengikuti Analog / WASD)
-            if MoveDirection.Magnitude > 0 then
-                Velocity = MoveDirection * FlySpeed
-            end
-            
-            -- Kontrol Vertikal Tambahan via PC Keyboard (Space = Naik, Shift = Turun)
-            if UIS:IsKeyDown(Enum.KeyCode.Space) then
-                Velocity = Velocity + Vector3.new(0, FlySpeed, 0)
-            elseif UIS:IsKeyDown(Enum.KeyCode.LeftShift) then
-                Velocity = Velocity - Vector3.new(0, FlySpeed, 0)
-            end
-            
-            BodyVelocity.Velocity = Velocity
-            BodyGyro.CFrame = CameraCFrame
-        end)
-    else
-        FlyToggle.Text = "🪶 Fly: OFF"
-        FlyToggle.BackgroundColor3 = Color3.fromRGB(40, 50, 60)
-        if FlyConnection then FlyConnection:Disconnect() end
-        
-        local Character = LocalPlayer.Character
-        if Character then
-            local Humanoid = Character:FindFirstChildOfClass("Humanoid")
-            local RootPart = Character:FindFirstChild("HumanoidRootPart")
-            if Humanoid then Humanoid.PlatformStand = false end
-            if RootPart then
-                local bv = RootPart:FindFirstChild("SpyzyyFlyVelocity")
-                local bg = RootPart:FindFirstChild("SpyzyyFlyGyro")
-                if bv then bv:Destroy() end
-                if bg then bg:Destroy() end
-            end
-        end
-    end
-end
-
-local SavedMaterials = {}
-local function ToggleInvisible()
-    InvisibleActive = not InvisibleActive
-    local Character = LocalPlayer.Character
-    if not Character then return end
-    
-    if InvisibleActive then
-        InvisibleToggle.Text = "👻 Invisible: ON"
-        InvisibleToggle.BackgroundColor3 = Color3.fromRGB(0, 200, 150)
-        
-        -- Mengubah semua part karakter lokal menjadi transparan penuh secara aman
-        for _, part in ipairs(Character:GetDescendants()) do
-            if part:IsA("BasePart") or part:IsA("Decal") then
-                SavedMaterials[part] = {
-                    Transparency = part.Transparency,
-                    LocalTransparentModifier = part.LocalTransparentModifier
-                }
-                part.Transparency = 1
-            end
-        end
-    else
-        InvisibleToggle.Text = "👻 Invisible: OFF"
-        InvisibleToggle.BackgroundColor3 = Color3.fromRGB(40, 50, 60)
-        
-        -- Mengembalikan tampilan semula
-        for part, props in pairs(SavedMaterials) do
-            if part and part.Parent then
-                part.Transparency = props.Transparency
-                part.LocalTransparentModifier = props.LocalTransparentModifier
-            end
-        end
-        SavedMaterials = {}
-    end
-end
-
-FlyToggle.MouseButton1Click:Connect(ToggleFly)
-InvisibleToggle.MouseButton1Click:Connect(ToggleInvisible)
-
--- Reset handling jika player mati/spawn ulang
-LocalPlayer.CharacterAdded:Connect(function(Char)
-    if Flying then Flying = false ToggleFly() end
-    if InvisibleActive then InvisibleActive = false ToggleInvisible() end
 end)
 
 
@@ -510,7 +346,7 @@ local AllowedSupportClasses = {
     ["SpecialMesh"] = true, ["BlockMesh"] = true, ["CylinderMesh"] = true,
     ["ParticleEmitter"] = true, ["PointLight"] = true, ["SpotLight"] = true, ["SurfaceLight"] = true,
     ["Sky"] = true, ["Atmosphere"] = true, ["Clouds"] = true, ["SunRaysEffect"] = true, ["BloomEffect"] = true,
-    ["BlurEffect"] = true, ["ColorCorrectionEffect"] = true
+    ["BlurEffect"] = true, ["ColorCorrectionEffect"] = true, ["Sound"] = true -- Menambahkan Support Audio
 }
 
 CopyButton.MouseButton1Click:Connect(function()
@@ -540,6 +376,7 @@ CopyButton.MouseButton1Click:Connect(function()
             if not obj:IsDescendantOf(Players) and not obj:IsA("Camera") and not obj:IsA("Terrain") and not isAPlayerCharacter(obj) then
                 count = count + 1
                 
+                -- Update Progress Bar per data item secara akurat %
                 if idx % 200 == 0 or idx == totalObjects then
                     local pct = math.floor((idx / totalObjects) * 100)
                     ProgressBar.Size = UDim2.new(pct / 100, 0, 1, 0)
@@ -595,6 +432,29 @@ CopyButton.MouseButton1Click:Connect(function()
                         pcall(function() data.Properties.Intensity = obj.Intensity end)
                         pcall(function() data.Properties.Size = obj.Size end)
                         pcall(function() data.Properties.Face = obj.Face.Name end)
+                        
+                        -- Ekstraksi Properti Sound secara Aman
+                        if obj:IsA("Sound") then
+                            pcall(function() data.Properties.SoundId = obj.SoundId end)
+                            pcall(function() data.Properties.Volume = obj.Volume end)
+                            pcall(function() data.Properties.PlaybackSpeed = obj.PlaybackSpeed end)
+                            pcall(function() data.Properties.Playing = obj.IsPlaying end) -- Status putar awal
+                            pcall(function() data.Properties.Looped = obj.Looped end)
+                            pcall(function() data.Properties.TimePosition = obj.TimePosition end)
+                            pcall(function() data.Properties.RollOffMaxDistance = obj.RollOffMaxDistance end)
+                            pcall(function() data.Properties.RollOffMinDistance = obj.RollOffMinDistance end)
+                        end
+
+                        -- Ambil data SurfaceAppearance
+                        if obj:IsA("SurfaceAppearance") then
+                            pcall(function() data.Properties.AlphaMode = obj.AlphaMode.Name end)
+                            pcall(function() data.Properties.ColorMap = obj.ColorMap end)
+                            pcall(function() data.Properties.MetalnessMap = obj.MetalnessMap end)
+                            pcall(function() data.Properties.NormalMap = obj.NormalMap end)
+                            pcall(function() data.Properties.RoughnessMap = obj.RoughnessMap end)
+                        end
+
+                        -- Properti Skybox
                         pcall(function() data.Properties.SkyboxBk = obj.SkyboxBk end)
                         pcall(function() data.Properties.SkyboxDn = obj.SkyboxDn end)
                         pcall(function() data.Properties.SkyboxFt = obj.SkyboxFt end)
@@ -680,6 +540,7 @@ _G.UpdatePasteList = function()
                         local fileContent = readfile(file)
                         local loadedData = HttpService:JSONDecode(fileContent)
                         
+                        -- Mengurutkan hierarki agar parent dibuat terlebih dahulu sebelum objek di dalamnya
                         table.sort(loadedData, function(a, b) return (a.Depth or 0) < (b.Depth or 0) end)
                         
                         local MasterFolder = workspace:FindFirstChild("Paste_" .. cleanName) or Instance.new("Folder")
@@ -712,6 +573,7 @@ _G.UpdatePasteList = function()
                             pcall(function()
                                 local targetParent = findOrCreateParent(data.RelativePath, data.IsLighting)
                                 
+                                -- Cegah duplikasi struktur folder/model dasar
                                 if targetParent:FindFirstChild(data.Name) and (data.ClassName == "Folder" or data.ClassName == "Model") then return end
                                 
                                 pasteCount = pasteCount + 1
@@ -720,12 +582,22 @@ _G.UpdatePasteList = function()
                                     task.wait()
                                 end
                                 
+                                -- Console Log output Studio
                                 print(string.format("🔨 [%d/%d] Generating: %s (%s)", pasteCount, totalObjs, data.Name, data.ClassName))
                                 
                                 local newObj
                                 local props = data.Properties or {}
                                 
+                                -- [ LOGIKA AKTIF UNGROUP DECAL/STIKER BERLAPIS ]
                                 if AllowedSupportClasses[data.ClassName] then
+                                    -- Jika terdeteksi struktur berlapis (Parent berupa Model/Folder kosong hasil render), carikan BasePart terdekat di dalamnya.
+                                    if targetParent:IsA("Model") or targetParent:IsA("Folder") then
+                                        local fallbackPart = targetParent:FindFirstChildWhichIsA("BasePart", true)
+                                        if fallbackPart then
+                                            targetParent = fallbackPart
+                                        end
+                                    end
+                                    
                                     newObj = Instance.new(data.ClassName)
                                     pcall(function() if props.Texture then newObj.Texture = props.Texture end end)
                                     pcall(function() if props.TextureId then newObj.TextureId = props.TextureId end end)
@@ -736,6 +608,37 @@ _G.UpdatePasteList = function()
                                     pcall(function() if props.Color3 then newObj.Color3 = Color3.fromRGB(unpack(props.Color3)) end end)
                                     pcall(function() if props.Color then newObj.Color = Color3.fromRGB(unpack(props.Color)) end end)
                                     pcall(function() if props.Face then newObj.Face = Enum.NormalId[props.Face] end end)
+                                    
+                                    -- Sinkronisasi Objek Sound agar Aktif Otomatis
+                                    if data.ClassName == "Sound" then
+                                        pcall(function() if props.SoundId then newObj.SoundId = props.SoundId end end)
+                                        pcall(function() if props.Volume then newObj.Volume = props.Volume end end)
+                                        pcall(function() if props.PlaybackSpeed then newObj.PlaybackSpeed = props.PlaybackSpeed end end)
+                                        pcall(function() if props.Looped ~= nil then newObj.Looped = props.Looped end end)
+                                        pcall(function() if props.RollOffMaxDistance then newObj.RollOffMaxDistance = props.RollOffMaxDistance end end)
+                                        pcall(function() if props.RollOffMinDistance then newObj.RollOffMinDistance = props.RollOffMinDistance end end)
+                                        
+                                        -- Jika sound aslinya sedang berputar, trigger ulang setelah dipasang ke workspace
+                                        if props.Playing == true then
+                                            task.defer(function()
+                                                pcall(function() 
+                                                    newObj.TimePosition = props.TimePosition or 0
+                                                    newObj:Play() 
+                                                end)
+                                            end)
+                                        end
+                                    end
+
+                                    -- Tempel data SurfaceAppearance secara dinamis
+                                    if data.ClassName == "SurfaceAppearance" then
+                                        pcall(function() if props.AlphaMode then newObj.AlphaMode = Enum.AlphaMode[props.AlphaMode] end end)
+                                        pcall(function() if props.ColorMap then newObj.ColorMap = props.ColorMap end end)
+                                        pcall(function() if props.MetalnessMap then newObj.MetalnessMap = props.MetalnessMap end end)
+                                        pcall(function() if props.NormalMap then newObj.NormalMap = props.NormalMap end end)
+                                        pcall(function() if props.RoughnessMap then newObj.RoughnessMap = props.RoughnessMap end end)
+                                    end
+
+                                    -- Sky properties paste
                                     pcall(function() if props.SkyboxBk then newObj.SkyboxBk = props.SkyboxBk end end)
                                     pcall(function() if props.SkyboxDn then newObj.SkyboxDn = props.SkyboxDn end end)
                                     pcall(function() if props.SkyboxFt then newObj.SkyboxFt = props.SkyboxFt end end)
@@ -748,11 +651,19 @@ _G.UpdatePasteList = function()
                                         newObj:PivotTo(CFrame.new(unpack(props.WorldPivot)))
                                     end
                                 else
-                                    newObj = Instance.new("Part")
+                                    -- Fallback aman part penampung aset luar
+                                    if props.MeshId then
+                                        newObj = Instance.new("MeshPart")
+                                        pcall(function() newObj.MeshId = props.MeshId end)
+                                        pcall(function() if props.TextureId then newObj.TextureId = props.TextureId end end)
+                                    else
+                                        newObj = Instance.new("Part")
+                                    end
                                 end
                                 
                                 newObj.Name = data.Name
                                 
+                                -- Pengaturan Part Base Properties
                                 if newObj:IsA("BasePart") and props.CFrame then
                                     newObj.Size = Vector3.new(unpack(props.Size))
                                     newObj.CFrame = CFrame.new(unpack(props.CFrame))
@@ -765,8 +676,10 @@ _G.UpdatePasteList = function()
                                     if props.CastShadow ~= nil then newObj.CastShadow = props.CastShadow end
                                 end
                                 
+                                -- Penempatan posisi parent terdalam secara otomatis
                                 newObj.Parent = targetParent
                                 
+                                -- Sinkronisasi PrimaryPart Model
                                 if data.ClassName == "Model" and props.PrimaryPartName then
                                     task.defer(function()
                                         local pPart = newObj:FindFirstChild(props.PrimaryPartName)
@@ -778,6 +691,7 @@ _G.UpdatePasteList = function()
                             end)
                         end
                         
+                        -- Membersihkan Folder Kosong sisa render objek terurai
                         for _, child in ipairs(MasterFolder:GetChildren()) do
                             if child:IsA("Folder") and #child:GetChildren() == 0 then
                                 child:Destroy()
@@ -786,7 +700,7 @@ _G.UpdatePasteList = function()
                     end)
                     
                     if success then
-                        print("✅ SUCCESS: Map berhasil di-paste seutuhnya!")
+                        print("✅ SUCCESS: Map & Audio berhasil di-paste seutuhnya!")
                         FileSelectBtn.Text = " ✅ SUCCESSFUL!"
                         FileSelectBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 0)
                     else
