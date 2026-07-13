@@ -26,7 +26,7 @@ local FILE_PREFIX = "GameCopy_"
 local TargetFolder = workspace
 
 -- ==================================================
---  INTEGRASI FITUR LANGZUPLOAD (CORE PROCESSOR)
+--  (CORE PROCESSOR)
 -- ==================================================
 
 -- 1. Part Processor (Optimalisasi Part & Render Precise)
@@ -241,7 +241,7 @@ end
 
 CreateScriptLabel("✨ Script: Spyzyy Copy + Langz", Color3.fromRGB(255, 255, 255), 1)
 CreateScriptLabel("👑 Status: PREMIUM ENHANCED", Color3.fromRGB(255, 200, 0), 2)
-CreateScriptLabel("🛠️ Engine: v2.0 + Langz v6", Color3.fromRGB(0, 255, 200), 3)
+CreateScriptLabel("🛠️ Engine: v2.1", Color3.fromRGB(0, 255, 200), 3)
 
 -- [[ TOMBOL & ELEMENT GUI SCRIPT ]]
 local CopyButton = Instance.new("TextButton")
