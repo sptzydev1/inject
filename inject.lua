@@ -28,11 +28,11 @@ task.spawn(function()
     end)
 end)
 
-local FILE_PREFIX = "NoWorkspaceGameCopy_"
+local FILE_PREFIX = "FullGameCopy_"
 
--- [[ DEKLARASI GUI UTAMA SPYZYY COPY V3.1 ]]
+-- [[ DEKLARASI GUI UTAMA SPYZYY COPY V3.0 ]]
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SpyzyyNoWorkspaceCopyV3"
+ScreenGui.Name = "SpyzyyFullGameCopyV3"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Enabled = true
 ScreenGui.Parent = PlayerGui
@@ -82,7 +82,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -40, 0, 40)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "🚀 NO-WORKSPACE COPY V3.1"
+Title.Text = "🚀 FULL GAME COPY SPYZYY V3.0"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 13
@@ -197,9 +197,9 @@ local function CreateScriptLabel(text, color, order)
     return label
 end
 
-CreateScriptLabel("✨ Script: Non-Workspace Copier", Color3.fromRGB(255, 255, 255), 1)
+CreateScriptLabel("✨ Script: Full Game Structure Copier", Color3.fromRGB(255, 255, 255), 1)
 CreateScriptLabel("👑 Status: PREMIUM VERSION", Color3.fromRGB(255, 200, 0), 2)
-CreateScriptLabel("🛠️ Maker: @Spyzyy (V3.1)", Color3.fromRGB(0, 255, 200), 3)
+CreateScriptLabel("🛠️ Maker: @Spyzyy (V3.0)", Color3.fromRGB(0, 255, 200), 3)
 
 -- [[ ELEMENT PROGRESS BAR LOADING ]]
 local ProgressContainer = Instance.new("Frame")
@@ -240,7 +240,7 @@ CopyButton.Size = UDim2.new(0, 216, 0, 32)
 CopyButton.Position = UDim2.new(0, 12, 0, 215)
 CopyButton.BackgroundColor3 = Color3.fromRGB(0, 130, 200)
 CopyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CopyButton.Text = "COPY ALL EXCEPT WORKSPACE"
+CopyButton.Text = "COPY ENTIRE GAME DATA"
 CopyButton.Font = Enum.Font.SourceSansBold
 CopyButton.TextSize = 11
 CopyButton.Parent = MainFrame
@@ -253,7 +253,7 @@ local ListLabel = Instance.new("TextLabel")
 ListLabel.Size = UDim2.new(1, -24, 0, 20)
 ListLabel.Position = UDim2.new(0, 12, 0, 252)
 ListLabel.BackgroundTransparency = 1
-ListLabel.Text = "Pilih Data Hasil Untuk Di-Paste Ke Services:"
+ListLabel.Text = "Pilih Data Hasil Untuk Di-Paste Ke Game:"
 ListLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
 ListLabel.TextXAlignment = Enum.TextXAlignment.Left
 ListLabel.Font = Enum.Font.SourceSansSemibold
@@ -378,8 +378,9 @@ ToggleButton.MouseButton1Click:Connect(function()
     ToggleButton.Visible = false
 end)
 
--- [[ MAP REPOSITORY SERVICES (TANPA WORKSPACE) ]]
+-- [[ MAP REPOSITORY SERVICE UTAMA ]]
 local ServiceMap = {
+    ["Workspace"] = workspace,
     ["Lighting"] = Lighting,
     ["Players"] = Players,
     ["StarterGui"] = StarterGui,
@@ -394,7 +395,7 @@ local ServiceMap = {
 local function getRootServiceAndPath(obj)
     local path = {}
     local current = obj
-    local rootServiceName = "ReplicatedStorage"
+    local rootServiceName = "Workspace"
     
     while current and current ~= game do
         for name, serviceObj in pairs(ServiceMap) do
@@ -408,6 +409,15 @@ local function getRootServiceAndPath(obj)
     end
     
     return rootServiceName, path
+end
+
+local function isPlayerCharacter(obj)
+    for _, p in pairs(Players:GetPlayers()) do
+        if p.Character and (obj == p.Character or obj:IsDescendantOf(p.Character)) then
+            return true
+        end
+    end
+    return false
 end
 
 -- [[ UNIVERSAL SERIALIZER PROPERTI ]]
@@ -505,13 +515,13 @@ local function ApplyUniversalProperties(obj, props)
     end
 end
 
--- [[ PROCESS COPY (TANPA WORKSPACE) ]]
+-- [[ PROCESS COPY ENTIRE GAME ]]
 CopyButton.MouseButton1Click:Connect(function()
     if not writefile then 
         CopyButton.Text = "Executor Tak Support!"
         return 
     end
-    CopyButton.Text = "🔍 Scanning Non-Workspace Services..."
+    CopyButton.Text = "🔍 Scanning Entire Game..."
     ProgressBar.Size = UDim2.new(0, 0, 1, 0)
     ProgressText.Text = "Scanning... 0%"
     task.wait(0.1)
@@ -526,7 +536,7 @@ CopyButton.MouseButton1Click:Connect(function()
     for _, sObj in pairs(ServiceMap) do
         pcall(function()
             for _, item in ipairs(sObj:GetDescendants()) do
-                if not item:IsDescendantOf(ScreenGui) and item ~= ScreenGui then
+                if not item:IsDescendantOf(ScreenGui) and item ~= ScreenGui and not isPlayerCharacter(item) and not item:IsA("Camera") then
                     table.insert(objectsToScan, item)
                 end
             end
@@ -544,7 +554,7 @@ CopyButton.MouseButton1Click:Connect(function()
     for idx, obj in pairs(objectsToScan) do
         count = count + 1
         
-        if idx % 50 == 0 or idx == totalObjects then
+        if idx % 100 == 0 or idx == totalObjects then
             local pct = math.floor((idx / totalObjects) * 100)
             ProgressBar.Size = UDim2.new(pct / 100, 0, 1, 0)
             ProgressText.Text = "Copying... " .. pct .. "%"
@@ -573,11 +583,11 @@ CopyButton.MouseButton1Click:Connect(function()
     ProgressText.Text = "Done - 100%"
     CopyButton.Text = "💾 COPIED: " .. count .. " OBJS"
     task.wait(2)
-    CopyButton.Text = "COPY ALL EXCEPT WORKSPACE"
+    CopyButton.Text = "COPY ENTIRE GAME DATA"
     _G.UpdatePasteList()
 end)
 
--- [[ PROCESS PASTE KE SERVICES KEMBALI ]]
+-- [[ PROCESS PASTE KE MINGGAT/SERVICES Masing-masing ]]
 _G.UpdatePasteList = function()
     for _, child in pairs(ListScroll:GetChildren()) do
         if child:IsA("Frame") or child:IsA("TextLabel") then child:Destroy() end
@@ -634,16 +644,17 @@ _G.UpdatePasteList = function()
             FileSelectBtn.MouseButton1Click:Connect(function()
                 FileSelectBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 150)
                 task.spawn(function()
-                    print("============ [ START NON-WORKSPACE PASTE PROCESS ] ============")
+                    print("============ [ START FULL GAME PASTE PROCESS ] ============")
                     local success, err = pcall(function()
                         local fileContent = readfile(file)
-                        local loadedData = HttpService:JSONDecode(fileContent)
+                        local loadedData = HttpService:JSONEncode and HttpService:JSONDecode(fileContent)
                         
                         table.sort(loadedData, function(a, b) return (a.Depth or 0) < (b.Depth or 0) end)
                         
                         local function getTargetRoot(serviceName)
-                            local baseObj = ServiceMap[serviceName] or ReplicatedStorage
+                            local baseObj = ServiceMap[serviceName] or workspace
                             
+                            -- Fallback jika service diblokir aksesnya
                             local testOk = pcall(function()
                                 local test = Instance.new("Folder")
                                 test.Name = "__TestWrite"
@@ -653,7 +664,7 @@ _G.UpdatePasteList = function()
                             
                             if not testOk then
                                 if serviceName == "StarterGui" then return PlayerGui end
-                                return ReplicatedStorage
+                                return workspace
                             end
                             
                             return baseObj
