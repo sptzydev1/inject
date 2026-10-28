@@ -4,8 +4,8 @@ local UIS = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local MarketplaceService = game:GetService("MarketplaceService")
 local UserService = game:GetService("UserService")
-local Lighting = game:GetService("Lighting")
-local TweenService = game:GetService("TweenService") -- Ditambahkan untuk transisi tema yang mulus
+local StarterGui = game:GetService("StarterGui")
+local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
 -- Proteksi Instan PlayerGui
@@ -22,9 +22,9 @@ task.spawn(function()
     end)
 end)
 
-local FILE_PREFIX = "GameCopy_"
+local FILE_PREFIX = "UICopy_"
 
--- [[ DEKLARASI GUI UTAMA MAP COPY ]]
+-- [[ DEKLARASI GUI UTAMA STARTERGUI COPY ]]
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "SpyzyyCopyGuiV2"
 ScreenGui.ResetOnSpawn = false
@@ -44,7 +44,7 @@ ToggleButton.Active = true
 ToggleButton.Parent = ScreenGui
 
 local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(1, 0) -- Lingkaran sempurna
+ToggleCorner.CornerRadius = UDim.new(1, 0)
 ToggleCorner.Parent = ToggleButton
 
 local ToggleStroke = Instance.new("UIStroke")
@@ -52,7 +52,7 @@ ToggleStroke.Thickness = 2
 ToggleStroke.Color = Color3.fromRGB(0, 200, 255)
 ToggleStroke.Parent = ToggleButton
 
--- Main Frame (Diperbesar tingginya dari 460 ke 490 untuk slot tombol tema baru)
+-- Main Frame
 local MainFrame = Instance.new("Frame")
 MainFrame.Name = "MainFrame"
 MainFrame.Size = UDim2.new(0, 240, 0, 490) 
@@ -76,10 +76,10 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -40, 0, 40)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "🚀 COPY MAP SPYZYY V2.5"
+Title.Text = "🚀 COPY STARTERGUI SPYZYY V2.5"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 14
+Title.TextSize = 13
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = MainFrame
 
@@ -191,7 +191,7 @@ local function CreateScriptLabel(text, color, order)
     return label
 end
 
-CreateScriptLabel("✨ Script: Spyzyy Copy Map + Lighting", Color3.fromRGB(255, 255, 255), 1)
+CreateScriptLabel("✨ Script: Spyzyy StarterGui Copier", Color3.fromRGB(255, 255, 255), 1)
 CreateScriptLabel("👑 Status: PREMIUM VERSION", Color3.fromRGB(255, 200, 0), 2)
 CreateScriptLabel("🛠️ Maker: @Spyzyy (V2.5)", Color3.fromRGB(0, 255, 200), 3)
 
@@ -234,9 +234,9 @@ CopyButton.Size = UDim2.new(0, 216, 0, 32)
 CopyButton.Position = UDim2.new(0, 12, 0, 215)
 CopyButton.BackgroundColor3 = Color3.fromRGB(0, 130, 200)
 CopyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CopyButton.Text = "COPY MAP & LIGHTING"
+CopyButton.Text = "COPY STARTERGUI & PLAYERGUI"
 CopyButton.Font = Enum.Font.SourceSansBold
-CopyButton.TextSize = 12
+CopyButton.TextSize = 11
 CopyButton.Parent = MainFrame
 
 local CopyButtonCorner = Instance.new("UICorner")
@@ -247,7 +247,7 @@ local ListLabel = Instance.new("TextLabel")
 ListLabel.Size = UDim2.new(1, -24, 0, 20)
 ListLabel.Position = UDim2.new(0, 12, 0, 252)
 ListLabel.BackgroundTransparency = 1
-ListLabel.Text = "Pilih Data Hasil Untuk Di-Paste / Tempel:"
+ListLabel.Text = "Pilih Data Hasil UI Untuk Di-Paste:"
 ListLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
 ListLabel.TextXAlignment = Enum.TextXAlignment.Left
 ListLabel.Font = Enum.Font.SourceSansSemibold
@@ -285,7 +285,7 @@ local RefreshCorner = Instance.new("UICorner")
 RefreshCorner.CornerRadius = UDim.new(0, 4)
 RefreshCorner.Parent = RefreshButton
 
--- [[ FITUR BARU: TOMBOL UBAH TEMA KEREN ]]
+-- [[ TOMBOL UBAH TEMA ]]
 local ThemeButton = Instance.new("TextButton")
 ThemeButton.Size = UDim2.new(0, 216, 0, 24)
 ThemeButton.Position = UDim2.new(0, 12, 0, 440)
@@ -309,13 +309,11 @@ local function ApplyStaticCoolTheme()
     local duration = 0.5
     local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
     
-    -- Color Palette Keren Statik (Synthwave / Cyberpunk Neon)
-    local MainBgColor = Color3.fromRGB(15, 12, 22) -- Hitam Ungu Deep
-    local AccentColor1 = Color3.fromRGB(255, 0, 128) -- Hot Pink Neon
-    local AccentColor2 = Color3.fromRGB(0, 255, 230) -- Cyan Elektrik
-    local PanelBgColor = Color3.fromRGB(25, 20, 35) -- Ungu Panel
+    local MainBgColor = Color3.fromRGB(15, 12, 22)
+    local AccentColor1 = Color3.fromRGB(255, 0, 128)
+    local AccentColor2 = Color3.fromRGB(0, 255, 230)
+    local PanelBgColor = Color3.fromRGB(25, 20, 35)
     
-    -- Jalankan Tween Animasi Warna
     TweenService:Create(MainFrame, info, {BackgroundColor3 = MainBgColor}):Play()
     TweenService:Create(MainStroke, info, {Color = AccentColor1}):Play()
     TweenService:Create(ToggleStroke, info, {Color = AccentColor2}):Play()
@@ -337,8 +335,7 @@ end
 
 ThemeButton.MouseButton1Click:Connect(ApplyStaticCoolTheme)
 
-
--- [[ LOGIKA GLOBAL DRAGGABLE LUAS ]]
+-- [[ LOGIKA GLOBAL DRAGGABLE ]]
 local function MakeDraggable(frame)
     local dragging, dragInput, dragStart, startPos
     frame.InputBegan:Connect(function(input)
@@ -362,10 +359,9 @@ local function MakeDraggable(frame)
     end)
 end
 
-MakeDraggable(MainFrame) -- Geser luas GUI Utama
-MakeDraggable(ToggleButton) -- Geser luas Icon 🛡️
+MakeDraggable(MainFrame)
+MakeDraggable(ToggleButton)
 
--- Logika Open & Close GUI
 CloseButton.MouseButton1Click:Connect(function()
     MainFrame.Visible = false
     ToggleButton.Visible = true
@@ -376,39 +372,116 @@ ToggleButton.MouseButton1Click:Connect(function()
     ToggleButton.Visible = false
 end)
 
+-- [[ ENGINE SERIALISASI STARTERGUI & PROPERTI ASLI ]]
 
--- [[ CORE ENGINE COPY/PASTE ]]
-local function getRelativePath(obj)
+local TargetUIClasses = {
+    ["ScreenGui"] = true, ["Frame"] = true, ["TextLabel"] = true, ["TextButton"] = true,
+    ["ImageLabel"] = true, ["ImageButton"] = true, ["TextBox"] = true, ["ScrollingFrame"] = true,
+    ["UICorner"] = true, ["UIStroke"] = true, ["UIPadding"] = true, ["UIListLayout"] = true,
+    ["UIGridLayout"] = true, ["UIGradient"] = true, ["UIAspectRatioConstraint"] = true,
+    ["UISizeConstraint"] = true, ["BillboardGui"] = true, ["SurfaceGui"] = true
+}
+
+local function getUIRelativePath(obj)
     local path = {}
     local current = obj.Parent
-    while current and current ~= workspace and current ~= Lighting and current ~= game do
+    while current and current ~= StarterGui and current ~= PlayerGui and current ~= game do
         table.insert(path, 1, {Name = current.Name, ClassName = current.ClassName})
         current = current.Parent
     end
     return path
 end
 
-local function isAPlayerCharacter(obj)
-    for _, p in pairs(Players:GetPlayers()) do
-        if p.Character and (obj == p.Character or obj:IsDescendantOf(p.Character)) then return true end
+local function ExtractUIProperties(obj)
+    local props = {}
+    
+    -- Helper konversi tipe data ke format JSON-friendly
+    local function serializeVal(v)
+        local t = typeof(v)
+        if t == "Color3" then
+            return {Type = "Color3", R = v.R * 255, G = v.G * 255, B = v.B * 255}
+        elseif t == "UDim2" then
+            return {Type = "UDim2", XS = v.X.Scale, XO = v.X.Offset, YS = v.Y.Scale, YO = v.Y.Offset}
+        elseif t == "UDim" then
+            return {Type = "UDim", S = v.Scale, O = v.Offset}
+        elseif t == "Vector2" then
+            return {Type = "Vector2", X = v.X, Y = v.Y}
+        elseif t == "Rect" then
+            return {Type = "Rect", MinX = v.Min.X, MinY = v.Min.Y, MaxX = v.Max.X, MaxY = v.Max.Y}
+        elseif t == "EnumItem" then
+            return {Type = "Enum", EnumType = tostring(v.EnumType), Name = v.Name}
+        elseif t == "number" or t == "string" or t == "boolean" then
+            return v
+        end
+        return nil
     end
-    return false
+
+    local propList = {
+        "Size", "Position", "AnchorPoint", "ZIndex", "LayoutOrder", "Visible", "ClipsDescendants",
+        "BackgroundColor3", "BackgroundTransparency", "BorderSizePixel", "BorderColor3", "AutomaticSize",
+        "Text", "TextColor3", "TextSize", "Font", "TextTransparency", "TextScaled", "TextWrapped",
+        "TextXAlignment", "TextYAlignment", "PlaceholderText",
+        "Image", "ImageColor3", "ImageTransparency", "ImageRectOffset", "ImageRectSize", "ScaleType", "SliceCenter", "TileSize",
+        "CornerRadius", "Color", "Thickness", "ApplyStrokeMode", "LineJoinMode",
+        "PaddingLeft", "PaddingRight", "PaddingTop", "PaddingBottom", "Padding", "FillDirection",
+        "HorizontalAlignment", "VerticalAlignment", "SortOrder", "CellSize", "CellPadding",
+        "AspectRatio", "AspectType", "DominantAxis", "MinSize", "MaxSize",
+        "ResetOnSpawn", "Enabled", "DisplayOrder", "IgnoreGuiInset",
+        "CanvasSize", "ScrollBarThickness", "ScrollBarImageColor3"
+    }
+
+    for _, p in ipairs(propList) do
+        pcall(function()
+            local val = obj[p]
+            if val ~= nil then
+                local sVal = serializeVal(val)
+                if sVal ~= nil then
+                    props[p] = sVal
+                end
+            end
+        end)
+    end
+    
+    return props
 end
 
-local AllowedSupportClasses = {
-    ["Texture"] = true, ["Decal"] = true, ["SurfaceAppearance"] = true, 
-    ["SpecialMesh"] = true, ["BlockMesh"] = true, ["CylinderMesh"] = true,
-    ["ParticleEmitter"] = true, ["PointLight"] = true, ["SpotLight"] = true, ["SurfaceLight"] = true,
-    ["Sky"] = true, ["Atmosphere"] = true, ["Clouds"] = true, ["SunRaysEffect"] = true, ["BloomEffect"] = true,
-    ["BlurEffect"] = true, ["ColorCorrectionEffect"] = true, ["Sound"] = true
-}
+local function ApplyUIProperties(obj, props)
+    local function deserializeVal(v)
+        if type(v) == "table" and v.Type then
+            if v.Type == "Color3" then
+                return Color3.fromRGB(v.R, v.G, v.B)
+            elseif v.Type == "UDim2" then
+                return UDim2.new(v.XS, v.XO, v.YS, v.YO)
+            elseif v.Type == "UDim" then
+                return UDim.new(v.S, v.O)
+            elseif v.Type == "Vector2" then
+                return Vector2.new(v.X, v.Y)
+            elseif v.Type == "Rect" then
+                return Rect.new(v.MinX, v.MinY, v.MaxX, v.MaxY)
+            elseif v.Type == "Enum" then
+                local enumType = v.EnumType
+                if Enum[enumType] and Enum[enumType][v.Name] then
+                    return Enum[enumType][v.Name]
+                end
+            end
+        end
+        return v
+    end
 
+    for pName, pVal in pairs(props) do
+        pcall(function()
+            obj[pName] = deserializeVal(pVal)
+        end)
+    end
+end
+
+-- [[ PROCESS COPY ]]
 CopyButton.MouseButton1Click:Connect(function()
     if not writefile then 
         CopyButton.Text = "Executor Tak Support!"
         return 
     end
-    CopyButton.Text = "🔍 Scanning Map..."
+    CopyButton.Text = "🔍 Scanning StarterGui..."
     ProgressBar.Size = UDim2.new(0, 0, 1, 0)
     ProgressText.Text = "Scanning... 0%"
     task.wait(0.1)
@@ -418,103 +491,38 @@ CopyButton.MouseButton1Click:Connect(function()
     local uniqueID = math.random(1000, 9999) .. "_" .. os.date("%H%M%S")
     local fileName = FILE_PREFIX .. GameName .. "_" .. uniqueID .. ".json"
     
-    local objectsToScan = workspace:GetDescendants()
-    for _, item in ipairs(Lighting:GetDescendants()) do
-        table.insert(objectsToScan, item)
+    local objectsToScan = StarterGui:GetDescendants()
+    for _, item in ipairs(PlayerGui:GetDescendants()) do
+        if not item:IsDescendantOf(ScreenGui) and item ~= ScreenGui then
+            table.insert(objectsToScan, item)
+        end
     end
     
     local totalObjects = #objectsToScan
     
     for idx, obj in pairs(objectsToScan) do
-        if obj:IsA("Folder") or obj:IsA("Model") or obj:IsA("BasePart") or AllowedSupportClasses[obj.ClassName] then
-            if not obj:IsDescendantOf(Players) and not obj:IsA("Camera") and not obj:IsA("Terrain") and not isAPlayerCharacter(obj) then
-                count = count + 1
-                
-                if idx % 200 == 0 or idx == totalObjects then
-                    local pct = math.floor((idx / totalObjects) * 100)
-                    ProgressBar.Size = UDim2.new(pct / 100, 0, 1, 0)
-                    ProgressText.Text = "Copying... " .. pct .. "%"
-                    CopyButton.Text = "📸 Objs: [" .. count .. "]"
-                    task.wait()
-                end
-                
-                local isLightingObj = obj:IsDescendantOf(Lighting) or obj.Parent == Lighting
-                local relPath = getRelativePath(obj)
-                
-                local data = {
-                    Name = obj.Name,
-                    ClassName = obj.ClassName,
-                    RelativePath = relPath,
-                    Depth = #relPath,
-                    IsLighting = isLightingObj,
-                    Properties = {}
-                }
-                
-                pcall(function()
-                    if obj:IsA("BasePart") then
-                        data.Properties.Size = {obj.Size.X, obj.Size.Y, obj.Size.Z}
-                        data.Properties.CFrame = {obj.CFrame:GetComponents()}
-                        data.Properties.Color = {obj.Color.r * 255, obj.Color.g * 255, obj.Color.b * 255}
-                        data.Properties.Material = obj.Material.Name
-                        data.Properties.Transparency = obj.Transparency
-                        data.Properties.Reflectance = obj.Reflectance
-                        data.Properties.Anchored = obj.Anchored
-                        data.Properties.CanCollide = obj.CanCollide
-                        data.Properties.CastShadow = obj.CastShadow
-                        
-                        if obj:IsA("MeshPart") then
-                            data.Properties.MeshId = obj.MeshId
-                            data.Properties.TextureId = obj.TextureId
-                        elseif obj:IsA("UnionOperation") then
-                            data.Properties.AssetId = obj.AssetId
-                        end
-                    elseif obj:IsA("Model") then
-                        data.Properties.WorldPivot = {obj:GetPivot():GetComponents()}
-                        if obj.PrimaryPart then
-                            data.Properties.PrimaryPartName = obj.PrimaryPart.Name
-                        end
-                    elseif AllowedSupportClasses[obj.ClassName] then
-                        pcall(function() data.Properties.Texture = obj.Texture end)
-                        pcall(function() data.Properties.TextureId = obj.TextureId end)
-                        pcall(function() data.Properties.MeshId = obj.MeshId end)
-                        pcall(function() data.Properties.Color3 = {obj.Color3.r * 255, obj.Color3.g * 255, obj.Color3.b * 255} end)
-                        pcall(function() data.Properties.Color = {obj.Color.r * 255, obj.Color.g * 255, obj.Color.b * 255} end)
-                        pcall(function() data.Properties.Enabled = obj.Enabled end)
-                        pcall(function() data.Properties.Brightness = obj.Brightness end)
-                        pcall(function() data.Properties.Range = obj.Range end)
-                        pcall(function() data.Properties.Intensity = obj.Intensity end)
-                        pcall(function() data.Properties.Size = obj.Size end)
-                        pcall(function() data.Properties.Face = obj.Face.Name end)
-                        
-                        if obj:IsA("Sound") then
-                            pcall(function() data.Properties.SoundId = obj.SoundId end)
-                            pcall(function() data.Properties.Volume = obj.Volume end)
-                            pcall(function() data.Properties.PlaybackSpeed = obj.PlaybackSpeed end)
-                            pcall(function() data.Properties.Playing = obj.IsPlaying end)
-                            pcall(function() data.Properties.Looped = obj.Looped end)
-                            pcall(function() data.Properties.TimePosition = obj.TimePosition end)
-                            pcall(function() data.Properties.RollOffMaxDistance = obj.RollOffMaxDistance end)
-                            pcall(function() data.Properties.RollOffMinDistance = obj.RollOffMinDistance end)
-                        end
-
-                        if obj:IsA("SurfaceAppearance") then
-                            pcall(function() data.Properties.AlphaMode = obj.AlphaMode.Name end)
-                            pcall(function() data.Properties.ColorMap = obj.ColorMap end)
-                            pcall(function() data.Properties.MetalnessMap = obj.MetalnessMap end)
-                            pcall(function() data.Properties.NormalMap = obj.NormalMap end)
-                            pcall(function() data.Properties.RoughnessMap = obj.RoughnessMap end)
-                        end
-
-                        pcall(function() data.Properties.SkyboxBk = obj.SkyboxBk end)
-                        pcall(function() data.Properties.SkyboxDn = obj.SkyboxDn end)
-                        pcall(function() data.Properties.SkyboxFt = obj.SkyboxFt end)
-                        pcall(function() data.Properties.SkyboxLf = obj.SkyboxLf end)
-                        pcall(function() data.Properties.SkyboxRt = obj.SkyboxRt end)
-                        pcall(function() data.Properties.SkyboxUp = obj.SkyboxUp end)
-                    end
-                    table.insert(SaveData, data)
-                end)
+        if TargetUIClasses[obj.ClassName] or obj:IsA("GuiObject") or obj:IsA("LayerCollector") or obj:IsA("UIComponent") then
+            count = count + 1
+            
+            if idx % 50 == 0 or idx == totalObjects then
+                local pct = math.floor((idx / totalObjects) * 100)
+                ProgressBar.Size = UDim2.new(pct / 100, 0, 1, 0)
+                ProgressText.Text = "Copying... " .. pct .. "%"
+                CopyButton.Text = "📸 UI Objs: [" .. count .. "]"
+                task.wait()
             end
+            
+            local relPath = getUIRelativePath(obj)
+            
+            local data = {
+                Name = obj.Name,
+                ClassName = obj.ClassName,
+                RelativePath = relPath,
+                Depth = #relPath,
+                Properties = ExtractUIProperties(obj)
+            }
+            
+            table.insert(SaveData, data)
         end
     end
     
@@ -523,12 +531,13 @@ CopyButton.MouseButton1Click:Connect(function()
     writefile(fileName, HttpService:JSONEncode(SaveData))
     
     ProgressText.Text = "Done - 100%"
-    CopyButton.Text = "💾 COPIED: " .. count .. " OBJS"
+    CopyButton.Text = "💾 COPIED: " .. count .. " UI OBJS"
     task.wait(2)
-    CopyButton.Text = "COPY MAP & LIGHTING"
+    CopyButton.Text = "COPY STARTERGUI & PLAYERGUI"
     _G.UpdatePasteList()
 end)
 
+-- [[ PROCESS PASTE ]]
 _G.UpdatePasteList = function()
     for _, child in pairs(ListScroll:GetChildren()) do
         if child:IsA("Frame") or child:IsA("TextLabel") then child:Destroy() end
@@ -585,29 +594,27 @@ _G.UpdatePasteList = function()
             FileSelectBtn.MouseButton1Click:Connect(function()
                 FileSelectBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 150)
                 task.spawn(function()
-                    print("============ [ START PASTE PROCESS Studio Console ] ============")
+                    print("============ [ START UI PASTE PROCESS ] ============")
                     local success, err = pcall(function()
                         local fileContent = readfile(file)
                         local loadedData = HttpService:JSONDecode(fileContent)
                         
                         table.sort(loadedData, function(a, b) return (a.Depth or 0) < (b.Depth or 0) end)
                         
-                        local MasterFolder = workspace:FindFirstChild("Paste_" .. cleanName) or Instance.new("Folder")
-                        MasterFolder.Name = "Paste_" .. cleanName
-                        MasterFolder.Parent = workspace
+                        local TargetContainer = PlayerGui -- Tempelkan langsung ke PlayerGui agar terlihat
                         
-                        local function findOrCreateParent(relativePath, isLighting)
-                            local currentParent = isLighting and Lighting or MasterFolder
+                        local function findOrCreateParent(relativePath)
+                            local currentParent = TargetContainer
                             for _, pathInfo in ipairs(relativePath) do
                                 local found = currentParent:FindFirstChild(pathInfo.Name)
                                 if not found then
-                                    if pathInfo.ClassName == "Folder" or pathInfo.ClassName == "Model" then
-                                        found = Instance.new(pathInfo.ClassName)
-                                    else
-                                        found = Instance.new("Folder")
+                                    local ok, created = pcall(function() return Instance.new(pathInfo.ClassName) end)
+                                    if not ok or not created then
+                                        created = Instance.new("Folder")
                                     end
-                                    found.Name = pathInfo.Name
-                                    found.Parent = currentParent
+                                    created.Name = pathInfo.Name
+                                    created.Parent = currentParent
+                                    found = created
                                 end
                                 currentParent = found
                             end
@@ -619,111 +626,23 @@ _G.UpdatePasteList = function()
                         
                         for _, data in ipairs(loadedData) do
                             pcall(function()
-                                local targetParent = findOrCreateParent(data.RelativePath, data.IsLighting)
-                                if targetParent:FindFirstChild(data.Name) and (data.ClassName == "Folder" or data.ClassName == "Model") then return end
+                                local targetParent = findOrCreateParent(data.RelativePath)
                                 
                                 pasteCount = pasteCount + 1
-                                if pasteCount % 200 == 0 then
+                                if pasteCount % 50 == 0 then
                                     FileSelectBtn.Text = "🔨 [" .. pasteCount .. "/" .. totalObjs .. "] Pasting..."
                                     task.wait()
                                 end
                                 
-                                local newObj
-                                local props = data.Properties or {}
-                                
-                                if AllowedSupportClasses[data.ClassName] then
-                                    if targetParent:IsA("Model") or targetParent:IsA("Folder") then
-                                        local fallbackPart = targetParent:FindFirstChildWhichIsA("BasePart", true)
-                                        if fallbackPart then targetParent = fallbackPart end
-                                    end
-                                    
-                                    newObj = Instance.new(data.ClassName)
-                                    pcall(function() if props.Texture then newObj.Texture = props.Texture end end)
-                                    pcall(function() if props.TextureId then newObj.TextureId = props.TextureId end end)
-                                    pcall(function() if props.Enabled ~= nil then newObj.Enabled = props.Enabled end end)
-                                    pcall(function() if props.Brightness then newObj.Brightness = props.Brightness end end)
-                                    pcall(function() if props.Range then newObj.Range = props.Range end end)
-                                    pcall(function() if props.Intensity then newObj.Intensity = props.Intensity end end)
-                                    pcall(function() if props.Color3 then newObj.Color3 = Color3.fromRGB(unpack(props.Color3)) end end)
-                                    pcall(function() if props.Color then newObj.Color = Color3.fromRGB(unpack(props.Color)) end end)
-                                    pcall(function() if props.Face then newObj.Face = Enum.NormalId[props.Face] end end)
-                                    
-                                    if data.ClassName == "Sound" then
-                                        pcall(function() if props.SoundId then newObj.SoundId = props.SoundId end end)
-                                        pcall(function() if props.Volume then newObj.Volume = props.Volume end end)
-                                        pcall(function() if props.PlaybackSpeed then newObj.PlaybackSpeed = props.PlaybackSpeed end end)
-                                        pcall(function() if props.Looped ~= nil then newObj.Looped = props.Looped end end)
-                                        pcall(function() if props.RollOffMaxDistance then newObj.RollOffMaxDistance = props.RollOffMaxDistance end end)
-                                        pcall(function() if props.RollOffMinDistance then newObj.RollOffMinDistance = props.RollOffMinDistance end end)
-                                        
-                                        if props.Playing == true then
-                                            task.defer(function()
-                                                pcall(function() 
-                                                    newObj.TimePosition = props.TimePosition or 0
-                                                    newObj:Play() 
-                                                end)
-                                            end)
-                                        end
-                                    end
-
-                                    if data.ClassName == "SurfaceAppearance" then
-                                        pcall(function() if props.AlphaMode then newObj.AlphaMode = Enum.AlphaMode[props.AlphaMode] end end)
-                                        pcall(function() if props.ColorMap then newObj.ColorMap = props.ColorMap end end)
-                                        pcall(function() if props.MetalnessMap then newObj.MetalnessMap = props.MetalnessMap end end)
-                                        pcall(function() if props.NormalMap then newObj.NormalMap = props.NormalMap end end)
-                                        pcall(function() if props.RoughnessMap then newObj.RoughnessMap = props.RoughnessMap end end)
-                                    end
-
-                                    pcall(function() if props.SkyboxBk then newObj.SkyboxBk = props.SkyboxBk end end)
-                                    pcall(function() if props.SkyboxDn then newObj.SkyboxDn = props.SkyboxDn end end)
-                                    pcall(function() if props.SkyboxFt then newObj.SkyboxFt = props.SkyboxFt end end)
-                                    pcall(function() if props.SkyboxLf then newObj.SkyboxLf = props.SkyboxLf end end)
-                                    pcall(function() if props.SkyboxRt then newObj.SkyboxRt = props.SkyboxRt end end)
-                                    pcall(function() if props.SkyboxUp then newObj.SkyboxUp = props.SkyboxUp end end)
-                                elseif data.ClassName == "Folder" or data.ClassName == "Model" then
-                                    newObj = Instance.new(data.ClassName)
-                                    if data.ClassName == "Model" and props.WorldPivot then
-                                        newObj:PivotTo(CFrame.new(unpack(props.WorldPivot)))
-                                    end
-                                else
-                                    if props.MeshId then
-                                        newObj = Instance.new("MeshPart")
-                                        pcall(function() newObj.MeshId = props.MeshId end)
-                                        pcall(function() if props.TextureId then newObj.TextureId = props.TextureId end end)
-                                    else
-                                        newObj = Instance.new("Part")
-                                    end
-                                end
-                                
+                                local newObj = Instance.new(data.ClassName)
                                 newObj.Name = data.Name
                                 
-                                if newObj:IsA("BasePart") and props.CFrame then
-                                    newObj.Size = Vector3.new(unpack(props.Size))
-                                    newObj.CFrame = CFrame.new(unpack(props.CFrame))
-                                    newObj.Color = Color3.fromRGB(unpack(props.Color))
-                                    pcall(function() newObj.Material = Enum.Material[props.Material] end)
-                                    newObj.Transparency = props.Transparency
-                                    newObj.Reflectance = props.Reflectance or 0
-                                    newObj.Anchored = props.Anchored
-                                    newObj.CanCollide = props.CanCollide
-                                    if props.CastShadow ~= nil then newObj.CastShadow = props.CastShadow end
+                                if data.Properties then
+                                    ApplyUIProperties(newObj, data.Properties)
                                 end
                                 
                                 newObj.Parent = targetParent
-                                
-                                if data.ClassName == "Model" and props.PrimaryPartName then
-                                    task.defer(function()
-                                        local pPart = newObj:FindFirstChild(props.PrimaryPartName)
-                                        if pPart and pPart:IsA("BasePart") then
-                                            newObj.PrimaryPart = pPart
-                                        end
-                                    end)
-                                end
                             end)
-                        end
-                        
-                        for _, child in ipairs(MasterFolder:GetChildren()) do
-                            if child:IsA("Folder") and #child:GetChildren() == 0 then child:Destroy() end
                         end
                     end)
                     
