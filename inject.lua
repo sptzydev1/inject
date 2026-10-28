@@ -4,11 +4,17 @@ local UIS = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local MarketplaceService = game:GetService("MarketplaceService")
 local UserService = game:GetService("UserService")
+local Lighting = game:GetService("Lighting")
 local StarterGui = game:GetService("StarterGui")
+local StarterPack = game:GetService("StarterPack")
+local StarterPlayer = game:GetService("StarterPlayer")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ReplicatedFirst = game:GetService("ReplicatedFirst")
+local ServerStorage = game:GetService("ServerStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 local TweenService = game:GetService("TweenService")
-local LocalPlayer = Players.LocalPlayer
 
--- Proteksi Instan PlayerGui (Untuk GUI Control Panel Script)
+local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 5) or LocalPlayer.PlayerGui
 
 -- Mendapatkan Nama Game Secara Otomatis
@@ -22,11 +28,11 @@ task.spawn(function()
     end)
 end)
 
-local FILE_PREFIX = "StarterGuiCopy_"
+local FILE_PREFIX = "NoWorkspaceGameCopy_"
 
--- [[ DEKLARASI GUI UTAMA SPYZYY COPY V2.5 ]]
+-- [[ DEKLARASI GUI UTAMA SPYZYY COPY V3.1 ]]
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SpyzyyStarterGuiCopyV2"
+ScreenGui.Name = "SpyzyyNoWorkspaceCopyV3"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Enabled = true
 ScreenGui.Parent = PlayerGui
@@ -76,7 +82,7 @@ local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -40, 0, 40)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "🚀 COPY STARTERGUI SPYZYY V2.5"
+Title.Text = "🚀 NO-WORKSPACE COPY V3.1"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.SourceSansBold
 Title.TextSize = 13
@@ -191,9 +197,9 @@ local function CreateScriptLabel(text, color, order)
     return label
 end
 
-CreateScriptLabel("✨ Script: Only StarterGui Copier", Color3.fromRGB(255, 255, 255), 1)
+CreateScriptLabel("✨ Script: Non-Workspace Copier", Color3.fromRGB(255, 255, 255), 1)
 CreateScriptLabel("👑 Status: PREMIUM VERSION", Color3.fromRGB(255, 200, 0), 2)
-CreateScriptLabel("🛠️ Maker: @Spyzyy (V2.5)", Color3.fromRGB(0, 255, 200), 3)
+CreateScriptLabel("🛠️ Maker: @Spyzyy (V3.1)", Color3.fromRGB(0, 255, 200), 3)
 
 -- [[ ELEMENT PROGRESS BAR LOADING ]]
 local ProgressContainer = Instance.new("Frame")
@@ -234,7 +240,7 @@ CopyButton.Size = UDim2.new(0, 216, 0, 32)
 CopyButton.Position = UDim2.new(0, 12, 0, 215)
 CopyButton.BackgroundColor3 = Color3.fromRGB(0, 130, 200)
 CopyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CopyButton.Text = "COPY ONLY STARTERGUI"
+CopyButton.Text = "COPY ALL EXCEPT WORKSPACE"
 CopyButton.Font = Enum.Font.SourceSansBold
 CopyButton.TextSize = 11
 CopyButton.Parent = MainFrame
@@ -247,7 +253,7 @@ local ListLabel = Instance.new("TextLabel")
 ListLabel.Size = UDim2.new(1, -24, 0, 20)
 ListLabel.Position = UDim2.new(0, 12, 0, 252)
 ListLabel.BackgroundTransparency = 1
-ListLabel.Text = "Pilih Data Hasil Untuk Di-Paste Ke StarterGui:"
+ListLabel.Text = "Pilih Data Hasil Untuk Di-Paste Ke Services:"
 ListLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
 ListLabel.TextXAlignment = Enum.TextXAlignment.Left
 ListLabel.Font = Enum.Font.SourceSansSemibold
@@ -372,19 +378,40 @@ ToggleButton.MouseButton1Click:Connect(function()
     ToggleButton.Visible = false
 end)
 
--- [[ ENGINE REPLIKASI STARTERGUI ]]
+-- [[ MAP REPOSITORY SERVICES (TANPA WORKSPACE) ]]
+local ServiceMap = {
+    ["Lighting"] = Lighting,
+    ["Players"] = Players,
+    ["StarterGui"] = StarterGui,
+    ["StarterPack"] = StarterPack,
+    ["StarterPlayer"] = StarterPlayer,
+    ["ReplicatedStorage"] = ReplicatedStorage,
+    ["ReplicatedFirst"] = ReplicatedFirst,
+    ["ServerStorage"] = ServerStorage,
+    ["ServerScriptService"] = ServerScriptService
+}
 
-local function getUIRelativePath(obj)
+local function getRootServiceAndPath(obj)
     local path = {}
-    local current = obj.Parent
-    while current and current ~= StarterGui and current ~= game do
+    local current = obj
+    local rootServiceName = "ReplicatedStorage"
+    
+    while current and current ~= game do
+        for name, serviceObj in pairs(ServiceMap) do
+            if current == serviceObj then
+                rootServiceName = name
+                return rootServiceName, path
+            end
+        end
         table.insert(path, 1, {Name = current.Name, ClassName = current.ClassName})
         current = current.Parent
     end
-    return path
+    
+    return rootServiceName, path
 end
 
-local function ExtractUIProperties(obj)
+-- [[ UNIVERSAL SERIALIZER PROPERTI ]]
+local function ExtractUniversalProperties(obj)
     local props = {}
     
     local function serializeVal(v)
@@ -395,6 +422,10 @@ local function ExtractUIProperties(obj)
             return {Type = "UDim2", XS = v.X.Scale, XO = v.X.Offset, YS = v.Y.Scale, YO = v.Y.Offset}
         elseif t == "UDim" then
             return {Type = "UDim", S = v.Scale, O = v.Offset}
+        elseif t == "Vector3" then
+            return {Type = "Vector3", X = v.X, Y = v.Y, Z = v.Z}
+        elseif t == "CFrame" then
+            return {Type = "CFrame", Components = {v:GetComponents()}}
         elseif t == "Vector2" then
             return {Type = "Vector2", X = v.X, Y = v.Y}
         elseif t == "Rect" then
@@ -407,21 +438,25 @@ local function ExtractUIProperties(obj)
         return nil
     end
 
-    local propList = {
+    local generalProps = {
+        "Size", "Position", "CFrame", "Color", "Material", "Transparency", "Reflectance", "Anchored", "CanCollide", "CastShadow",
+        "MeshId", "TextureId", "AssetId", "Value",
         "Size", "Position", "AnchorPoint", "ZIndex", "LayoutOrder", "Visible", "ClipsDescendants",
         "BackgroundColor3", "BackgroundTransparency", "BorderSizePixel", "BorderColor3", "AutomaticSize",
         "Text", "TextColor3", "TextSize", "Font", "TextTransparency", "TextScaled", "TextWrapped",
         "TextXAlignment", "TextYAlignment", "PlaceholderText",
         "Image", "ImageColor3", "ImageTransparency", "ImageRectOffset", "ImageRectSize", "ScaleType", "SliceCenter", "TileSize",
-        "CornerRadius", "Color", "Thickness", "ApplyStrokeMode", "LineJoinMode",
+        "CornerRadius", "Thickness", "ApplyStrokeMode", "LineJoinMode",
         "PaddingLeft", "PaddingRight", "PaddingTop", "PaddingBottom", "Padding", "FillDirection",
         "HorizontalAlignment", "VerticalAlignment", "SortOrder", "CellSize", "CellPadding",
         "AspectRatio", "AspectType", "DominantAxis", "MinSize", "MaxSize",
         "ResetOnSpawn", "Enabled", "DisplayOrder", "IgnoreGuiInset",
-        "CanvasSize", "ScrollBarThickness", "ScrollBarImageColor3"
+        "CanvasSize", "ScrollBarThickness", "ScrollBarImageColor3",
+        "SoundId", "Volume", "PlaybackSpeed", "Looped", "Playing", "TimePosition",
+        "Brightness", "Range", "Face"
     }
 
-    for _, p in ipairs(propList) do
+    for _, p in ipairs(generalProps) do
         pcall(function()
             local val = obj[p]
             if val ~= nil then
@@ -436,7 +471,7 @@ local function ExtractUIProperties(obj)
     return props
 end
 
-local function ApplyUIProperties(obj, props)
+local function ApplyUniversalProperties(obj, props)
     local function deserializeVal(v)
         if type(v) == "table" and v.Type then
             if v.Type == "Color3" then
@@ -445,6 +480,10 @@ local function ApplyUIProperties(obj, props)
                 return UDim2.new(v.XS, v.XO, v.YS, v.YO)
             elseif v.Type == "UDim" then
                 return UDim.new(v.S, v.O)
+            elseif v.Type == "Vector3" then
+                return Vector3.new(v.X, v.Y, v.Z)
+            elseif v.Type == "CFrame" then
+                return CFrame.new(unpack(v.Components))
             elseif v.Type == "Vector2" then
                 return Vector2.new(v.X, v.Y)
             elseif v.Type == "Rect" then
@@ -466,13 +505,13 @@ local function ApplyUIProperties(obj, props)
     end
 end
 
--- [[ PROCESS COPY ]]
+-- [[ PROCESS COPY (TANPA WORKSPACE) ]]
 CopyButton.MouseButton1Click:Connect(function()
     if not writefile then 
         CopyButton.Text = "Executor Tak Support!"
         return 
     end
-    CopyButton.Text = "🔍 Scanning StarterGui..."
+    CopyButton.Text = "🔍 Scanning Non-Workspace Services..."
     ProgressBar.Size = UDim2.new(0, 0, 1, 0)
     ProgressText.Text = "Scanning... 0%"
     task.wait(0.1)
@@ -482,11 +521,22 @@ CopyButton.MouseButton1Click:Connect(function()
     local uniqueID = math.random(1000, 9999) .. "_" .. os.date("%H%M%S")
     local fileName = FILE_PREFIX .. GameName .. "_" .. uniqueID .. ".json"
     
-    local objectsToScan = StarterGui:GetDescendants()
+    local objectsToScan = {}
+    
+    for _, sObj in pairs(ServiceMap) do
+        pcall(function()
+            for _, item in ipairs(sObj:GetDescendants()) do
+                if not item:IsDescendantOf(ScreenGui) and item ~= ScreenGui then
+                    table.insert(objectsToScan, item)
+                end
+            end
+        end)
+    end
+    
     local totalObjects = #objectsToScan
     
     if totalObjects == 0 then
-        CopyButton.Text = "StarterGui Kosong!"
+        CopyButton.Text = "Objek Kosong!"
         ProgressText.Text = "Kosong - 0 Objek"
         return
     end
@@ -494,22 +544,23 @@ CopyButton.MouseButton1Click:Connect(function()
     for idx, obj in pairs(objectsToScan) do
         count = count + 1
         
-        if idx % 20 == 0 or idx == totalObjects then
+        if idx % 50 == 0 or idx == totalObjects then
             local pct = math.floor((idx / totalObjects) * 100)
             ProgressBar.Size = UDim2.new(pct / 100, 0, 1, 0)
             ProgressText.Text = "Copying... " .. pct .. "%"
-            CopyButton.Text = "📸 UI Objs: [" .. count .. "]"
+            CopyButton.Text = "📸 Objs: [" .. count .. "]"
             task.wait()
         end
         
-        local relPath = getUIRelativePath(obj)
+        local rootService, relPath = getRootServiceAndPath(obj)
         
         local data = {
             Name = obj.Name,
             ClassName = obj.ClassName,
+            RootService = rootService,
             RelativePath = relPath,
             Depth = #relPath,
-            Properties = ExtractUIProperties(obj)
+            Properties = ExtractUniversalProperties(obj)
         }
         
         table.insert(SaveData, data)
@@ -520,13 +571,13 @@ CopyButton.MouseButton1Click:Connect(function()
     writefile(fileName, HttpService:JSONEncode(SaveData))
     
     ProgressText.Text = "Done - 100%"
-    CopyButton.Text = "💾 COPIED: " .. count .. " UI OBJS"
+    CopyButton.Text = "💾 COPIED: " .. count .. " OBJS"
     task.wait(2)
-    CopyButton.Text = "COPY ONLY STARTERGUI"
+    CopyButton.Text = "COPY ALL EXCEPT WORKSPACE"
     _G.UpdatePasteList()
 end)
 
--- [[ PROCESS PASTE KE STARTERGUI (DENGAN FALLBACK KE PLAYERGUI) ]]
+-- [[ PROCESS PASTE KE SERVICES KEMBALI ]]
 _G.UpdatePasteList = function()
     for _, child in pairs(ListScroll:GetChildren()) do
         if child:IsA("Frame") or child:IsA("TextLabel") then child:Destroy() end
@@ -583,41 +634,48 @@ _G.UpdatePasteList = function()
             FileSelectBtn.MouseButton1Click:Connect(function()
                 FileSelectBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 150)
                 task.spawn(function()
-                    print("============ [ START PASTE TO STARTERGUI ] ============")
+                    print("============ [ START NON-WORKSPACE PASTE PROCESS ] ============")
                     local success, err = pcall(function()
                         local fileContent = readfile(file)
                         local loadedData = HttpService:JSONDecode(fileContent)
                         
                         table.sort(loadedData, function(a, b) return (a.Depth or 0) < (b.Depth or 0) end)
                         
-                        -- Cek apakah StarterGui bisa ditulisi langsung oleh executor
-                        local TargetContainer = StarterGui
-                        local canWriteStarterGui = pcall(function()
-                            local test = Instance.new("Folder")
-                            test.Name = "__TestPermission"
-                            test.Parent = StarterGui
-                            test:Destroy()
-                        end)
-                        
-                        -- Jika executor memblokir penulisan ke StarterGui saat runtime, gunakan PlayerGui
-                        if not canWriteStarterGui then
-                            TargetContainer = PlayerGui
+                        local function getTargetRoot(serviceName)
+                            local baseObj = ServiceMap[serviceName] or ReplicatedStorage
+                            
+                            local testOk = pcall(function()
+                                local test = Instance.new("Folder")
+                                test.Name = "__TestWrite"
+                                test.Parent = baseObj
+                                test:Destroy()
+                            end)
+                            
+                            if not testOk then
+                                if serviceName == "StarterGui" then return PlayerGui end
+                                return ReplicatedStorage
+                            end
+                            
+                            return baseObj
                         end
-                        
-                        local function findOrCreateParent(relativePath)
-                            local currentParent = TargetContainer
-                            for _, pathInfo in ipairs(relativePath) do
-                                local found = currentParent:FindFirstChild(pathInfo.Name)
-                                if not found then
-                                    local ok, created = pcall(function() return Instance.new(pathInfo.ClassName) end)
-                                    if not ok or not created then
-                                        created = Instance.new("Folder")
+
+                        local function findOrCreateParent(rootServiceName, relativePath)
+                            local currentParent = getTargetRoot(rootServiceName)
+                            
+                            for idx, pathInfo in ipairs(relativePath) do
+                                if idx < #relativePath then
+                                    local found = currentParent:FindFirstChild(pathInfo.Name)
+                                    if not found then
+                                        local ok, created = pcall(function() return Instance.new(pathInfo.ClassName) end)
+                                        if not ok or not created then
+                                            created = Instance.new("Folder")
+                                        end
+                                        created.Name = pathInfo.Name
+                                        pcall(function() created.Parent = currentParent end)
+                                        found = created
                                     end
-                                    created.Name = pathInfo.Name
-                                    pcall(function() created.Parent = currentParent end)
-                                    found = created
+                                    currentParent = found
                                 end
-                                currentParent = found
                             end
                             return currentParent
                         end
@@ -627,22 +685,26 @@ _G.UpdatePasteList = function()
                         
                         for _, data in ipairs(loadedData) do
                             pcall(function()
-                                local targetParent = findOrCreateParent(data.RelativePath)
+                                local targetParent = findOrCreateParent(data.RootService, data.RelativePath)
                                 
                                 pasteCount = pasteCount + 1
-                                if pasteCount % 20 == 0 then
+                                if pasteCount % 50 == 0 then
                                     FileSelectBtn.Text = "🔨 [" .. pasteCount .. "/" .. totalObjs .. "] Pasting..."
                                     task.wait()
                                 end
                                 
-                                local newObj = Instance.new(data.ClassName)
+                                local ok, newObj = pcall(function() return Instance.new(data.ClassName) end)
+                                if not ok or not newObj then
+                                    newObj = Instance.new("Folder")
+                                end
+                                
                                 newObj.Name = data.Name
                                 
                                 if data.Properties then
-                                    ApplyUIProperties(newObj, data.Properties)
+                                    ApplyUniversalProperties(newObj, data.Properties)
                                 end
                                 
-                                newObj.Parent = targetParent
+                                pcall(function() newObj.Parent = targetParent end)
                             end)
                         end
                     end)
