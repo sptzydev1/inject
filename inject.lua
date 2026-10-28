@@ -8,7 +8,7 @@ local StarterGui = game:GetService("StarterGui")
 local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
--- Proteksi Instan PlayerGui
+-- Proteksi Instan PlayerGui (Untuk GUI Control Panel Script)
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 5) or LocalPlayer.PlayerGui
 
 -- Mendapatkan Nama Game Secara Otomatis
@@ -22,11 +22,11 @@ task.spawn(function()
     end)
 end)
 
-local FILE_PREFIX = "UICopy_"
+local FILE_PREFIX = "StarterGuiCopy_"
 
--- [[ DEKLARASI GUI UTAMA STARTERGUI COPY ]]
+-- [[ DEKLARASI GUI UTAMA SPYZYY COPY V2.5 ]]
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SpyzyyCopyGuiV2"
+ScreenGui.Name = "SpyzyyStarterGuiCopyV2"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Enabled = true
 ScreenGui.Parent = PlayerGui
@@ -191,7 +191,7 @@ local function CreateScriptLabel(text, color, order)
     return label
 end
 
-CreateScriptLabel("✨ Script: Spyzyy StarterGui Copier", Color3.fromRGB(255, 255, 255), 1)
+CreateScriptLabel("✨ Script: Only StarterGui Copier", Color3.fromRGB(255, 255, 255), 1)
 CreateScriptLabel("👑 Status: PREMIUM VERSION", Color3.fromRGB(255, 200, 0), 2)
 CreateScriptLabel("🛠️ Maker: @Spyzyy (V2.5)", Color3.fromRGB(0, 255, 200), 3)
 
@@ -234,7 +234,7 @@ CopyButton.Size = UDim2.new(0, 216, 0, 32)
 CopyButton.Position = UDim2.new(0, 12, 0, 215)
 CopyButton.BackgroundColor3 = Color3.fromRGB(0, 130, 200)
 CopyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CopyButton.Text = "COPY STARTERGUI & PLAYERGUI"
+CopyButton.Text = "COPY ONLY STARTERGUI"
 CopyButton.Font = Enum.Font.SourceSansBold
 CopyButton.TextSize = 11
 CopyButton.Parent = MainFrame
@@ -247,11 +247,11 @@ local ListLabel = Instance.new("TextLabel")
 ListLabel.Size = UDim2.new(1, -24, 0, 20)
 ListLabel.Position = UDim2.new(0, 12, 0, 252)
 ListLabel.BackgroundTransparency = 1
-ListLabel.Text = "Pilih Data Hasil UI Untuk Di-Paste:"
+ListLabel.Text = "Pilih Data Hasil Untuk Di-Paste Ke StarterGui:"
 ListLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
 ListLabel.TextXAlignment = Enum.TextXAlignment.Left
 ListLabel.Font = Enum.Font.SourceSansSemibold
-ListLabel.TextSize = 12
+ListLabel.TextSize = 11
 ListLabel.Parent = MainFrame
 
 local ListScroll = Instance.new("ScrollingFrame")
@@ -335,7 +335,7 @@ end
 
 ThemeButton.MouseButton1Click:Connect(ApplyStaticCoolTheme)
 
--- [[ LOGIKA GLOBAL DRAGGABLE ]]
+-- [[ LOGIKA DRAGGABLE ]]
 local function MakeDraggable(frame)
     local dragging, dragInput, dragStart, startPos
     frame.InputBegan:Connect(function(input)
@@ -372,20 +372,12 @@ ToggleButton.MouseButton1Click:Connect(function()
     ToggleButton.Visible = false
 end)
 
--- [[ ENGINE SERIALISASI STARTERGUI & PROPERTI ASLI ]]
-
-local TargetUIClasses = {
-    ["ScreenGui"] = true, ["Frame"] = true, ["TextLabel"] = true, ["TextButton"] = true,
-    ["ImageLabel"] = true, ["ImageButton"] = true, ["TextBox"] = true, ["ScrollingFrame"] = true,
-    ["UICorner"] = true, ["UIStroke"] = true, ["UIPadding"] = true, ["UIListLayout"] = true,
-    ["UIGridLayout"] = true, ["UIGradient"] = true, ["UIAspectRatioConstraint"] = true,
-    ["UISizeConstraint"] = true, ["BillboardGui"] = true, ["SurfaceGui"] = true
-}
+-- [[ ENGINE REPLIKASI STARTERGUI ]]
 
 local function getUIRelativePath(obj)
     local path = {}
     local current = obj.Parent
-    while current and current ~= StarterGui and current ~= PlayerGui and current ~= game do
+    while current and current ~= StarterGui and current ~= game do
         table.insert(path, 1, {Name = current.Name, ClassName = current.ClassName})
         current = current.Parent
     end
@@ -395,7 +387,6 @@ end
 local function ExtractUIProperties(obj)
     local props = {}
     
-    -- Helper konversi tipe data ke format JSON-friendly
     local function serializeVal(v)
         local t = typeof(v)
         if t == "Color3" then
@@ -492,38 +483,36 @@ CopyButton.MouseButton1Click:Connect(function()
     local fileName = FILE_PREFIX .. GameName .. "_" .. uniqueID .. ".json"
     
     local objectsToScan = StarterGui:GetDescendants()
-    for _, item in ipairs(PlayerGui:GetDescendants()) do
-        if not item:IsDescendantOf(ScreenGui) and item ~= ScreenGui then
-            table.insert(objectsToScan, item)
-        end
-    end
-    
     local totalObjects = #objectsToScan
     
+    if totalObjects == 0 then
+        CopyButton.Text = "StarterGui Kosong!"
+        ProgressText.Text = "Kosong - 0 Objek"
+        return
+    end
+
     for idx, obj in pairs(objectsToScan) do
-        if TargetUIClasses[obj.ClassName] or obj:IsA("GuiObject") or obj:IsA("LayerCollector") or obj:IsA("UIComponent") then
-            count = count + 1
-            
-            if idx % 50 == 0 or idx == totalObjects then
-                local pct = math.floor((idx / totalObjects) * 100)
-                ProgressBar.Size = UDim2.new(pct / 100, 0, 1, 0)
-                ProgressText.Text = "Copying... " .. pct .. "%"
-                CopyButton.Text = "📸 UI Objs: [" .. count .. "]"
-                task.wait()
-            end
-            
-            local relPath = getUIRelativePath(obj)
-            
-            local data = {
-                Name = obj.Name,
-                ClassName = obj.ClassName,
-                RelativePath = relPath,
-                Depth = #relPath,
-                Properties = ExtractUIProperties(obj)
-            }
-            
-            table.insert(SaveData, data)
+        count = count + 1
+        
+        if idx % 20 == 0 or idx == totalObjects then
+            local pct = math.floor((idx / totalObjects) * 100)
+            ProgressBar.Size = UDim2.new(pct / 100, 0, 1, 0)
+            ProgressText.Text = "Copying... " .. pct .. "%"
+            CopyButton.Text = "📸 UI Objs: [" .. count .. "]"
+            task.wait()
         end
+        
+        local relPath = getUIRelativePath(obj)
+        
+        local data = {
+            Name = obj.Name,
+            ClassName = obj.ClassName,
+            RelativePath = relPath,
+            Depth = #relPath,
+            Properties = ExtractUIProperties(obj)
+        }
+        
+        table.insert(SaveData, data)
     end
     
     ProgressBar.Size = UDim2.new(1, 0, 1, 0)
@@ -533,11 +522,11 @@ CopyButton.MouseButton1Click:Connect(function()
     ProgressText.Text = "Done - 100%"
     CopyButton.Text = "💾 COPIED: " .. count .. " UI OBJS"
     task.wait(2)
-    CopyButton.Text = "COPY STARTERGUI & PLAYERGUI"
+    CopyButton.Text = "COPY ONLY STARTERGUI"
     _G.UpdatePasteList()
 end)
 
--- [[ PROCESS PASTE ]]
+-- [[ PROCESS PASTE KE STARTERGUI (DENGAN FALLBACK KE PLAYERGUI) ]]
 _G.UpdatePasteList = function()
     for _, child in pairs(ListScroll:GetChildren()) do
         if child:IsA("Frame") or child:IsA("TextLabel") then child:Destroy() end
@@ -594,14 +583,26 @@ _G.UpdatePasteList = function()
             FileSelectBtn.MouseButton1Click:Connect(function()
                 FileSelectBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 150)
                 task.spawn(function()
-                    print("============ [ START UI PASTE PROCESS ] ============")
+                    print("============ [ START PASTE TO STARTERGUI ] ============")
                     local success, err = pcall(function()
                         local fileContent = readfile(file)
                         local loadedData = HttpService:JSONDecode(fileContent)
                         
                         table.sort(loadedData, function(a, b) return (a.Depth or 0) < (b.Depth or 0) end)
                         
-                        local TargetContainer = PlayerGui -- Tempelkan langsung ke PlayerGui agar terlihat
+                        -- Cek apakah StarterGui bisa ditulisi langsung oleh executor
+                        local TargetContainer = StarterGui
+                        local canWriteStarterGui = pcall(function()
+                            local test = Instance.new("Folder")
+                            test.Name = "__TestPermission"
+                            test.Parent = StarterGui
+                            test:Destroy()
+                        end)
+                        
+                        -- Jika executor memblokir penulisan ke StarterGui saat runtime, gunakan PlayerGui
+                        if not canWriteStarterGui then
+                            TargetContainer = PlayerGui
+                        end
                         
                         local function findOrCreateParent(relativePath)
                             local currentParent = TargetContainer
@@ -613,7 +614,7 @@ _G.UpdatePasteList = function()
                                         created = Instance.new("Folder")
                                     end
                                     created.Name = pathInfo.Name
-                                    created.Parent = currentParent
+                                    pcall(function() created.Parent = currentParent end)
                                     found = created
                                 end
                                 currentParent = found
@@ -629,7 +630,7 @@ _G.UpdatePasteList = function()
                                 local targetParent = findOrCreateParent(data.RelativePath)
                                 
                                 pasteCount = pasteCount + 1
-                                if pasteCount % 50 == 0 then
+                                if pasteCount % 20 == 0 then
                                     FileSelectBtn.Text = "🔨 [" .. pasteCount .. "/" .. totalObjs .. "] Pasting..."
                                     task.wait()
                                 end
