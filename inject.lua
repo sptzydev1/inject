@@ -1,741 +1,521 @@
--- [[ CONFIGURASI & VARIABLE UTAMA ]]
+-- Clean up existing GUI
+if game.CoreGui:FindFirstChild("VoiceRedirectorPro") then
+    game.CoreGui.VoiceRedirectorPro:Destroy()
+end
+
+-- Services
 local HttpService = game:GetService("HttpService")
-local UIS = game:GetService("UserInputService")
-local Players = game:GetService("Players")
-local MarketplaceService = game:GetService("MarketplaceService")
-local UserService = game:GetService("UserService")
-local Lighting = game:GetService("Lighting")
-local StarterGui = game:GetService("StarterGui")
-local StarterPack = game:GetService("StarterPack")
-local StarterPlayer = game:GetService("StarterPlayer")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local ReplicatedFirst = game:GetService("ReplicatedFirst")
-local ServerStorage = game:GetService("ServerStorage")
-local ServerScriptService = game:GetService("ServerScriptService")
 local TweenService = game:GetService("TweenService")
+local VoiceChatService = game:GetService("VoiceChatService")
 
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui", 5) or LocalPlayer.PlayerGui
+-- Config Storage
+local CONFIG_FILE = "Delta_VoicePro_Config.txt"
 
--- Mendapatkan Nama Game Secara Otomatis
-local GameName = "Unknown_Game"
-task.spawn(function()
-    pcall(function()
-        local productInfo = MarketplaceService:GetProductInfo(game.PlaceId)
-        if productInfo and productInfo.Name then
-            GameName = productInfo.Name:gsub("[%s%p]", "_")
-        end
-    end)
-end)
-
-local FILE_PREFIX = "FullGameCopy_"
-
--- [[ DEKLARASI GUI UTAMA SPYZYY COPY V3.0 ]]
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SpyzyyFullGameCopyV3"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Enabled = true
-ScreenGui.Parent = PlayerGui
-
--- Tombol Open/Toggle (🛡️)
-local ToggleButton = Instance.new("TextButton")
-ToggleButton.Name = "ToggleButton"
-ToggleButton.Size = UDim2.new(0, 50, 0, 50)
-ToggleButton.Position = UDim2.new(0.05, 0, 0.5, -25)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-ToggleButton.Text = "🛡️"
-ToggleButton.TextSize = 25
-ToggleButton.Visible = false
-ToggleButton.Active = true
-ToggleButton.Parent = ScreenGui
-
-local ToggleCorner = Instance.new("UICorner")
-ToggleCorner.CornerRadius = UDim.new(1, 0)
-ToggleCorner.Parent = ToggleButton
-
-local ToggleStroke = Instance.new("UIStroke")
-ToggleStroke.Thickness = 2
-ToggleStroke.Color = Color3.fromRGB(0, 200, 255)
-ToggleStroke.Parent = ToggleButton
-
--- Main Frame
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 240, 0, 490) 
-MainFrame.Position = UDim2.new(0.5, -120, 0.5, -245)
-MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
-MainFrame.BorderSizePixel = 0
-MainFrame.Active = true
-MainFrame.Parent = ScreenGui
-
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 12)
-MainCorner.Parent = MainFrame
-
-local MainStroke = Instance.new("UIStroke")
-MainStroke.Thickness = 2
-MainStroke.Color = Color3.fromRGB(0, 200, 255)
-MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-MainStroke.Parent = MainFrame
-
-local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -40, 0, 40)
-Title.Position = UDim2.new(0, 10, 0, 0)
-Title.BackgroundTransparency = 1
-Title.Text = "🚀 FULL GAME COPY SPYZYY V3.0"
-Title.TextColor3 = Color3.fromRGB(255, 255, 255)
-Title.Font = Enum.Font.SourceSansBold
-Title.TextSize = 13
-Title.TextXAlignment = Enum.TextXAlignment.Left
-Title.Parent = MainFrame
-
--- Tombol Close (❌)
-local CloseButton = Instance.new("TextButton")
-CloseButton.Name = "CloseButton"
-CloseButton.Size = UDim2.new(0, 30, 0, 30)
-CloseButton.Position = UDim2.new(1, -35, 0, 5)
-CloseButton.BackgroundTransparency = 1
-CloseButton.Text = "❌"
-CloseButton.TextSize = 16
-CloseButton.TextColor3 = Color3.fromRGB(255, 50, 50)
-CloseButton.Font = Enum.Font.SourceSansBold
-CloseButton.Parent = MainFrame
-
--- [[ PANEL PROFILE USER ]]
-local InfoPanel = Instance.new("Frame")
-InfoPanel.Size = UDim2.new(0, 216, 0, 85)
-InfoPanel.Position = UDim2.new(0, 12, 0, 40)
-InfoPanel.BackgroundColor3 = Color3.fromRGB(28, 28, 35)
-InfoPanel.BorderSizePixel = 0
-InfoPanel.Parent = MainFrame
-
-local InfoPanelCorner = Instance.new("UICorner")
-InfoPanelCorner.CornerRadius = UDim.new(0, 6)
-InfoPanelCorner.Parent = InfoPanel
-
-local InfoPanelStroke = Instance.new("UIStroke")
-InfoPanelStroke.Thickness = 1
-InfoPanelStroke.Color = Color3.fromRGB(50, 50, 60)
-InfoPanelStroke.Parent = InfoPanel
-
-local UserLayout = Instance.new("UIListLayout")
-UserLayout.Padding = UDim.new(0, 2)
-UserLayout.SortOrder = Enum.SortOrder.LayoutOrder
-UserLayout.Parent = InfoPanel
-
-local function CreateProfileLabel(text, color, order)
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -10, 0, 18)
-    label.Position = UDim2.new(0, 8, 0, 0)
-    label.BackgroundTransparency = 1
-    label.TextColor3 = color or Color3.fromRGB(200, 200, 200)
-    label.Font = Enum.Font.SourceSansSemibold
-    label.TextSize = 11
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Text = text
-    label.LayoutOrder = order
-    label.Parent = InfoPanel
-    return label
+local function readConfig()
+    local ok, data = pcall(function() return readfile(CONFIG_FILE) end)
+    return (ok and data) or nil
 end
 
-local NameLabel = CreateProfileLabel("👤 Name: Loading...", Color3.fromRGB(255, 255, 255), 1)
-local UsernameLabel = CreateProfileLabel("🆔 User: @" .. LocalPlayer.Name, Color3.fromRGB(180, 180, 180), 2)
-local AgeLabel = CreateProfileLabel("📅 Umur Akun: Dihitung...", Color3.fromRGB(0, 200, 255), 3)
-local BioLabel = CreateProfileLabel("📝 Bio: Loading...", Color3.fromRGB(150, 150, 150), 4)
-
-task.spawn(function()
-    pcall(function()
-        NameLabel.Text = "👤 Name: " .. LocalPlayer.DisplayName
-        local accountAge = LocalPlayer.AccountAge
-        AgeLabel.Text = "📅 Umur Akun: " .. accountAge .. " Hari"
-        
-        local playerInfo = UserService:GetUserInfosByUserIdsAsync({LocalPlayer.UserId})
-        if playerInfo and playerInfo[1] and playerInfo[1].Description ~= "" then
-            local bio = playerInfo[1].Description
-            if #bio > 22 then bio = string.sub(bio, 1, 20) .. ".." end
-            BioLabel.Text = "📝 Bio: " .. bio
-        else
-            BioLabel.Text = "📝 Bio: (Kosong)"
-        end
-    end)
-end)
-
--- [[ PANEL INFO SCRIPT PREMIUM ]]
-local ScriptInfoPanel = Instance.new("Frame")
-ScriptInfoPanel.Size = UDim2.new(0, 216, 0, 55)
-ScriptInfoPanel.Position = UDim2.new(0, 12, 0, 130)
-ScriptInfoPanel.BackgroundColor3 = Color3.fromRGB(28, 20, 35)
-ScriptInfoPanel.BorderSizePixel = 0
-ScriptInfoPanel.Parent = MainFrame
-
-local ScriptInfoCorner = Instance.new("UICorner")
-ScriptInfoCorner.CornerRadius = UDim.new(0, 6)
-ScriptInfoCorner.Parent = ScriptInfoPanel
-
-local ScriptInfoStroke = Instance.new("UIStroke")
-ScriptInfoStroke.Thickness = 1
-ScriptInfoStroke.Color = Color3.fromRGB(120, 0, 255)
-ScriptInfoStroke.Parent = ScriptInfoPanel
-
-local ScriptLayout = Instance.new("UIListLayout")
-ScriptLayout.Padding = UDim.new(0, 1)
-ScriptLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ScriptLayout.Parent = ScriptInfoPanel
-
-local function CreateScriptLabel(text, color, order)
-    local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -10, 0, 16)
-    label.Position = UDim2.new(0, 8, 0, 0)
-    label.BackgroundTransparency = 1
-    label.TextColor3 = color
-    label.Font = Enum.Font.SourceSansBold
-    label.TextSize = 11
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.Text = text
-    label.LayoutOrder = order
-    label.Parent = ScriptInfoPanel
-    return label
+local function writeConfig(data)
+    pcall(function() writefile(CONFIG_FILE, data) end)
 end
 
-CreateScriptLabel("✨ Script: Full Game Structure Copier", Color3.fromRGB(255, 255, 255), 1)
-CreateScriptLabel("👑 Status: PREMIUM VERSION", Color3.fromRGB(255, 200, 0), 2)
-CreateScriptLabel("🛠️ Maker: @Spyzyy (V3.0)", Color3.fromRGB(0, 255, 200), 3)
+-- Base GUI Setup
+local gui = Instance.new("ScreenGui")
+gui.Name = "VoiceRedirectorPro"
+gui.Parent = game.CoreGui
+gui.ResetOnSpawn = false
 
--- [[ ELEMENT PROGRESS BAR LOADING ]]
-local ProgressContainer = Instance.new("Frame")
-ProgressContainer.Name = "ProgressContainer"
-ProgressContainer.Size = UDim2.new(0, 216, 0, 18)
-ProgressContainer.Position = UDim2.new(0, 12, 0, 192)
-ProgressContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
-ProgressContainer.BorderSizePixel = 0
-ProgressContainer.Parent = MainFrame
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 290, 0, 310)
+main.Position = UDim2.new(0.5, -145, 0.3, 0)
+main.BackgroundColor3 = Color3.fromRGB(28, 28, 30)
+main.BorderSizePixel = 1
+main.BorderColor3 = Color3.fromRGB(60, 60, 60)
+main.Active = true
+main.Draggable = true
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
 
-local ProgressContainerCorner = Instance.new("UICorner")
-ProgressContainerCorner.CornerRadius = UDim.new(0, 4)
-ProgressContainerCorner.Parent = ProgressContainer
+local FONT = Enum.Font.GothamBold  
 
-local ProgressBar = Instance.new("Frame")
-ProgressBar.Name = "ProgressBar"
-ProgressBar.Size = UDim2.new(0, 0, 1, 0)
-ProgressBar.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
-ProgressBar.BorderSizePixel = 0
-ProgressBar.Parent = ProgressContainer
+-- Header
+local header = Instance.new("Frame")
+header.Size = UDim2.new(1, 0, 0, 32)
+header.BackgroundColor3 = Color3.fromRGB(40, 40, 45)
+header.BorderSizePixel = 0
+header.Parent = main
+Instance.new("UICorner", header).CornerRadius = UDim.new(0, 12)
 
-local ProgressBarCorner = Instance.new("UICorner")
-ProgressBarCorner.CornerRadius = UDim.new(0, 4)
-ProgressBarCorner.Parent = ProgressBar
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -30, 1, 0)
+title.Position = UDim2.new(0, 10, 0, 0)
+title.BackgroundTransparency = 1
+title.Text = "🎙️ VC Redirector"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = FONT
+title.TextSize = 14
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = header
 
-local ProgressText = Instance.new("TextLabel")
-ProgressText.Size = UDim2.new(1, 0, 1, 0)
-ProgressText.BackgroundTransparency = 1
-ProgressText.Text = "Ready - 0%"
-ProgressText.TextColor3 = Color3.fromRGB(255, 255, 255)
-ProgressText.Font = Enum.Font.SourceSansBold
-ProgressText.TextSize = 11
-ProgressText.Parent = ProgressContainer
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 24, 0, 24)
+closeBtn.Position = UDim2.new(1, -28, 0, 4)
+closeBtn.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
+closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+closeBtn.BorderSizePixel = 0
+closeBtn.Text = "✕"
+closeBtn.Font = FONT
+closeBtn.TextSize = 12
+closeBtn.Parent = main
+Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 12)
 
--- [[ TOMBOL & ELEMENT GUI SCRIPT ]]
-local CopyButton = Instance.new("TextButton")
-CopyButton.Size = UDim2.new(0, 216, 0, 32)
-CopyButton.Position = UDim2.new(0, 12, 0, 215)
-CopyButton.BackgroundColor3 = Color3.fromRGB(0, 130, 200)
-CopyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CopyButton.Text = "COPY ENTIRE GAME DATA"
-CopyButton.Font = Enum.Font.SourceSansBold
-CopyButton.TextSize = 11
-CopyButton.Parent = MainFrame
+-- Game Card Header
+local card = Instance.new("Frame")
+card.Size = UDim2.new(1, -12, 0, 36)
+card.Position = UDim2.new(0, 6, 0, 38)
+card.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+card.BorderSizePixel = 0
+card.Parent = main
+Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
 
-local CopyButtonCorner = Instance.new("UICorner")
-CopyButtonCorner.CornerRadius = UDim.new(0, 6)
-CopyButtonCorner.Parent = CopyButton
+local cardGameName = Instance.new("TextLabel")
+cardGameName.Size = UDim2.new(1, -16, 1, 0)
+cardGameName.Position = UDim2.new(0, 8, 0, 0)
+cardGameName.BackgroundTransparency = 1
+cardGameName.Text = "Belum ada target"
+cardGameName.TextColor3 = Color3.fromRGB(255, 255, 255)
+cardGameName.Font = FONT
+cardGameName.TextSize = 13
+cardGameName.TextXAlignment = Enum.TextXAlignment.Left
+cardGameName.TextTruncate = Enum.TextTruncate.AtEnd
+cardGameName.Parent = card
 
-local ListLabel = Instance.new("TextLabel")
-ListLabel.Size = UDim2.new(1, -24, 0, 20)
-ListLabel.Position = UDim2.new(0, 12, 0, 252)
-ListLabel.BackgroundTransparency = 1
-ListLabel.Text = "Pilih Data Hasil Untuk Di-Paste Ke Game:"
-ListLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
-ListLabel.TextXAlignment = Enum.TextXAlignment.Left
-ListLabel.Font = Enum.Font.SourceSansSemibold
-ListLabel.TextSize = 11
-ListLabel.Parent = MainFrame
-
-local ListScroll = Instance.new("ScrollingFrame")
-ListScroll.Size = UDim2.new(0, 216, 0, 125)
-ListScroll.Position = UDim2.new(0, 12, 0, 275)
-ListScroll.BackgroundColor3 = Color3.fromRGB(14, 14, 16)
-ListScroll.BorderSizePixel = 0
-ListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-ListScroll.ScrollBarThickness = 4
-ListScroll.Parent = MainFrame
-
-local ListScrollCorner = Instance.new("UICorner")
-ListScrollCorner.CornerRadius = UDim.new(0, 6)
-ListScrollCorner.Parent = ListScroll
-
-local ListLayout = Instance.new("UIListLayout")
-ListLayout.Padding = UDim.new(0, 4)
-ListLayout.Parent = ListScroll
-
-local RefreshButton = Instance.new("TextButton")
-RefreshButton.Size = UDim2.new(0, 216, 0, 24)
-RefreshButton.Position = UDim2.new(0, 12, 0, 410)
-RefreshButton.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-RefreshButton.TextColor3 = Color3.fromRGB(200, 200, 200)
-RefreshButton.Text = "🔄 Refresh List"
-RefreshButton.Font = Enum.Font.SourceSans
-RefreshButton.TextSize = 11
-RefreshButton.Parent = MainFrame
-
-local RefreshCorner = Instance.new("UICorner")
-RefreshCorner.CornerRadius = UDim.new(0, 4)
-RefreshCorner.Parent = RefreshButton
-
--- [[ TOMBOL UBAH TEMA ]]
-local ThemeButton = Instance.new("TextButton")
-ThemeButton.Size = UDim2.new(0, 216, 0, 24)
-ThemeButton.Position = UDim2.new(0, 12, 0, 440)
-ThemeButton.BackgroundColor3 = Color3.fromRGB(20, 35, 45)
-ThemeButton.TextColor3 = Color3.fromRGB(0, 255, 200)
-ThemeButton.Text = "🎨 Switch Cool Static Theme"
-ThemeButton.Font = Enum.Font.SourceSansBold
-ThemeButton.TextSize = 11
-ThemeButton.Parent = MainFrame
-
-local ThemeCorner = Instance.new("UICorner")
-ThemeCorner.CornerRadius = UDim.new(0, 4)
-ThemeCorner.Parent = ThemeButton
-
-local ThemeStroke = Instance.new("UIStroke")
-ThemeStroke.Thickness = 1
-ThemeStroke.Color = Color3.fromRGB(0, 200, 150)
-ThemeStroke.Parent = ThemeButton
-
-local function ApplyStaticCoolTheme()
-    local duration = 0.5
-    local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+-- Inputs Factory
+local function makeInput(v7, label, placeholder, isApi)
+    local lbl = Instance.new("TextLabel")
+    lbl.Size = UDim2.new(0, 85, 0, 18)
+    lbl.Position = UDim2.new(0, 8, 0, v7)
+    lbl.BackgroundTransparency = 1
+    lbl.Text = label
+    lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+    lbl.Font = FONT
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Parent = main
     
-    local MainBgColor = Color3.fromRGB(15, 12, 22)
-    local AccentColor1 = Color3.fromRGB(255, 0, 128)
-    local AccentColor2 = Color3.fromRGB(0, 255, 230)
-    local PanelBgColor = Color3.fromRGB(25, 20, 35)
-    
-    TweenService:Create(MainFrame, info, {BackgroundColor3 = MainBgColor}):Play()
-    TweenService:Create(MainStroke, info, {Color = AccentColor1}):Play()
-    TweenService:Create(ToggleStroke, info, {Color = AccentColor2}):Play()
-    
-    TweenService:Create(InfoPanel, info, {BackgroundColor3 = PanelBgColor}):Play()
-    TweenService:Create(InfoPanelStroke, info, {Color = AccentColor2}):Play()
-    
-    TweenService:Create(ScriptInfoPanel, info, {BackgroundColor3 = Color3.fromRGB(35, 15, 40)}):Play()
-    TweenService:Create(ScriptInfoStroke, info, {Color = AccentColor1}):Play()
-    
-    TweenService:Create(ProgressBar, info, {BackgroundColor3 = AccentColor1}):Play()
-    TweenService:Create(CopyButton, info, {BackgroundColor3 = AccentColor2, TextColor3 = Color3.fromRGB(0,0,0)}):Play()
-    TweenService:Create(ListScroll, info, {BackgroundColor3 = Color3.fromRGB(10, 8, 15)}):Play()
-    
-    ThemeButton.Text = "✨ STYLISH SYNTHWAVE ACTIVE ✨"
-    ThemeButton.TextColor3 = AccentColor1
-    ThemeStroke.Color = AccentColor2
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(1, -100, 0, 28)
+    box.Position = UDim2.new(0, 92, 0, v7 - 2)
+    box.BackgroundColor3 = Color3.fromRGB(58, 58, 62)
+    box.TextColor3 = Color3.fromRGB(255, 255, 255)
+    box.PlaceholderColor3 = Color3.fromRGB(140, 140, 140)
+    box.BorderSizePixel = 1
+    box.BorderColor3 = Color3.fromRGB(90, 90, 90)
+    box.PlaceholderText = isApi and "Masukkan API Key" or (placeholder or "")
+    box.Font = FONT
+    box.TextSize = 12
+    box.TextTruncate = Enum.TextTruncate.AtEnd
+    box.Text = ""
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
+    box.Parent = main
+    return box
 end
 
-ThemeButton.MouseButton1Click:Connect(ApplyStaticCoolTheme)
+local universeBox = makeInput(80, "Universe ID", "cth: 123456789")
+local placeBox    = makeInput(118, "Place ID", "cth: 987654321")
+local apiBox      = makeInput(156, "API Key", "", true)
 
--- [[ LOGIKA DRAGGABLE ]]
-local function MakeDraggable(frame)
-    local dragging, dragInput, dragStart, startPos
-    frame.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = frame.Position
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
-            end)
-        end
-    end)
-    frame.InputChanged:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then dragInput = input end
-    end)
-    UIS.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
+-- Status Display
+local statusLabel = Instance.new("TextLabel")
+statusLabel.Size = UDim2.new(1, -12, 0, 24)
+statusLabel.Position = UDim2.new(0, 6, 0, 192)
+statusLabel.BackgroundColor3 = Color3.fromRGB(50, 50, 55)
+statusLabel.BorderSizePixel = 1
+statusLabel.BorderColor3 = Color3.fromRGB(80, 80, 80)
+statusLabel.Text = "Isi semua field!"
+statusLabel.TextColor3 = Color3.fromRGB(255, 255, 100)
+statusLabel.Font = FONT
+statusLabel.TextSize = 11
+statusLabel.TextWrapped = true
+statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+statusLabel.Parent = main
+Instance.new("UICorner", statusLabel).CornerRadius = UDim.new(0, 6)
+
+-- Loading Dots Animation Setup
+local dotsFrame = Instance.new("Frame")
+dotsFrame.Size = UDim2.new(0, 40, 0, 12)
+dotsFrame.Position = UDim2.new(0.5, -20, 0, 220)
+dotsFrame.BackgroundTransparency = 1
+dotsFrame.Visible = false
+dotsFrame.Parent = main
+
+local dots = {}
+for i = 1, 3 do
+    local dot = Instance.new("TextLabel")
+    dot.Size = UDim2.new(0, 10, 0, 10)
+    dot.BackgroundTransparency = 1
+    dot.Text = "•"
+    dot.TextColor3 = Color3.fromRGB(255, 200, 0)
+    dot.Font = FONT
+    dot.TextSize = 14
+    dot.AnchorPoint = Vector2.new(0.5, 0.5)
+    dot.Position = UDim2.new(0, (i - 1) * 14 + 6, 0, 6)
+    dot.Parent = dotsFrame
+    dots[i] = dot
 end
 
-MakeDraggable(MainFrame)
-MakeDraggable(ToggleButton)
+-- =========================================================
+-- HELPER FUNCTIONS & LOGIC (Deklarasi sebelum pemanggilan)
+-- =========================================================
 
-CloseButton.MouseButton1Click:Connect(function()
-    MainFrame.Visible = false
-    ToggleButton.Visible = true
-end)
+local isProcessing = false
+local activeTweens = {}
 
-ToggleButton.MouseButton1Click:Connect(function()
-    MainFrame.Visible = true
-    ToggleButton.Visible = false
-end)
+local function setStatus(text, state)
+    if not statusLabel then return end  
+    statusLabel.Text = text
+    local color = Color3.fromRGB(220, 220, 100)
+    if state == "process" then
+        color = Color3.fromRGB(255, 255, 0)
+    elseif state == "success" then
+        color = Color3.fromRGB(0, 255, 100)
+    elseif state == "error" then
+        color = Color3.fromRGB(255, 50, 50)
+    end
+    statusLabel.TextColor3 = color
+end
 
--- [[ MAP REPOSITORY SERVICE UTAMA ]]
-local ServiceMap = {
-    ["Workspace"] = workspace,
-    ["Lighting"] = Lighting,
-    ["Players"] = Players,
-    ["StarterGui"] = StarterGui,
-    ["StarterPack"] = StarterPack,
-    ["StarterPlayer"] = StarterPlayer,
-    ["ReplicatedStorage"] = ReplicatedStorage,
-    ["ReplicatedFirst"] = ReplicatedFirst,
-    ["ServerStorage"] = ServerStorage,
-    ["ServerScriptService"] = ServerScriptService
-}
+local function stopAnim()
+    isProcessing = false
+    dotsFrame.Visible = false
+    for _, tw in ipairs(activeTweens) do
+        tw:Cancel()
+    end
+    table.clear(activeTweens)
+    for _, dot in ipairs(dots) do
+        dot.TextTransparency = 1
+        dot.TextSize = 8
+    end
+end
 
-local function getRootServiceAndPath(obj)
-    local path = {}
-    local current = obj
-    local rootServiceName = "Workspace"
+local function startAnim()
+    if isProcessing then return end
+    isProcessing = true
+    dotsFrame.Visible = true
     
-    while current and current ~= game do
-        for name, serviceObj in pairs(ServiceMap) do
-            if current == serviceObj then
-                rootServiceName = name
-                return rootServiceName, path
+    for _, dot in ipairs(dots) do
+        dot.TextTransparency = 1
+        dot.TextSize = 8
+    end
+    
+    task.spawn(function()
+        while isProcessing do
+            for _, dot in ipairs(dots) do
+                if not isProcessing then break end
+                
+                local twIn = TweenService:Create(dot, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0.2, TextSize = 16})
+                table.insert(activeTweens, twIn)
+                twIn:Play()
+                
+                task.wait(0.15)
+                if not isProcessing then break end
+                
+                local twOut = TweenService:Create(dot, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {TextTransparency = 1, TextSize = 8})
+                table.insert(activeTweens, twOut)
+                twOut:Play()
+                
+                task.wait(0.15)
             end
+            task.wait(0.1)
         end
-        table.insert(path, 1, {Name = current.Name, ClassName = current.ClassName})
-        current = current.Parent
-    end
-    
-    return rootServiceName, path
+        stopAnim()
+    end)
 end
 
-local function isPlayerCharacter(obj)
-    for _, p in pairs(Players:GetPlayers()) do
-        if p.Character and (obj == p.Character or obj:IsDescendantOf(p.Character)) then
-            return true
-        end
+local function updateGameInfo(universeId, apiKey)
+    if not cardGameName then return end  
+    local univ = tonumber(universeId)
+    if not univ then
+        cardGameName.Text = "Universe ID tidak valid"
+        return
     end
-    return false
-end
-
--- [[ UNIVERSAL SERIALIZER PROPERTI ]]
-local function ExtractUniversalProperties(obj)
-    local props = {}
-    
-    local function serializeVal(v)
-        local t = typeof(v)
-        if t == "Color3" then
-            return {Type = "Color3", R = v.R * 255, G = v.G * 255, B = v.B * 255}
-        elseif t == "UDim2" then
-            return {Type = "UDim2", XS = v.X.Scale, XO = v.X.Offset, YS = v.Y.Scale, YO = v.Y.Offset}
-        elseif t == "UDim" then
-            return {Type = "UDim", S = v.Scale, O = v.Offset}
-        elseif t == "Vector3" then
-            return {Type = "Vector3", X = v.X, Y = v.Y, Z = v.Z}
-        elseif t == "CFrame" then
-            return {Type = "CFrame", Components = {v:GetComponents()}}
-        elseif t == "Vector2" then
-            return {Type = "Vector2", X = v.X, Y = v.Y}
-        elseif t == "Rect" then
-            return {Type = "Rect", MinX = v.Min.X, MinY = v.Min.Y, MaxX = v.Max.X, MaxY = v.Max.Y}
-        elseif t == "EnumItem" then
-            return {Type = "Enum", EnumType = tostring(v.EnumType), Name = v.Name}
-        elseif t == "number" or t == "string" or t == "boolean" then
-            return v
-        end
-        return nil
-    end
-
-    local generalProps = {
-        "Size", "Position", "CFrame", "Color", "Material", "Transparency", "Reflectance", "Anchored", "CanCollide", "CastShadow",
-        "MeshId", "TextureId", "AssetId", "Value",
-        "Size", "Position", "AnchorPoint", "ZIndex", "LayoutOrder", "Visible", "ClipsDescendants",
-        "BackgroundColor3", "BackgroundTransparency", "BorderSizePixel", "BorderColor3", "AutomaticSize",
-        "Text", "TextColor3", "TextSize", "Font", "TextTransparency", "TextScaled", "TextWrapped",
-        "TextXAlignment", "TextYAlignment", "PlaceholderText",
-        "Image", "ImageColor3", "ImageTransparency", "ImageRectOffset", "ImageRectSize", "ScaleType", "SliceCenter", "TileSize",
-        "CornerRadius", "Thickness", "ApplyStrokeMode", "LineJoinMode",
-        "PaddingLeft", "PaddingRight", "PaddingTop", "PaddingBottom", "Padding", "FillDirection",
-        "HorizontalAlignment", "VerticalAlignment", "SortOrder", "CellSize", "CellPadding",
-        "AspectRatio", "AspectType", "DominantAxis", "MinSize", "MaxSize",
-        "ResetOnSpawn", "Enabled", "DisplayOrder", "IgnoreGuiInset",
-        "CanvasSize", "ScrollBarThickness", "ScrollBarImageColor3",
-        "SoundId", "Volume", "PlaybackSpeed", "Looped", "Playing", "TimePosition",
-        "Brightness", "Range", "Face"
-    }
-
-    for _, p in ipairs(generalProps) do
-        pcall(function()
-            local val = obj[p]
-            if val ~= nil then
-                local sVal = serializeVal(val)
-                if sVal ~= nil then
-                    props[p] = sVal
-                end
-            end
-        end)
-    end
-    
-    return props
-end
-
-local function ApplyUniversalProperties(obj, props)
-    local function deserializeVal(v)
-        if type(v) == "table" and v.Type then
-            if v.Type == "Color3" then
-                return Color3.fromRGB(v.R, v.G, v.B)
-            elseif v.Type == "UDim2" then
-                return UDim2.new(v.XS, v.XO, v.YS, v.YO)
-            elseif v.Type == "UDim" then
-                return UDim.new(v.S, v.O)
-            elseif v.Type == "Vector3" then
-                return Vector3.new(v.X, v.Y, v.Z)
-            elseif v.Type == "CFrame" then
-                return CFrame.new(unpack(v.Components))
-            elseif v.Type == "Vector2" then
-                return Vector2.new(v.X, v.Y)
-            elseif v.Type == "Rect" then
-                return Rect.new(v.MinX, v.MinY, v.MaxX, v.MaxY)
-            elseif v.Type == "Enum" then
-                local enumType = v.EnumType
-                if Enum[enumType] and Enum[enumType][v.Name] then
-                    return Enum[enumType][v.Name]
-                end
-            end
-        end
-        return v
-    end
-
-    for pName, pVal in pairs(props) do
-        pcall(function()
-            obj[pName] = deserializeVal(pVal)
-        end)
-    end
-end
-
--- [[ PROCESS COPY ENTIRE GAME ]]
-CopyButton.MouseButton1Click:Connect(function()
-    if not writefile then 
-        CopyButton.Text = "Executor Tak Support!"
-        return 
-    end
-    CopyButton.Text = "🔍 Scanning Entire Game..."
-    ProgressBar.Size = UDim2.new(0, 0, 1, 0)
-    ProgressText.Text = "Scanning... 0%"
-    task.wait(0.1)
-
-    local SaveData = {}
-    local count = 0
-    local uniqueID = math.random(1000, 9999) .. "_" .. os.date("%H%M%S")
-    local fileName = FILE_PREFIX .. GameName .. "_" .. uniqueID .. ".json"
-    
-    local objectsToScan = {}
-    
-    for _, sObj in pairs(ServiceMap) do
-        pcall(function()
-            for _, item in ipairs(sObj:GetDescendants()) do
-                if not item:IsDescendantOf(ScreenGui) and item ~= ScreenGui and not isPlayerCharacter(item) and not item:IsA("Camera") then
-                    table.insert(objectsToScan, item)
-                end
-            end
-        end)
-    end
-    
-    local totalObjects = #objectsToScan
-    
-    if totalObjects == 0 then
-        CopyButton.Text = "Objek Kosong!"
-        ProgressText.Text = "Kosong - 0 Objek"
+    if #apiKey == 0 then
+        cardGameName.Text = "Isi API Key untuk nama"
         return
     end
 
-    for idx, obj in pairs(objectsToScan) do
-        count = count + 1
-        
-        if idx % 100 == 0 or idx == totalObjects then
-            local pct = math.floor((idx / totalObjects) * 100)
-            ProgressBar.Size = UDim2.new(pct / 100, 0, 1, 0)
-            ProgressText.Text = "Copying... " .. pct .. "%"
-            CopyButton.Text = "📸 Objs: [" .. count .. "]"
-            task.wait()
-        end
-        
-        local rootService, relPath = getRootServiceAndPath(obj)
-        
-        local data = {
-            Name = obj.Name,
-            ClassName = obj.ClassName,
-            RootService = rootService,
-            RelativePath = relPath,
-            Depth = #relPath,
-            Properties = ExtractUniversalProperties(obj)
-        }
-        
-        table.insert(SaveData, data)
-    end
-    
-    ProgressBar.Size = UDim2.new(1, 0, 1, 0)
-    ProgressText.Text = "Saving to JSON..."
-    writefile(fileName, HttpService:JSONEncode(SaveData))
-    
-    ProgressText.Text = "Done - 100%"
-    CopyButton.Text = "💾 COPIED: " .. count .. " OBJS"
-    task.wait(2)
-    CopyButton.Text = "COPY ENTIRE GAME DATA"
-    _G.UpdatePasteList()
-end)
-
--- [[ PROCESS PASTE KE MINGGAT/SERVICES Masing-masing ]]
-_G.UpdatePasteList = function()
-    for _, child in pairs(ListScroll:GetChildren()) do
-        if child:IsA("Frame") or child:IsA("TextLabel") then child:Destroy() end
-    end
-    if not listfiles then return end
-    
-    local files = pcall(listfiles, "") and listfiles("") or {}
-    
-    for _, file in pairs(files) do
-        if file:match(FILE_PREFIX) and file:match("%.json$") then
-            local cleanName = file:gsub(FILE_PREFIX, ""):gsub("%.json", ""):gsub(".*/", "")
-            
-            local ItemFrame = Instance.new("Frame")
-            ItemFrame.Size = UDim2.new(1, -6, 0, 26)
-            ItemFrame.BackgroundTransparency = 1
-            ItemFrame.Parent = ListScroll
-            
-            local FileSelectBtn = Instance.new("TextButton")
-            FileSelectBtn.Size = UDim2.new(1, -26, 1, 0)
-            FileSelectBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-            FileSelectBtn.TextColor3 = Color3.fromRGB(0, 255, 150)
-            FileSelectBtn.Text = " 📄 " .. cleanName
-            FileSelectBtn.Font = Enum.Font.SourceSansSemibold
-            FileSelectBtn.TextSize = 11
-            FileSelectBtn.TextXAlignment = Enum.TextXAlignment.Left
-            FileSelectBtn.Parent = ItemFrame
-            
-            local BtnCorner = Instance.new("UICorner")
-            BtnCorner.CornerRadius = UDim.new(0, 4)
-            BtnCorner.Parent = FileSelectBtn
-            
-            local DeleteBtn = Instance.new("TextButton")
-            DeleteBtn.Size = UDim2.new(0, 22, 1, 0)
-            DeleteBtn.Position = UDim2.new(1, -22, 0, 0)
-            DeleteBtn.BackgroundColor3 = Color3.fromRGB(50, 20, 20)
-            DeleteBtn.TextColor3 = Color3.fromRGB(255, 70, 70)
-            DeleteBtn.Text = "❌"
-            DeleteBtn.Font = Enum.Font.SourceSansBold
-            DeleteBtn.TextSize = 10
-            DeleteBtn.Parent = ItemFrame
-            
-            local DelCorner = Instance.new("UICorner")
-            DelCorner.CornerRadius = UDim.new(0, 4)
-            DelCorner.Parent = DeleteBtn
-
-            DeleteBtn.MouseButton1Click:Connect(function()
-                if delfile then
-                    pcall(delfile, file)
-                    ItemFrame:Destroy()
-                    _G.UpdatePasteList()
+    task.spawn(function()
+        local ok, result = pcall(function()
+            local url = "https://apis.roblox.com/cloud/v5/universes/" .. universeId
+            local headers = {
+                ["x-api-key"] = apiKey,
+                ["v6-api-key"] = apiKey
+            }
+            local response
+            if HttpService.RequestAsync then
+                response = HttpService:RequestAsync({
+                    Url = url,
+                    Method = "GET",
+                    Headers = headers
+                })
+                if response.Success then
+                    local data = HttpService:JSONDecode(response.Body)
+                    return data.displayName or data.name or ("Universe " .. universeId)
                 end
-            end)
-            
-            FileSelectBtn.MouseButton1Click:Connect(function()
-                FileSelectBtn.BackgroundColor3 = Color3.fromRGB(0, 100, 150)
-                task.spawn(function()
-                    print("============ [ START FULL GAME PASTE PROCESS ] ============")
-                    local success, err = pcall(function()
-                        local fileContent = readfile(file)
-                        local loadedData = HttpService:JSONEncode and HttpService:JSONDecode(fileContent)
-                        
-                        table.sort(loadedData, function(a, b) return (a.Depth or 0) < (b.Depth or 0) end)
-                        
-                        local function getTargetRoot(serviceName)
-                            local baseObj = ServiceMap[serviceName] or workspace
-                            
-                            -- Fallback jika service diblokir aksesnya
-                            local testOk = pcall(function()
-                                local test = Instance.new("Folder")
-                                test.Name = "__TestWrite"
-                                test.Parent = baseObj
-                                test:Destroy()
-                            end)
-                            
-                            if not testOk then
-                                if serviceName == "StarterGui" then return PlayerGui end
-                                return workspace
-                            end
-                            
-                            return baseObj
-                        end
+            else
+                local res = HttpService:GetAsync(url, false, headers)
+                local data = HttpService:JSONDecode(res)
+                return data.displayName or data.name or ("Universe " .. universeId)
+            end
+            return nil
+        end)
 
-                        local function findOrCreateParent(rootServiceName, relativePath)
-                            local currentParent = getTargetRoot(rootServiceName)
-                            
-                            for idx, pathInfo in ipairs(relativePath) do
-                                if idx < #relativePath then
-                                    local found = currentParent:FindFirstChild(pathInfo.Name)
-                                    if not found then
-                                        local ok, created = pcall(function() return Instance.new(pathInfo.ClassName) end)
-                                        if not ok or not created then
-                                            created = Instance.new("Folder")
-                                        end
-                                        created.Name = pathInfo.Name
-                                        pcall(function() created.Parent = currentParent end)
-                                        found = created
-                                    end
-                                    currentParent = found
-                                end
-                            end
-                            return currentParent
-                        end
-                        
-                        local pasteCount = 0
-                        local totalObjs = #loadedData
-                        
-                        for _, data in ipairs(loadedData) do
-                            pcall(function()
-                                local targetParent = findOrCreateParent(data.RootService, data.RelativePath)
-                                
-                                pasteCount = pasteCount + 1
-                                if pasteCount % 50 == 0 then
-                                    FileSelectBtn.Text = "🔨 [" .. pasteCount .. "/" .. totalObjs .. "] Pasting..."
-                                    task.wait()
-                                end
-                                
-                                local ok, newObj = pcall(function() return Instance.new(data.ClassName) end)
-                                if not ok or not newObj then
-                                    newObj = Instance.new("Folder")
-                                end
-                                
-                                newObj.Name = data.Name
-                                
-                                if data.Properties then
-                                    ApplyUniversalProperties(newObj, data.Properties)
-                                end
-                                
-                                pcall(function() newObj.Parent = targetParent end)
-                            end)
-                        end
-                    end)
-                    
-                    if success then
-                        FileSelectBtn.Text = " ✅ SUCCESSFUL!"
-                        FileSelectBtn.BackgroundColor3 = Color3.fromRGB(0, 120, 0)
-                    else
-                        FileSelectBtn.Text = " ❌ ERROR OCCURRED!"
-                        FileSelectBtn.BackgroundColor3 = Color3.fromRGB(150, 0, 0)
-                    end
-                    task.wait(1.5)
-                    FileSelectBtn.Text = " 📄 " .. cleanName
-                    FileSelectBtn.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-                end)
-            end)
+        if ok and result then
+            cardGameName.Text = result
+        else
+            cardGameName.Text = "Gagal memuat nama"
         end
-    end
-    ListScroll.CanvasSize = UDim2.new(0, 0, 0, ListLayout.AbsoluteContentSize.Y)
+    end)
 end
 
-RefreshButton.MouseButton1Click:Connect(_G.UpdatePasteList)
-_G.UpdatePasteList()
+local function apiSet(univ, key, enable)
+    local url = "https://apis.roblox.com/cloud/v5/universes/" .. univ
+    local body = HttpService:JSONEncode({ voice_chat_enabled = enable })
+    local headers = {
+        ["x-api-key"] = key,
+        ["v6-api-key"] = key,
+        ["Content-Type"] = "application/json"
+    }
+    local ok, res = pcall(function()
+        if HttpService.RequestAsync then
+            return HttpService:RequestAsync({
+                Url = url,
+                Method = "PATCH",
+                Headers = headers,
+                Body = body
+            })
+        else
+            return HttpService:PostAsync(url, body, "ApplicationJson", false, headers)
+        end
+    end)
+    return ok, res
+end
+
+local function getVoiceInternal()
+    local vc
+    pcall(function() vc = game:GetService("VoiceChatInternal") end)
+    if not vc then
+        pcall(function() vc = getsenv(VoiceChatService).VoiceChatInternal end)
+    end
+    return vc
+end
+
+local function forceJoin(placeId)
+    local vc = getVoiceInternal()
+    if not vc then return false, "VoiceChatInternal tidak ada" end
+    
+    local methods = {
+        function()
+            if vc.RequestJoinByPlaceId then vc:RequestJoinByPlaceId(placeId)
+            elseif vc.RequestJoin then vc:RequestJoin(placeId) end
+            task.wait(0.8)
+            return vc:IsContextVoiceEnabled()
+        end,
+        function()
+            local gid = vc:GetGroupId()
+            if gid and gid ~= "" then
+                vc:JoinByGroupId(gid, false)
+                task.wait(0.8)
+                return vc:IsContextVoiceEnabled()
+            end
+            return false
+        end,
+        function()
+            pcall(function() replicatesignal(VoiceChatService.ClientRetryJoin) end)
+            task.wait(1.5)
+            return vc:IsContextVoiceEnabled()
+        end,
+        function()
+            if vc.Connect then
+                vc:Connect()
+                task.wait(0.8)
+                return vc:IsContextVoiceEnabled()
+            end
+            return false
+        end
+    }
+
+    for idx, method in ipairs(methods) do
+        local ok, result = pcall(method)
+        if ok and result then
+            return true, "Metode " .. idx
+        end
+    end
+    return false, "Semua metode gagal"
+end
+
+local function disconnectVoice()
+    local vc = getVoiceInternal()
+    if vc and vc.Disconnect then vc:Disconnect() end
+    pcall(function() VoiceChatService:RejoinVoice() end)
+end
+
+-- =========================================================
+-- BUTTON CONTROLLERS & LISTENERS
+-- =========================================================
+
+closeBtn.MouseButton1Click:Connect(function()
+    stopAnim()  
+    gui:Destroy()
+end)
+
+local function makeSmallButton(v6, v7, text, cb)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 70, 0, 26)
+    btn.Position = UDim2.new(0, v6, 0, v7)
+    btn.BackgroundColor3 = Color3.fromRGB(0, 130, 200)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.BorderSizePixel = 0
+    btn.Text = text
+    btn.Font = FONT
+    btn.TextSize = 12
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+    btn.Parent = main
+    btn.MouseButton1Click:Connect(cb)
+    return btn
+end
+
+-- Load & Save Buttons
+makeSmallButton(6, 238, "Load", function()
+    local raw = readConfig()
+    if raw then
+        local ok, tbl = pcall(function() return HttpService:JSONDecode(raw) end)
+        if ok and tbl then
+            universeBox.Text = tbl.UniverseID or ""
+            placeBox.Text    = tbl.PlaceID or ""
+            apiBox.Text      = tbl.APIKey or ""
+            updateGameInfo(tbl.UniverseID, tbl.APIKey)  
+            setStatus("Config dimuat.", "info")
+        else
+            setStatus("Format rusak.", "error")
+        end
+    else
+        setStatus("File tidak ada.", "info")
+    end
+end)
+
+makeSmallButton(82, 238, "Save", function()
+    local data = {
+        UniverseID = universeBox.Text,
+        PlaceID    = placeBox.Text,
+        APIKey     = apiBox.Text
+    }
+    writeConfig(HttpService:JSONEncode(data))
+    setStatus("Config tersimpan.", "success")
+end)
+
+-- Main Enable / Disable Buttons
+local enableBtn = Instance.new("TextButton")
+enableBtn.Size = UDim2.new(0, 125, 0, 34)
+enableBtn.Position = UDim2.new(0, 6, 0, 270)
+enableBtn.BackgroundColor3 = Color3.fromRGB(0, 160, 70)
+enableBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+enableBtn.BorderSizePixel = 0
+enableBtn.Text = "ENABLE"
+enableBtn.Font = FONT
+enableBtn.TextSize = 13
+Instance.new("UICorner", enableBtn).CornerRadius = UDim.new(0, 8)
+enableBtn.Parent = main
+
+local disableBtn = Instance.new("TextButton")
+disableBtn.Size = UDim2.new(0, 125, 0, 34)
+disableBtn.Position = UDim2.new(0, 140, 0, 270)
+disableBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+disableBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+disableBtn.BorderSizePixel = 0
+disableBtn.Text = "DISABLE"
+disableBtn.Font = FONT
+disableBtn.TextSize = 13
+Instance.new("UICorner", disableBtn).CornerRadius = UDim.new(0, 8)
+disableBtn.Parent = main
+
+-- Enable Action
+enableBtn.MouseButton1Click:Connect(function()
+    if isProcessing then
+        setStatus("Proses berjalan, tunggu...", "process")
+        return
+    end
+    local univ = universeBox.Text
+    local place = tonumber(placeBox.Text)
+    local key = apiBox.Text
+    
+    if #univ == 0 or not place or #key == 0 then
+        setStatus("Isi semua field!", "error")
+        return
+    end
+
+    startAnim()
+    task.spawn(function()
+        setStatus("Menghubungi API...", "process")
+        task.wait(0.2)
+        local apiOk = apiSet(univ, key, true)
+        if apiOk then
+            setStatus("Voice Chat diaktifkan!", "success")
+        else
+            setStatus("API gagal, lanjut join...", "process")
+        end
+        task.wait(0.4)
+        setStatus("Menyambung ke suara...", "process")
+        local joinOk, info = forceJoin(place)
+        if joinOk then
+            setStatus("Berhasil! (" .. info .. ")", "success")
+        else
+            setStatus("Gagal: " .. info, "error")
+        end
+        stopAnim()
+    end)
+end)
+
+-- Disable Action
+disableBtn.MouseButton1Click:Connect(function()
+    if isProcessing then
+        setStatus("Proses berjalan, tunggu...", "process")
+        return
+    end
+    local univ = universeBox.Text
+    local key = apiBox.Text
+    
+    if #univ == 0 or #key == 0 then
+        setStatus("Isi Universe ID & API Key!", "error")
+        return
+    end
+
+    startAnim()
+    task.spawn(function()
+        setStatus("Menghubungi API...", "process")
+        task.wait(0.2)
+        local apiOk = apiSet(univ, key, false)
+        if apiOk then
+            setStatus("Voice Chat dinonaktifkan!", "success")
+            disconnectVoice()
+        else
+            setStatus("API gagal, putus paksa...", "process")
+            disconnectVoice()
+            setStatus("Koneksi diputus.", "success")
+        end
+        stopAnim()
+    end)
+end)
+
+-- Event Handlers for Input Changes
+local function onFieldChanged()
+    updateGameInfo(universeBox.Text, apiBox.Text)
+end
+
+universeBox.FocusLost:Connect(onFieldChanged)
+placeBox.FocusLost:Connect(onFieldChanged)
+apiBox.FocusLost:Connect(onFieldChanged)   
+
+-- Initial Load Check & Name Fetch
+updateGameInfo(universeBox.Text, apiBox.Text)
