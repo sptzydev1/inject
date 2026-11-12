@@ -1,5 +1,5 @@
 --[[\
-    Project: Mini-DEX Explorer & Script Editor (With Save & Search)
+    Project: Mini-DEX Explorer & Script Editor (Hierarki Interaktif)
     Author: sptzyy / IkyyXD
 ]]--
 
@@ -19,7 +19,7 @@ ScreenGui.Parent = CoreGui
 
 -- Main Frame (Di tengah / melayang)
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 660, 0, 400)
+MainFrame.Size = UDim2.new(0, 680, 0, 420)
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
@@ -47,7 +47,7 @@ TitleLabel.Size = UDim2.new(1, -120, 1, 0)
 TitleLabel.Position = UDim2.new(0, 12, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Text = "sptzyy // Mini-DEX Object & Script Inspector"
+TitleLabel.Text = "sptzyy // Mini-DEX Explorer & Inspector"
 TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
 TitleLabel.TextSize = 12
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -85,7 +85,7 @@ LeftTitle.TextSize = 12
 LeftTitle.TextXAlignment = Enum.TextXAlignment.Left
 LeftTitle.Parent = LeftPanel
 
--- Tombol Icon File Save di Sudut Kiri Atas Panel Preview
+-- Tombol Save File .txt di sudut kiri atas panel preview
 local SaveBtn = Instance.new("TextButton")
 SaveBtn.Size = UDim2.new(0, 55, 0, 22)
 SaveBtn.Position = UDim2.new(1, -60, 0, 9)
@@ -105,7 +105,7 @@ InfoBox.MultiLine = true
 InfoBox.ClearTextOnFocus = false
 InfoBox.TextEditable = true
 InfoBox.Font = Enum.Font.Code
-InfoBox.Text = "-- Klik objek di panel kanan untuk melihat & mengedit isinya di sini."
+InfoBox.Text = "-- Klik objek/folder di panel kanan untuk melihat isinya di sini."
 InfoBox.TextColor3 = Color3.fromRGB(0, 255, 180)
 InfoBox.TextSize = 11
 InfoBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -135,10 +135,23 @@ SearchBox.TextSize = 11
 SearchBox.Parent = RightPanel
 local SearchCorner = Instance.new("UICorner") SearchCorner.CornerRadius = UDim.new(0, 6) SearchCorner.Parent = SearchBox
 
+-- Tombol Kembali (Back) jika sedang membuka isi folder
+local BackBtn = Instance.new("TextButton")
+BackBtn.Size = UDim2.new(1, -16, 0, 24)
+BackBtn.Position = UDim2.new(0, 8, 0, 40)
+BackBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+BackBtn.Font = Enum.Font.GothamBold
+BackBtn.Text = "⬅️ [ KEMBALI KE ROOT ]"
+BackBtn.TextColor3 = Color3.fromRGB(0, 229, 255)
+BackBtn.TextSize = 11
+BackBtn.Visible = false
+BackBtn.Parent = RightPanel
+local BackCorner = Instance.new("UICorner") BackCorner.CornerRadius = UDim.new(0, 5) BackCorner.Parent = BackBtn
+
 -- ScrollingFrame untuk Daftar Objek
 local ObjectScroll = Instance.new("ScrollingFrame")
-ObjectScroll.Size = UDim2.new(1, -16, 1, -45)
-ObjectScroll.Position = UDim2.new(0, 8, 0, 40)
+ObjectScroll.Size = UDim2.new(1, -16, 1, -74)
+ObjectScroll.Position = UDim2.new(0, 8, 0, 68)
 ObjectScroll.BackgroundTransparency = 1
 ObjectScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 ObjectScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -151,94 +164,178 @@ UIList.SortOrder = Enum.SortOrder.LayoutOrder
 UIList.Padding = UDim.new(0, 4)
 UIList.Parent = ObjectScroll
 
--- Fungsi untuk Mengisi Daftar Objek Game dengan Filter Search
-local function PopulateExplorer(filter)
+local currentParentInstance = nil
+
+-- Fungsi untuk Menampilkan Daftar Objek (Hierarki / Isi dalam Folder)
+local function LoadDirectory(instanceToExplore)
 	for _, child in ipairs(ObjectScroll:GetChildren()) do
 		if child:IsA("TextButton") then
 			child:Destroy()
 		end
 	end
 
-	local roots = {
-		game:GetService("Workspace"),
-		game:GetService("Players"),
-		game:GetService("Lighting"),
-		game:GetService("ReplicatedStorage"),
-		game:GetService("ReplicatedFirst"),
-		game:GetService("ServerStorage"),
-		game:GetService("ServerScriptService"),
-		game:GetService("StarterGui"),
-	}
+	currentParentInstance = instanceToExplore
+	
+	local itemsToDisplay = {}
+	if instanceToExplore == nil then
+		BackBtn.Visible = false
+		ObjectScroll.Size = UDim2.new(1, -16, 1, -45)
+		ObjectScroll.Position = UDim2.new(0, 8, 0, 40)
+		
+		itemsToDisplay = {
+			game:GetService("Workspace"),
+			game:GetService("Players"),
+			game:GetService("Lighting"),
+			game:GetService("ReplicatedStorage"),
+			game:GetService("ReplicatedFirst"),
+			game:GetService("ServerStorage"),
+			game:GetService("ServerScriptService"),
+			game:GetService("StarterGui"),
+		}
+	else
+		BackBtn.Visible = true
+		ObjectScroll.Size = UDim2.new(1, -16, 1, -74)
+		ObjectScroll.Position = UDim2.new(0, 8, 0, 68)
+		itemsToDisplay = instanceToExplore:GetChildren()
+	end
 
-	filter = filter:lower()
+	for _, item in ipairs(itemsToDisplay) do
+		local btn = Instance.new("TextButton")
+		btn.Size = UDim2.new(1, 0, 0, 24)
+		btn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+		btn.Font = Enum.Font.GothamMedium
+		
+		-- Tentukan ikon berdasarkan ClassName
+		local icon = "📦 "
+		if item:IsA("Folder") or item:IsA("Model") then
+			icon = "📁 "
+		elseif item:IsA("Part") or item:IsA("UnionOperation") or item:IsA("MeshPart") then
+			icon = "🧱 "
+		elseif item:IsA("Script") or item:IsA("LocalScript") or item:IsA("ModuleScript") then
+			icon = "📜 "
+		elseif item:IsA("Workspace") or item:IsA("Lighting") or item:IsA("ReplicatedStorage") then
+			icon = "🌐 "
+		end
 
-	for _, root in ipairs(roots) do
-		-- Rekursif untuk mencakup anak objek jika menggunakan search
-		local function scanInstance(inst)
-			local match = (filter == "") or (inst.Name:lower():find(filter)) or (inst.ClassName:lower():find(filter))
+		btn.Text = " " .. icon .. item.Name .. " [" .. item.ClassName .. "]"
+		btn.TextColor3 = Color3.fromRGB(220, 220, 220)
+		btn.TextSize = 11
+		btn.TextXAlignment = Enum.TextXAlignment.Left
+		btn.Parent = ObjectScroll
+		
+		local btnCorner = Instance.new("UICorner") btnCorner.CornerRadius = UDim.new(0, 4) btnCorner.Parent = btn
+
+		-- Aksi saat item diklik (Klik 1x untuk preview info / script, Klik 2x atau tahan untuk masuk ke dalam folder)
+		btn.MouseButton1Click:Connect(function()
+			-- Tampilkan info/source code di panel kiri
+			local infoText = string.format("-- Nama: %s\n-- Kelas: %s\n-- Parent: %s\n\n", item.Name, item.ClassName, tostring(item.Parent))
 			
-			if match then
+			if (item:IsA("Script") or item:IsA("LocalScript") or item:IsA("ModuleScript")) then
+				infoText = infoText .. "-- [Source Code Script]:\n"
+				local success, src = pcall(function() return item.Source end)
+				if success and src ~= "" then
+					infoText = infoText .. src
+				else
+					infoText = infoText .. "-- (Source terkunci atau kosong)"
+				end
+			else
+				infoText = infoText .. "[Isi / Children (" .. #item:GetChildren() .. " item)]:\n"
+				for _, sub in ipairs(item:GetChildren()) do
+					infoText = infoText .." - " .. sub.Name .. " (" .. sub.ClassName .. ")\n"
+				end
+			end
+			InfoBox.Text = infoText
+		end)
+
+		-- Jika item punya isi (folder/model/layanan), klik dua kali atau tekan tombol untuk masuk ke dalam
+		btn.MouseButton2Click:Connect(function()
+			if #item:GetChildren() > 0 or item:IsA("Folder") or item:IsA("Model") then
+				LoadDirectory(item)
+			end
+		end)
+		
+		-- Tambahan shortcut agar klik teks kecil di ujung kanan bisa masuk folder
+		local enterBtn = Instance.new("TextButton")
+		enterBtn.Size = UDim2.new(0, 45, 1, 0)
+		enterBtn.Position = UDim2.new(1, -45, 0, 0)
+		enterBtn.BackgroundTransparency = 1
+		enterBtn.Font = Enum.Font.GothamBold
+		enterBtn.Text = "Buka ➡️"
+		enterBtn.TextColor3 = Color3.fromRGB(0, 229, 255)
+		enterBtn.TextSize = 9
+		enterBtn.Parent = btn
+		
+		enterBtn.MouseButton1Click:Connect(function()
+			LoadDirectory(item)
+		end)
+	end
+end
+
+-- Muat direktori awal (Root)
+LoadDirectory(nil)
+
+-- Tombol Kembali ke Root
+BackBtn.MouseButton1Click:Connect(function()
+	if currentParentInstance and currentParentInstance.Parent and currentParentInstance.Parent ~= game then
+		LoadDirectory(currentParentInstance.Parent)
+	else
+		LoadDirectory(nil)
+	end
+end)
+
+-- Fitur Search Box (Pencarian Objek)
+SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+	local query = SearchBox.Text:lower()
+	if query == "" then
+		LoadDirectory(currentParentInstance)
+		return
+	end
+
+	for _, child in ipairs(ObjectScroll:GetChildren()) do
+		if child:IsA("TextButton") then child:Destroy() end
+	end
+
+	local function searchRecursive(parentObj)
+		for _, obj in ipairs(parentObj:GetChildren()) do
+			if obj.Name:lower():find(query) or obj.ClassName:lower():find(query) then
 				local btn = Instance.new("TextButton")
 				btn.Size = UDim2.new(1, 0, 0, 24)
 				btn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
 				btn.Font = Enum.Font.GothamMedium
-				btn.Text = "📁 " .. inst.Name .. " [" .. inst.ClassName .. "]"
+				btn.Text = " 🔍 " .. obj.Name .. " [" .. obj.ClassName .. "]"
 				btn.TextColor3 = Color3.fromRGB(220, 220, 220)
 				btn.TextSize = 11
 				btn.TextXAlignment = Enum.TextXAlignment.Left
 				btn.Parent = ObjectScroll
-				
-				local btnCorner = Instance.new("UICorner") btnCorner.CornerRadius = UDim.new(0, 4) btnCorner.Parent = btn
+				local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(0, 4) bc.Parent = btn
 
-				-- Aksi saat objek diklik
 				btn.MouseButton1Click:Connect(function()
-					local infoText = string.format("-- Nama: %s\n-- Kelas: %s\n-- Parent: %s\n\n", inst.Name, inst.ClassName, tostring(inst.Parent))
-					
-					-- Jika objek adalah Script atau LocalScript, coba tampilkan sourcenya jika diizinkan executor
-					if (inst:IsA("Script") or inst:IsA("LocalScript") or inst:IsA("ModuleScript")) then
-						infoText = infoText .. "-- [Source Code Script]:\n"
-						local success, src = pcall(function()
-							return inst.Source
-						end)
-						if success and src ~= "" then
-							infoText = infoText .. src
-						else
-							infoText = infoText .. "-- (Source terkunci atau kosong di sisi client)"
-						end
+					local infoText = string.format("-- Nama: %s\n-- Kelas: %s\n-- Parent: %s\n\n", obj.Name, obj.ClassName, tostring(obj.Parent))
+					if obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("ModuleScript") then
+						local success, src = pcall(function() return obj.Source end)
+						infoText = infoText .. (success and src or "-- (Source terkunci)")
 					else
 						infoText = infoText .. "[Isi / Children]:\n"
-						for _, sub in ipairs(inst:GetChildren()) do
+						for _, sub in ipairs(obj:GetChildren()) do
 							infoText = infoText .. " - " .. sub.Name .. " (" .. sub.ClassName .. ")\n"
 						end
 					end
-					
 					InfoBox.Text = infoText
 				end)
 			end
-
-			-- Batasi kedalaman pencarian agar ringan
-			for _, child in ipairs(inst:GetChildren()) do
-				if #ObjectScroll:GetChildren() < 150 then -- Batasi max item list agar tidak lag
-					scanInstance(child)
-				end
+			if #ObjectScroll:GetChildren() < 100 then
+				searchRecursive(obj)
 			end
 		end
-
-		scanInstance(root)
 	end
-end
 
-PopulateExplorer("")
-
--- Event saat mengetik di SearchBox
-SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
-	PopulateExplorer(SearchBox.Text)
+	searchRecursive(game:GetService("Workspace"))
 end)
 
--- Tombol Save File Aksi (.txt ke internal penyimpanan executor)
+-- Tombol Save File .txt ke internal penyimpanan executor
 SaveBtn.MouseButton1Click:Connect(function()
 	if writefile then
-		local filename = "sptzyy_export_" .. os.time() .. ".txt"
+		local filename = "sptzyy_dex_export_" .. os.time() .. ".txt"
 		writefile(filename, InfoBox.Text)
 		InfoBox.Text = "-- [SUCCESS] Berhasil disimpan ke internal file: workspace/" .. filename .. "\n\n" .. InfoBox.Text
 	else
