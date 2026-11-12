@@ -1,11 +1,12 @@
 --[[\
-    Project: IKYYXD DEX1.0 Explorer & Script Editor
+    Project: IKYYXD DEX1.0 Explorer & Script Editor (Inject & Play Edition)
     Author: sptzyy / IkyyXD
 ]]--
 
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 if CoreGui:FindFirstChild("IKYYXDDEX") then
     CoreGui.IKYYXDDEX:Destroy()
@@ -17,7 +18,7 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = CoreGui
 
--- Main Frame (Kompak untuk HP - 520 x 320, Tema Black-White-Cyan)
+-- Main Frame (Kompak untuk HP - 520 x 320)
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 520, 0, 320)
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -76,7 +77,7 @@ LeftPanel.Parent = MainFrame
 local LeftCorner = Instance.new("UICorner") LeftCorner.CornerRadius = UDim.new(0, 6) LeftCorner.Parent = LeftPanel
 
 local LeftTitle = Instance.new("TextLabel")
-LeftTitle.Size = UDim2.new(1, -65, 0, 22)
+LeftTitle.Size = UDim2.new(1, -115, 0, 22)
 LeftTitle.Position = UDim2.new(0, 6, 0, 6)
 LeftTitle.BackgroundTransparency = 1
 LeftTitle.Font = Enum.Font.GothamBold
@@ -86,10 +87,22 @@ LeftTitle.TextSize = 11
 LeftTitle.TextXAlignment = Enum.TextXAlignment.Left
 LeftTitle.Parent = LeftPanel
 
+-- Tombol Inject & Play (Agar terlihat semua player)
+local InjectBtn = Instance.new("TextButton")
+InjectBtn.Size = UDim2.new(0, 52, 0, 20)
+InjectBtn.Position = UDim2.new(1, -110, 0, 7)
+InjectBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
+InjectBtn.Font = Enum.Font.GothamBold
+InjectBtn.Text = "INJECT"
+InjectBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
+InjectBtn.TextSize = 9
+InjectBtn.Parent = LeftPanel
+local InjectCorner = Instance.new("UICorner") InjectCorner.CornerRadius = UDim.new(0, 4) InjectCorner.Parent = InjectBtn
+
 -- Tombol Save File
 local SaveBtn = Instance.new("TextButton")
-SaveBtn.Size = UDim2.new(0, 55, 0, 20)
-SaveBtn.Position = UDim2.new(1, -58, 0, 7)
+SaveBtn.Size = UDim2.new(0, 50, 0, 20)
+SaveBtn.Position = UDim2.new(1, -54, 0, 7)
 SaveBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 SaveBtn.Font = Enum.Font.GothamBold
 SaveBtn.Text = "SAVE"
@@ -346,6 +359,42 @@ SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
 	end
 
 	searchRecursive(game:GetService("Workspace"))
+end)
+
+-- Tombol Inject & Play (Agar tereksekusi dan terlihat oleh semua player)
+InjectBtn.MouseButton1Click:Connect(function()
+	local codeToRun = InfoBox.Text
+	if codeToRun == "" or codeToRun:match("^-- Klik objek") then
+		InfoBox.Text = "-- [ERROR] Pilih atau muat script terlebih dahulu sebelum di-inject!"
+		return
+	end
+
+	local success, err = pcall(function()
+		-- Coba loadstring kode dari editor preview
+		local func, loadErr = loadstring(codeToRun)
+		if func then
+			-- Eksekusi kode
+			task.spawn(func)
+			
+			-- Coba cari RemoteEvent publik di ReplicatedStorage untuk menyiarkan ke server/player lain
+			local remotes = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
+			for _, remote in ipairs(remotes:GetDescendants()) do
+				if remote:IsA("RemoteEvent") then
+					pcall(function()
+						remote:FireServer(codeToRun)
+					end)
+				end
+			end
+			
+			InfoBox.Text = "-- [SUCCESS] Script berhasil di-inject & diputar (Broadcasted)!\n\n" .. codeToRun
+		else
+			InfoBox.Text = "-- [COMPILE ERROR]:\n" .. tostring(loadErr) .. "\n\n" .. codeToRun
+		end
+	end)
+
+	if not success then
+		InfoBox.Text = "-- [INJECT FAILED]: " .. tostring(err) .. "\n\n" .. codeToRun
+	end
 end)
 
 SaveBtn.MouseButton1Click:Connect(function()
