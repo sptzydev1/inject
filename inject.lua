@@ -1,5 +1,5 @@
 -- ======================================================
--- IKYYXD DEX1.0 - GUI COPIER & DECOMPILER EDITION
+-- IKYYXD DEX1.0 - SAFE STARTERGUI COPIER & DECOMPILER
 -- COPYRIGHT (C) IkyyXD - ALL RIGHTS RESERVED
 -- ======================================================
 
@@ -10,14 +10,14 @@ local StarterGui = game:GetService("StarterGui")
 local LocalPlayer = Players.LocalPlayer
 
 -- Hapus GUI lama jika ada
-local oldGui = LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("IKYYXDGuiCopier")
+local oldGui = LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("IKYYXDStarterGuiSafe")
 if oldGui then oldGui:Destroy() end
 
 --------------------------------------------------
 -- 1. UTAMA: SCREEN GUI & FLOATING ICON (Cyan Accent)
 --------------------------------------------------
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "IKYYXDGuiCopier"
+ScreenGui.Name = "IKYYXDStarterGuiSafe"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
@@ -135,8 +135,8 @@ local function createFeatureLabel(text, order)
 	return lbl
 end
 
-createFeatureLabel("• PlayerGui & StarterGui", 1)
-createFeatureLabel("• All Properties Sync", 2)
+createFeatureLabel("• StarterGui Scan Only", 1)
+createFeatureLabel("• Safe Paste (Disabled)", 2)
 createFeatureLabel("• Script Decompiler", 3)
 createFeatureLabel("• Auto Storage Backup", 4)
 createFeatureLabel("• Direct Inject/Paste", 5)
@@ -261,7 +261,7 @@ local function createActionButton(name, text, order)
 	return btn
 end
 
-local CopyGuiBtn = createActionButton("CopyGuiBtn", "Copy GUI Active", 1)
+local CopyGuiBtn = createActionButton("CopyGuiBtn", "Scan StarterGui", 1)
 local SaveBtn     = createActionButton("SaveBtn", "Save to File", 2)
 
 -- Scroll Container List Hasil
@@ -303,7 +303,7 @@ UICornerConsole.CornerRadius = UDim.new(0, 4)
 UICornerConsole.Parent = ConsoleLog
 
 --------------------------------------------------
--- 6. LOGIKA DECOMPILER & SERIALIZER GUI AKTIF
+-- 6. LOGIKA DECOMPILER & SAFE STARTERGUI SERIALIZER
 --------------------------------------------------
 local savedGuiStorage = {}
 local listButtons = {}
@@ -329,7 +329,7 @@ local function getScriptSource(scriptObj)
 	return "-- [Decompile Failed / Locked]"
 end
 
--- Rekursif Menyalin Properti GUI & Script secara Akurat
+-- Rekursif Menyalin Properti GUI & Script secara Akurat dari StarterGui
 local function serializeInstance(obj)
 	local data = {
 		Name = obj.Name,
@@ -346,7 +346,12 @@ local function serializeInstance(obj)
 			data.Properties.Position = {obj.Position.X.Scale, obj.Position.X.Offset, obj.Position.Y.Scale, obj.Position.Y.Offset}
 			data.Properties.BackgroundColor3 = {obj.BackgroundColor3.R, obj.BackgroundColor3.G, obj.BackgroundColor3.B}
 			data.Properties.BackgroundTransparency = obj.BackgroundTransparency
-			data.Properties.Visible = obj.Visible
+			-- Jika ScreenGui atau Frame utama, atur paksa ke false agar aman tidak langsung aktif memenuhi layar saat dipaste
+			if obj:IsA("ScreenGui") then
+				data.Properties.Enabled = false
+			else
+				data.Properties.Visible = obj.Visible
+			end
 			data.Properties.ZIndex = obj.ZIndex
 		end
 		if obj:IsA("TextButton") or obj:IsA("TextLabel") or obj:IsA("TextBox") then
@@ -367,16 +372,13 @@ local function serializeInstance(obj)
 
 	-- Rekursif ke anak objek (Children)
 	for _, child in ipairs(obj:GetChildren()) do
-		-- Abaikan tool pencatat GUI kita sendiri agar tidak ikut tersalin
-		if child.Name ~= "IKYYXDGuiCopier" then
-			table.insert(data.Children, serializeInstance(child))
-		end
+		table.insert(data.Children, serializeInstance(child))
 	end
 
 	return data
 end
 
--- Rekursif Membangun Kembali (Paste) Objek GUI ke dalam Game / StarterGui
+-- Rekursif Membangun Kembali (Paste) Objek GUI secara Aman ke StarterGui
 local function deserializeInstance(data, parent)
 	local success, newObj = pcall(function()
 		local instance = Instance.new(data.ClassName)
@@ -388,7 +390,14 @@ local function deserializeInstance(data, parent)
 		if p.Position then instance.Position = UDim2.new(unpack(p.Position)) end
 		if p.BackgroundColor3 then instance.BackgroundColor3 = Color3.new(unpack(p.BackgroundColor3)) end
 		if p.BackgroundTransparency then instance.BackgroundTransparency = p.BackgroundTransparency end
-		if p.Visible ~= nil then instance.Visible = p.Visible end
+		
+		-- Pengamanan agar saat dipaste tidak langsung aktif tampil menutupi layar
+		if instance:IsA("ScreenGui") then
+			instance.Enabled = false
+		elseif p.Visible ~= nil then 
+			instance.Visible = p.Visible 
+		end
+		
 		if p.ZIndex then instance.ZIndex = p.ZIndex end
 
 		if instance:IsA("TextButton") or instance:IsA("TextLabel") or instance:IsA("TextBox") then
@@ -447,17 +456,14 @@ local function refreshResultList()
 		corner.CornerRadius = UDim.new(0, 3)
 		corner.Parent = itemBtn
 
-		-- Klik item untuk langsung Paste ke PlayerGui & StarterGui agar tersimpan permanen
+		-- Klik item untuk aman menempelkan kembali ke StarterGui (Enabled = false / Tidak langsung muncul)
 		itemBtn.MouseButton1Click:Connect(function()
-			local targetParent = LocalPlayer:WaitForChild("PlayerGui")
 			for _, childData in ipairs(guiData.Items) do
-				deserializeInstance(childData, targetParent)
-				-- Masukkan juga ke StarterGui jika bisa diakses
 				pcall(function()
 					deserializeInstance(childData, StarterGui)
 				end)
 			end
-			setConsoleMessage("Successfully Pasted GUI!", Color3.fromRGB(0, 255, 180))
+			setConsoleMessage("Pasted safely to StarterGui (Disabled)!", Color3.fromRGB(0, 255, 180))
 		end)
 
 		table.insert(listButtons, itemBtn)
@@ -466,40 +472,25 @@ local function refreshResultList()
 	ResultFrame.CanvasSize = UDim2.new(0, 0, 0, ResultListLayout.AbsoluteContentSize.Y)
 end
 
--- Tombol COPY GUI AKTIF (Menggabungkan PlayerGui dan StarterGui agar akurat)
+-- Tombol SCAN / COPY STARTERGUI MURNI
 CopyGuiBtn.MouseButton1Click:Connect(function()
 	task.spawn(function()
-		setConsoleMessage("Copying Active GUI...", Color3.fromRGB(255, 220, 100))
+		setConsoleMessage("Scanning StarterGui...", Color3.fromRGB(255, 220, 100))
 		local guiItems = {}
-		local checkedNames = {}
 
-		-- 1. Salin dari PlayerGui (GUI yang sedang aktif tampil di layar game)
-		local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
-		if playerGui then
-			for _, child in ipairs(playerGui:GetChildren()) do
-				if child:IsA("ScreenGui") and child.Name ~= "IKYYXDGuiCopier" and not checkedNames[child.Name] then
-					checkedNames[child.Name] = true
-					table.insert(guiItems, serializeInstance(child))
-				end
-			end
-		end
-
-		-- 2. Salin juga dari StarterGui (sebagai cadangan cetak biru game)
+		-- Murni hanya memindai isi dari wadah StarterGui game
 		for _, child in ipairs(StarterGui:GetChildren()) do
-			if child:IsA("ScreenGui") and not checkedNames[child.Name] then
-				checkedNames[child.Name] = true
-				table.insert(guiItems, serializeInstance(child))
-			end
+			table.insert(guiItems, serializeInstance(child))
 		end
 
 		local payload = {
-			Title = "ActiveGui_Backup_" .. math.random(10, 99),
+			Title = "StarterGui_Safe_" .. math.random(10, 99),
 			Items = guiItems
 		}
 
 		table.insert(savedGuiStorage, payload)
 		refreshResultList()
-		setConsoleMessage("GUI Copied Successfully!", Color3.fromRGB(0, 255, 180))
+		setConsoleMessage("StarterGui Scanned Successfully!", Color3.fromRGB(0, 255, 180))
 	end)
 end)
 
@@ -507,7 +498,7 @@ end)
 SaveBtn.MouseButton1Click:Connect(function()
 	if writefile then
 		pcall(function()
-			writefile("ikyyxd_startergui_data.dat", HttpService:JSONEncode(savedGuiStorage))
+			writefile("ikyyxd_startergui_safe.dat", HttpService:JSONEncode(savedGuiStorage))
 			setConsoleMessage("Saved to workspace file!", Color3.fromRGB(0, 255, 180))
 		end)
 	else
@@ -516,14 +507,14 @@ SaveBtn.MouseButton1Click:Connect(function()
 end)
 
 -- Auto Load Storage
-if readfile and isfile and isfile("ikyyxd_startergui_data.dat") then
+if readfile and isfile and isfile("ikyyxd_startergui_safe.dat") then
 	pcall(function()
-		local content = readfile("ikyyxd_startergui_data.dat")
+		local content = readfile("ikyyxd_startergui_safe.dat")
 		local decoded = HttpService:JSONDecode(content)
 		if type(decoded) == "table" then
 			savedGuiStorage = decoded
 			refreshResultList()
-			setConsoleMessage("Loaded saved GUI data")
+			setConsoleMessage("Loaded saved StarterGui data")
 		end
 	end)
 end
