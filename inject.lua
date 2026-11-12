@@ -1,10 +1,11 @@
 --[[\
-    Project: Console Output Executor (Clean & Fixed)
+    Project: Console Output Executor (Dual-Bridge Mode)
     Author: sptzyy / IkyyXD
 ]]--
 
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
+local LogService = game:GetService("LogService")
 
 -- Bersihkan GUI lama jika ada
 if CoreGui:FindFirstChild("SptzyyExecutorConsole") then
@@ -49,7 +50,7 @@ TitleLabel.Size = UDim2.new(1, -20, 1, 0)
 TitleLabel.Position = UDim2.new(0, 12, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Text = "sptzyy // Safe Console Output"
+TitleLabel.Text = "sptzyy // Dual-Scan Console"
 TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
 TitleLabel.TextSize = 13
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -83,7 +84,7 @@ ScrollingFrame.ScrollBarThickness = 4
 ScrollingFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 229, 255)
 ScrollingFrame.Parent = MainFrame
 
--- TextBox untuk Output (Support Edit & Salin Teks)
+-- TextBox untuk Output (Support edit teks & salin manual)
 local OutputBox = Instance.new("TextBox")
 OutputBox.Name = "OutputBox"
 OutputBox.Size = UDim2.new(1, 0, 1, 0)
@@ -92,7 +93,7 @@ OutputBox.ClearTextOnFocus = false
 OutputBox.MultiLine = true
 OutputBox.TextEditable = true
 OutputBox.Font = Enum.Font.Code
-OutputBox.Text = "-- [sptzyy] Console siap mencatat log...\n"
+OutputBox.Text = "-- [sptzyy] Dual-Scanner aktif. Menunggu eksekusi script...\n"
 OutputBox.TextColor3 = Color3.fromRGB(0, 255, 180)
 OutputBox.TextSize = 12
 OutputBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -133,10 +134,11 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- Buffer log jika pesan masuk sebelum UI siap
+-- Buffer log agar pesan awal aman tertampung
 local pendingLogs = {}
 local isReady = false
 
+-- Fungsi Utama Menambahkan Log ke Console
 local function AppendOutput(text)
     if not isReady then
         table.insert(pendingLogs, text)
@@ -150,14 +152,32 @@ ClearButton.MouseButton1Click:Connect(function()
     OutputBox.Text = "-- Log dibersihkan --"
 end)
 
--- Daftarkan fungsi global yang aman dipanggil dari script lain
+-- ==========================================================
+-- METODE 1: Auto-Scan via LogService (Menangkap print/warn/error)
+-- ==========================================================
+LogService.MessageOut:Connect(function(message, messageType)
+    local prefix = "[INFO]"
+    if messageType == Enum.MessageType.MessageWarning then
+        prefix = "[WARN]"
+    elseif messageType == Enum.MessageType.MessageError then
+        prefix = "[ERROR]"
+    elseif messageType == Enum.MessageType.MessageOutput then
+        prefix = "[OUT]"
+    end
+    
+    AppendOutput(string.format("%s %s", prefix, message))
+end)
+
+-- ==========================================================
+-- METODE 2: Global Bridge Langsung (_G) untuk Plugin/Script Lain
+-- ==========================================================
 _G.SptzyyLog = AppendOutput
 _G.AddConsoleLog = AppendOutput
 
--- Tandai siap dan cetak log tertunda
+-- Aktifkan sistem dan flushing buffer log
 isReady = true
 for _, log in ipairs(pendingLogs) do
     AppendOutput(log)
 end
 
-AppendOutput("[SUCCESS] Console sptzyy berhasil aktif & terhubung.")
+AppendOutput("[SUCCESS] Console sptzyy berhasil aktif & siap men-scan.")
