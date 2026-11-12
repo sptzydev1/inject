@@ -1,13 +1,13 @@
 --[[\
-    Project: IKYYXD DEX1.0 Donate Effect Folder Injector & Runner
+    Project: IKYYXD DEX1.0 StarterGui Copier & Injector Edition
     Author: sptzyy / IkyyXD
 ]]--
 
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
+local StarterGui = game:GetService("StarterGui")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
 
 if CoreGui:FindFirstChild("IKYYXDDEX") then
     CoreGui.IKYYXDDEX:Destroy()
@@ -46,11 +46,11 @@ TopBar.BackgroundTransparency = 1
 TopBar.Parent = MainFrame
 
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, -90, 1, 0)
+TitleLabel.Size = UDim2.new(1, -130, 1, 0)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Text = "IKYYXD DEX1.0 // Donate Injector"
+TitleLabel.Text = "IKYYXD DEX1.0 // Gui Copier"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextSize = 11
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -68,7 +68,7 @@ CloseBtn.TextSize = 10
 CloseBtn.Parent = TopBar
 local CloseCorner = Instance.new("UICorner") CloseCorner.CornerRadius = UDim.new(0, 5) CloseCorner.Parent = CloseBtn
 
--- === PANEL KIRI: Info & Tombol INJECT FOLDER ===
+-- === PANEL KIRI: Preview Properti, Tombol COPY, PASTE, & SAVE ===
 local LeftPanel = Instance.new("Frame")
 LeftPanel.Size = UDim2.new(0.45, -6, 1, -40)
 LeftPanel.Position = UDim2.new(0, 6, 0, 34)
@@ -78,41 +78,53 @@ LeftPanel.Parent = MainFrame
 local LeftCorner = Instance.new("UICorner") LeftCorner.CornerRadius = UDim.new(0, 6) LeftCorner.Parent = LeftPanel
 
 local LeftTitle = Instance.new("TextLabel")
-LeftTitle.Size = UDim2.new(1, -115, 0, 22)
+LeftTitle.Size = UDim2.new(1, -165, 0, 22)
 LeftTitle.Position = UDim2.new(0, 6, 0, 6)
 LeftTitle.BackgroundTransparency = 1
 LeftTitle.Font = Enum.Font.GothamBold
-LeftTitle.Text = "Folder Controller"
+LeftTitle.Text = "Properties"
 LeftTitle.TextColor3 = Color3.fromRGB(0, 229, 255)
 LeftTitle.TextSize = 11
 LeftTitle.TextXAlignment = Enum.TextXAlignment.Left
 LeftTitle.Parent = LeftPanel
 
--- Tombol INJECT (Run Semua Remote di dalam Folder Terpilih)
-local InjectBtn = Instance.new("TextButton")
-InjectBtn.Size = UDim2.new(0, 52, 0, 20)
-InjectBtn.Position = UDim2.new(1, -110, 0, 7)
-InjectBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
-InjectBtn.Font = Enum.Font.GothamBold
-InjectBtn.Text = "INJECT"
-InjectBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-InjectBtn.TextSize = 9
-InjectBtn.Parent = LeftPanel
-local InjectCorner = Instance.new("UICorner") InjectCorner.CornerRadius = UDim.new(0, 4) InjectCorner.Parent = InjectBtn
+-- Tombol PASTE (Tempel ke StarterGui / PlayerGui)
+local PasteBtn = Instance.new("TextButton")
+PasteBtn.Size = UDim2.new(0, 45, 0, 20)
+PasteBtn.Position = UDim2.new(1, -160, 0, 7)
+PasteBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
+PasteBtn.Font = Enum.Font.GothamBold
+PasteBtn.Text = "PASTE"
+PasteBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
+PasteBtn.TextSize = 8
+PasteBtn.Parent = LeftPanel
+local PasteCorner = Instance.new("UICorner") PasteCorner.CornerRadius = UDim.new(0, 4) PasteCorner.Parent = PasteBtn
 
--- Tombol Save Log
+-- Tombol COPY
+local CopyBtn = Instance.new("TextButton")
+CopyBtn.Size = UDim2.new(0, 45, 0, 20)
+CopyBtn.Position = UDim2.new(1, -110, 0, 7)
+CopyBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+CopyBtn.Font = Enum.Font.GothamBold
+CopyBtn.Text = "COPY"
+CopyBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
+CopyBtn.TextSize = 8
+CopyBtn.Parent = LeftPanel
+local CopyCorner = Instance.new("UICorner") CopyCorner.CornerRadius = UDim.new(0, 4) CopyCorner.Parent = CopyBtn
+
+-- Tombol SAVE
 local SaveBtn = Instance.new("TextButton")
 SaveBtn.Size = UDim2.new(0, 50, 0, 20)
-SaveBtn.Position = UDim2.new(1, -54, 0, 7)
-SaveBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+SaveBtn.Position = UDim2.new(1, -60, 0, 7)
+SaveBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
 SaveBtn.Font = Enum.Font.GothamBold
 SaveBtn.Text = "SAVE"
 SaveBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-SaveBtn.TextSize = 9
+SaveBtn.TextSize = 8
 SaveBtn.Parent = LeftPanel
 local SaveCorner = Instance.new("UICorner") SaveCorner.CornerRadius = UDim.new(0, 4) SaveCorner.Parent = SaveBtn
 
--- ScrollingFrame Preview Informasi Folder yang Dipilih
+-- ScrollingFrame Preview Properti GUI
 local PreviewScroll = Instance.new("ScrollingFrame")
 PreviewScroll.Size = UDim2.new(1, -12, 1, -34)
 PreviewScroll.Position = UDim2.new(0, 6, 0, 30)
@@ -132,7 +144,7 @@ InfoBox.ClearTextOnFocus = false
 InfoBox.TextWrapped = true
 InfoBox.TextEditable = true
 InfoBox.Font = Enum.Font.Code
-InfoBox.Text = "-- Buka ReplicatedStorage, pilih folder Efek Donate di kanan, lalu klik INJECT untuk merun semua isinya."
+InfoBox.Text = "-- Pilih objek GUI di sebelah kanan untuk melihat properti akuratnya."
 InfoBox.TextColor3 = Color3.fromRGB(240, 240, 240)
 InfoBox.TextSize = 10
 InfoBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -144,7 +156,7 @@ InfoBox:GetPropertyChangedSignal("Text"):Connect(function()
 	PreviewScroll.CanvasSize = UDim2.new(0, 0, 0, InfoBox.TextBounds.Y + 40)
 end)
 
--- === PANEL KANAN: Navigasi Folder Efek Donate ===
+-- === PANEL KANAN: Navigasi StarterGui & Pemilihan Objek ===
 local RightPanel = Instance.new("Frame")
 RightPanel.Size = UDim2.new(0.55, -10, 1, -40)
 RightPanel.Position = UDim2.new(0.45, 4, 0, 34)
@@ -153,20 +165,20 @@ RightPanel.BorderSizePixel = 0
 RightPanel.Parent = MainFrame
 local RightCorner = Instance.new("UICorner") RightCorner.CornerRadius = UDim.new(0, 6) RightCorner.Parent = RightPanel
 
--- Tombol Kembali (Back) untuk direktori folder
+-- Tombol Kembali (Back)
 local BackBtn = Instance.new("TextButton")
 BackBtn.Size = UDim2.new(1, -12, 0, 22)
 BackBtn.Position = UDim2.new(0, 6, 0, 6)
 BackBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
 BackBtn.Font = Enum.Font.GothamBold
-BackBtn.Text = "[ KEMBALI KE ROOT ]"
+BackBtn.Text = "[ KEMBALI KE STARTERGUI ]"
 BackBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-BackBtn.TextSize = 10
+BackBtn.TextSize = 9
 BackBtn.Visible = false
 BackBtn.Parent = RightPanel
 local BackCorner = Instance.new("UICorner") BackCorner.CornerRadius = UDim.new(0, 4) BackCorner.Parent = BackBtn
 
--- ScrollingFrame untuk Daftar Folder
+-- ScrollingFrame untuk Daftar Objek GUI
 local ObjectScroll = Instance.new("ScrollingFrame")
 ObjectScroll.Size = UDim2.new(1, -12, 1, -12)
 ObjectScroll.Position = UDim2.new(0, 6, 0, 6)
@@ -183,9 +195,10 @@ UIList.Padding = UDim.new(0, 3)
 UIList.Parent = ObjectScroll
 
 local currentParentInstance = nil
-local activeFolder = nil
+local activeSelectedInstance = nil
+local copiedInstanceData = nil -- Menyimpan salinan objek GUI
 
--- Fungsi untuk Navigasi Folder Game
+-- Fungsi untuk Menampilkan Hierarki StarterGui & PlayerGui
 local function LoadDirectory(instanceToExplore)
 	for _, child in ipairs(ObjectScroll:GetChildren()) do
 		if child:IsA("TextButton") then
@@ -201,13 +214,13 @@ local function LoadDirectory(instanceToExplore)
 		ObjectScroll.Size = UDim2.new(1, -12, 1, -12)
 		ObjectScroll.Position = UDim2.new(0, 6, 0, 6)
 		
+		-- Root utama GUI game
+		local localPlayer = Players.LocalPlayer
+		local playerGui = localPlayer and localPlayer:FindFirstChild("PlayerGui")
+		
 		itemsToDisplay = {
-			ReplicatedStorage,
-			Workspace,
-			Players,
-			game:GetService("Lighting"),
-			game:GetService("ServerStorage"),
-			game:GetService("ServerScriptService")
+			StarterGui,
+			playerGui
 		}
 	else
 		BackBtn.Visible = true
@@ -217,61 +230,80 @@ local function LoadDirectory(instanceToExplore)
 	end
 
 	for _, item in ipairs(itemsToDisplay) do
-		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(1, 0, 0, 22)
-		btn.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
-		btn.Font = Enum.Font.GothamMedium
-		
-		local labelTag = "[OBJ] "
-		if item:IsA("Folder") or item:IsA("Model") then
-			labelTag = "[DIR] "
-		elseif item:IsA("RemoteEvent") then
-			labelTag = "[RE] "
-		elseif item:IsA("RemoteFunction") then
-			labelTag = "[RF] "
-		end
-
-		btn.TextTruncate = Enum.TextTruncate.AtEnd
-		btn.Text = " " .. labelTag .. item.Name
-		btn.TextColor3 = Color3.fromRGB(240, 240, 240)
-		btn.TextSize = 10
-		btn.TextXAlignment = Enum.TextXAlignment.Left
-		btn.Parent = ObjectScroll
-		
-		local btnCorner = Instance.new("UICorner") btnCorner.CornerRadius = UDim.new(0, 4) btnCorner.Parent = btn
-
-		-- Klik item untuk memilih folder efek donate atau melihat isinya
-		btn.MouseButton1Click:Connect(function()
-			if item:IsA("Folder") or item:IsA("Model") then
-				activeFolder = item
-				local infoText = string.format("-- Terpilih Folder Efek Donate:\n-- Nama: %s\n-- Path: %s\n\n[Isi Remote di dalam Folder]:\n", item.Name, item.GetFullName and item:GetFullName() or item.Name)
-				for _, sub in ipairs(item:GetDescendants()) do
-					if sub:IsA("RemoteEvent") or sub:IsA("RemoteFunction") then
-						infoText = infoText .. " - " .. sub.Name .. " (" .. sub.ClassName .. ")\n"
-					end
-				end
-				InfoBox.Text = infoText
-			else
-				activeFolder = nil
-				InfoBox.Text = string.format("-- Terpilih Item Tunggal:\n-- Nama: %s\n-- Kelas: %s", item.Name, item.ClassName)
-			end
-		end)
-
-		-- Tombol Buka jika folder memiliki anak item di dalamnya
-		if #item:GetChildren() > 0 then
-			local enterBtn = Instance.new("TextButton")
-			enterBtn.Size = UDim2.new(0, 38, 1, 0)
-			enterBtn.Position = UDim2.new(1, -38, 0, 0)
-			enterBtn.BackgroundTransparency = 1
-			enterBtn.Font = Enum.Font.GothamBold
-			enterBtn.Text = "BUKA >"
-			enterBtn.TextColor3 = Color3.fromRGB(0, 229, 255)
-			enterBtn.TextSize = 8
-			enterBtn.Parent = btn
+		if item then
+			local btn = Instance.new("TextButton")
+			btn.Size = UDim2.new(1, 0, 0, 22)
+			btn.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
+			btn.Font = Enum.Font.GothamMedium
 			
-			enterBtn.MouseButton1Click:Connect(function()
-				LoadDirectory(item)
+			local labelTag = "[GUI] "
+			if item:IsA("ScreenGui") then
+				labelTag = "[SG] "
+			elseif item:IsA("Frame") then
+				labelTag = "[FRM] "
+			elseif item:IsA("TextButton") or item:IsA("ImageButton") then
+				labelTag = "[BTN] "
+			elseif item:IsA("TextLabel") or item:IsA("ImageLabel") then
+				labelTag = "[LBL] "
+			elseif item:IsA("Folder") then
+				labelTag = "[DIR] "
+			end
+
+			btn.TextTruncate = Enum.TextTruncate.AtEnd
+			btn.Text = " " .. labelTag .. item.Name
+			btn.TextColor3 = Color3.fromRGB(240, 240, 240)
+			btn.TextSize = 10
+			btn.TextXAlignment = Enum.TextXAlignment.Left
+            btn.Parent = ObjectScroll
+			
+			local btnCorner = Instance.new("UICorner") btnCorner.CornerRadius = UDim.new(0, 4) btnCorner.Parent = btn
+
+			-- Klik item untuk melihat Properti Akuratnya
+			btn.MouseButton1Click:Connect(function()
+				activeSelectedInstance = item
+				
+				local propText = string.format("-- [PROPERTIES: %s]\n-- ClassName: %s\n-- Parent: %s\n\n", item.Name, item.ClassName, tostring(item.Parent))
+				
+				-- Ambil properti umum yang akurat sesuai aslinya
+				pcall(function()
+					if item:IsA("GuiObject") or item:IsA("LayerCollector") then
+						propText = propText .. string.format("Size = UDim2.new(%s)\n", tostring(item.Size))
+						propText = propText .. string.format("Position = UDim2.new(%s)\n", tostring(item.Position))
+						propText = propText .. string.format("BackgroundColor3 = Color3.fromRGB(%d, %d, %d)\n", item.BackgroundColor3.R*255, item.BackgroundColor3.G*255, item.BackgroundColor3.B*255)
+						propText = propText .. string.format("BackgroundTransparency = %.2f\n", item.BackgroundTransparency)
+						propText = propText .. string.format("Visible = %s\n", tostring(item.Visible))
+					end
+					if item:IsA("TextButton") or item:IsA("TextLabel") or item:IsA("TextBox") then
+						propText = propText .. string.format("Text = \"%s\"\n", item.Text)
+						propText = propText .. string.format("TextSize = %d\n", item.TextSize)
+						propText = propText .. string.format("TextColor3 = Color3.fromRGB(%d, %d, %d)\n", item.TextColor3.R*255, item.TextColor3.G*255, item.TextColor3.B*255)
+					end
+				end)
+
+				propText = propText .. "\n[Children (" .. #item:GetChildren() .. ")]:\n"
+				for _, sub in ipairs(item:GetChildren()) do
+					propText = propText .. " - " .. sub.Name .. " (" .. sub.ClassName .. ")\n"
+				end
+
+				InfoBox.Text = propText
 			end)
+
+			-- Tombol Buka jika objek memiliki anak (children)
+			if #item:GetChildren() > 0 then
+				local enterBtn = Instance.new("TextButton")
+				enterBtn.Size = UDim2.new(0, 38, 1, 0)
+				enterBtn.Position = UDim2.new(1, -38, 0, 0)
+				enterBtn.BackgroundTransparency = 1
+				enterBtn.Font = Enum.Font.GothamBold
+				enterBtn.Text = "BUKA >"
+				enterBtn.TextColor3 = Color3.fromRGB(0, 229, 255)
+				enterBtn.TextSize = 8
+				enterBtn.Parent = btn
+				
+				enterBtn.MouseButton1Click:Connect(function()
+					LoadDirectory(item)
+				end)
+			end
 		end
 	end
 end
@@ -286,43 +318,51 @@ BackBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Tombol INJECT (Menjalankan / Run seluruh Remote di dalam Folder Efek Donate yang dipilih)
-InjectBtn.MouseButton1Click:Connect(function()
-	if not activeFolder then
-		InfoBox.Text = "-- [ERROR] Silakan pilih folder 'Efek Donate' terlebih dahulu di panel kanan!"
+-- Tombol COPY (Menyalin objek GUI yang sedang dipilih)
+CopyBtn.MouseButton1Click:Connect(function()
+	if not activeSelectedInstance then
+		InfoBox.Text = "-- [ERROR] Pilih objek GUI terlebih dahulu di panel kanan untuk di-COPY!"
 		return
 	end
 
-	local successCount = 0
-	local failCount = 0
-
 	pcall(function()
-		-- Scan seluruh RemoteEvent dan RemoteFunction di dalam folder yang dipilih
-		for _, descendant in ipairs(activeFolder:GetDescendants()) do
-			if descendant:IsA("RemoteEvent") then
-				local ok = pcall(function()
-					descendant:FireServer("IKYYXD_DonateInject", true, 99999)
-				end)
-				if ok then successCount = successCount + 1 else failCount = failCount + 1 end
-			elseif descendant:IsA("RemoteFunction") then
-				local ok = pcall(function()
-					descendant:InvokeServer("IKYYXD_DonateInject", true, 99999)
-				end)
-				if ok then successCount = successCount + 1 else failCount = failCount + 1 end
-			end
-		end
+		copiedInstanceData = activeSelectedInstance:Clone()
+		InfoBox.Text = string.format("-- [SUCCESS] Objek '%s (%s)' berhasil di-COPY ke memori!\n-- Sekarang Anda bisa pindah ke game lain dan tekan tombol PASTE.", activeSelectedInstance.Name, activeSelectedInstance.ClassName)
 	end)
-
-	InfoBox.Text = string.format("-- [INJECT SUCCESS & RUN] Folder: %s\n-- Berhasil Trigger Remotes: %d\n-- Gagal/Ditolak Server: %d\n\nEfek donate telah di-broadcast ke server dan dapat dilihat semua player!", activeFolder.Name, successCount, failCount)
 end)
 
+-- Tombol PASTE (Menempelkan objek GUI yang disalin ke StarterGui / PlayerGui)
+PasteBtn.MouseButton1Click:Connect(function()
+	if not copiedInstanceData then
+		InfoBox.Text = "-- [ERROR] Belum ada objek GUI yang di-COPY!"
+		return
+	end
+
+	local success, err = pcall(function()
+		local targetParent = StarterGui
+		local lp = Players.LocalPlayer
+		if lp and lp:FindFirstChild("PlayerGui") then
+			targetParent = lp.PlayerGui
+		end
+
+		local clonedObj = copiedInstanceData:Clone()
+		clonedObj.Parent = targetParent
+		InfoBox.Text = string.format("-- [SUCCESS] Objek '%s' berhasil di-PASTE ke dalam game (%s)!", clonedObj.Name, targetParent.Name)
+	end)
+
+	if not success then
+		InfoBox.Text = string.format("-- [PASTE FAILED]: %s", tostring(err))
+	end
+end)
+
+-- Tombol SAVE (Menyimpan data properti ke file teks internal)
 SaveBtn.MouseButton1Click:Connect(function()
 	if writefile then
-		local filename = "IKYYXD_DonateLog_" .. os.time() .. ".txt"
+		local filename = "IKYYXD_GuiBackup_" .. os.time() .. ".txt"
 		writefile(filename, InfoBox.Text)
-		InfoBox.Text = "-- [SAVED] workspace/" .. filename .. "\n\n" + InfoBox.Text
+		InfoBox.Text = "-- [SAVED] workspace/" .. filename .. "\n\n" .. InfoBox.Text
 	else
-		InfoBox.Text = "-- [ERROR] writefile() tidak didukung.\n\n" .. InfoBox.Text
+		InfoBox.Text = "-- [ERROR] writefile() tidak didukung di executor ini.\n\n" .. InfoBox.Text
 	end
 end)
 
