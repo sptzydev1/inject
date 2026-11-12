@@ -1,5 +1,5 @@
 --[[\
-    Project: IKYYXD DEX1.0 Remote Explorer & Injector Edition
+    Project: IKYYXD DEX1.0 Folder Remotes & Inject (Run) Edition
     Author: sptzyy / IkyyXD
 ]]--
 
@@ -32,6 +32,7 @@ local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 10)
 UICorner.Parent = MainFrame
 
+-- Garis pinggir Neon Cyan terang
 local UIStroke = Instance.new("UIStroke")
 UIStroke.Color = Color3.fromRGB(0, 229, 255)
 UIStroke.Transparency = 0.2
@@ -49,7 +50,7 @@ TitleLabel.Size = UDim2.new(1, -90, 1, 0)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Text = "IKYYXD DEX1.0 // Remotes"
+TitleLabel.Text = "IKYYXD DEX1.0 // Remotes Injector"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextSize = 11
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -67,7 +68,7 @@ CloseBtn.TextSize = 10
 CloseBtn.Parent = TopBar
 local CloseCorner = Instance.new("UICorner") CloseCorner.CornerRadius = UDim.new(0, 5) CloseCorner.Parent = CloseBtn
 
--- === PANEL KIRI: Console & Remote Fire Injector ===
+-- === PANEL KIRI: Info & Tombol INJECT (Run) ===
 local LeftPanel = Instance.new("Frame")
 LeftPanel.Size = UDim2.new(0.45, -6, 1, -40)
 LeftPanel.Position = UDim2.new(0, 6, 0, 34)
@@ -81,23 +82,23 @@ LeftTitle.Size = UDim2.new(1, -115, 0, 22)
 LeftTitle.Position = UDim2.new(0, 6, 0, 6)
 LeftTitle.BackgroundTransparency = 1
 LeftTitle.Font = Enum.Font.GothamBold
-LeftTitle.Text = "Remote Injector"
+LeftTitle.Text = "Remote Controller"
 LeftTitle.TextColor3 = Color3.fromRGB(0, 229, 255)
 LeftTitle.TextSize = 11
 LeftTitle.TextXAlignment = Enum.TextXAlignment.Left
 LeftTitle.Parent = LeftPanel
 
--- Tombol Fire / Invoke Remote yang dipilih
-local FireBtn = Instance.new("TextButton")
-FireBtn.Size = UDim2.new(0, 52, 0, 20)
-FireBtn.Position = UDim2.new(1, -110, 0, 7)
-FireBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
-FireBtn.Font = Enum.Font.GothamBold
-FireBtn.Text = "FIRE"
-FireBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-FireBtn.TextSize = 9
-FireBtn.Parent = LeftPanel
-local FireCorner = Instance.new("UICorner") FireCorner.CornerRadius = UDim.new(0, 4) FireCorner.Parent = FireBtn
+-- Tombol INJECT (Run Remote)
+local InjectBtn = Instance.new("TextButton")
+InjectBtn.Size = UDim2.new(0, 52, 0, 20)
+InjectBtn.Position = UDim2.new(1, -110, 0, 7)
+InjectBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
+InjectBtn.Font = Enum.Font.GothamBold
+InjectBtn.Text = "INJECT"
+InjectBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
+InjectBtn.TextSize = 9
+InjectBtn.Parent = LeftPanel
+local InjectCorner = Instance.new("UICorner") InjectCorner.CornerRadius = UDim.new(0, 4) InjectCorner.Parent = InjectBtn
 
 -- Tombol Save Log
 local SaveBtn = Instance.new("TextButton")
@@ -111,7 +112,7 @@ SaveBtn.TextSize = 9
 SaveBtn.Parent = LeftPanel
 local SaveCorner = Instance.new("UICorner") SaveCorner.CornerRadius = UDim.new(0, 4) SaveCorner.Parent = SaveBtn
 
--- ScrollingFrame Preview & Argumen Remote
+-- ScrollingFrame Preview Info Remote yang Dipilih
 local PreviewScroll = Instance.new("ScrollingFrame")
 PreviewScroll.Size = UDim2.new(1, -12, 1, -34)
 PreviewScroll.Position = UDim2.new(0, 6, 0, 30)
@@ -131,7 +132,7 @@ InfoBox.ClearTextOnFocus = false
 InfoBox.TextWrapped = true
 InfoBox.TextEditable = true
 InfoBox.Font = Enum.Font.Code
-InfoBox.Text = "-- Klik salah satu RemoteEvent / RemoteFunction di kanan untuk mengakses & Fire."
+InfoBox.Text = "-- Pilih folder atau remote di sebelah kanan, lalu klik INJECT untuk merun remotenya."
 InfoBox.TextColor3 = Color3.fromRGB(240, 240, 240)
 InfoBox.TextSize = 10
 InfoBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -143,31 +144,32 @@ InfoBox:GetPropertyChangedSignal("Text"):Connect(function()
 	PreviewScroll.CanvasSize = UDim2.new(0, 0, 0, InfoBox.TextBounds.Y + 40)
 end)
 
--- === PANEL KANAN: Scan Remotes & Daftar Objek ===
+-- === PANEL KANAN: Navigasi Folder & Pemilihan Remote ===
 local RightPanel = Instance.new("Frame")
 RightPanel.Size = UDim2.new(0.55, -10, 1, -40)
 RightPanel.Position = UDim2.new(0.45, 4, 0, 34)
 RightPanel.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
 RightPanel.BorderSizePixel = 0
 RightPanel.Parent = MainFrame
-local RightCorner = Instance.new("UICorner") RightCorner.CornerRadius = UDim.new(0, 6) RightCorner.Parent = RightPanel
+RightCorner = Instance.new("UICorner") RightCorner.CornerRadius = UDim.new(0, 6) RightCorner.Parent = RightPanel
 
--- Tombol Khusus Scan Remotes
-local ScanRemotesBtn = Instance.new("TextButton")
-ScanRemotesBtn.Size = UDim2.new(1, -12, 0, 24)
-ScanRemotesBtn.Position = UDim2.new(0, 6, 0, 6)
-ScanRemotesBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
-ScanRemotesBtn.Font = Enum.Font.GothamBold
-ScanRemotesBtn.Text = "SCAN ALL REMOTES"
-ScanRemotesBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-ScanRemotesBtn.TextSize = 10
-ScanRemotesBtn.Parent = RightPanel
-local ScanCorner = Instance.new("UICorner") ScanCorner.CornerRadius = UDim.new(0, 5) ScanCorner.Parent = ScanRemotesBtn
+-- Tombol Kembali (Back) untuk direktori folder
+local BackBtn = Instance.new("TextButton")
+BackBtn.Size = UDim2.new(1, -12, 0, 22)
+BackBtn.Position = UDim2.new(0, 6, 0, 6)
+BackBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
+BackBtn.Font = Enum.Font.GothamBold
+BackBtn.Text = "[ KEMBALI KE ROOT ]"
+BackBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
+BackBtn.TextSize = 10
+BackBtn.Visible = false
+BackBtn.Parent = RightPanel
+local BackCorner = Instance.new("UICorner") BackCorner.CornerRadius = UDim.new(0, 4) BackCorner.Parent = BackBtn
 
--- ScrollingFrame untuk Daftar Remotes
+-- ScrollingFrame untuk Daftar Folder / Remote
 local ObjectScroll = Instance.new("ScrollingFrame")
-ObjectScroll.Size = UDim2.new(1, -12, 1, -38)
-ObjectScroll.Position = UDim2.new(0, 6, 0, 34)
+ObjectScroll.Size = UDim2.new(1, -12, 1, -12)
+ObjectScroll.Position = UDim2.new(0, 6, 0, 6)
 ObjectScroll.BackgroundTransparency = 1
 ObjectScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 ObjectScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
@@ -180,47 +182,58 @@ UIList.SortOrder = Enum.SortOrder.LayoutOrder
 UIList.Padding = UDim.new(0, 3)
 UIList.Parent = ObjectScroll
 
-local selectedRemote = nil
+local currentParentInstance = nil
+local activeRemote = nil
 
--- Fungsi untuk MenScan dan Menampilkan Semua RemoteEvent & RemoteFunction di Game
-local function ScanRemotes()
+-- Fungsi untuk Menjelajahi Folder yang Berisi Remotes
+local function LoadDirectory(instanceToExplore)
 	for _, child in ipairs(ObjectScroll:GetChildren()) do
 		if child:IsA("TextButton") then
 			child:Destroy()
 		end
 	end
 
-	InfoBox.Text = "-- Memindai seluruh RemoteEvent & RemoteFunction dalam game..."
+	currentParentInstance = instanceToExplore
+	local itemsToDisplay = {}
 
-	local foundRemotes = {}
-	
-	-- Scan dari ReplicatedStorage, Workspace, dan Players
-	local containers = {ReplicatedStorage, Workspace}
-	for _, container in ipairs(containers) do
-		local success, descendants = pcall(function() return container:GetDescendants() end)
-		if success and descendants then
-			for _, obj in ipairs(descendants) do
-				if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
-					table.insert(foundRemotes, obj)
-				end
-			end
-		end
+	if instanceToExplore == nil then
+		BackBtn.Visible = false
+		ObjectScroll.Size = UDim2.new(1, -12, 1, -12)
+		ObjectScroll.Position = UDim2.new(0, 6, 0, 6)
+		
+		-- Root Layanan Utama tempat biasa folder remotes berada
+		itemsToDisplay = {
+			ReplicatedStorage,
+			Workspace,
+			Players,
+			game:GetService("Lighting"),
+			game:GetService("ServerStorage"),
+			game:GetService("ServerScriptService")
+		}
+	else
+		BackBtn.Visible = true
+		ObjectScroll.Size = UDim2.new(1, -12, 1, -36)
+		ObjectScroll.Position = UDim2.new(0, 6, 0, 30)
+		itemsToDisplay = instanceToExplore:GetChildren()
 	end
 
-	if #foundRemotes == 0 then
-		InfoBox.Text = "-- Tidak ditemukan RemoteEvent/RemoteFunction."
-		return
-	end
-
-	for _, remote in ipairs(foundRemotes) do
+	for _, item in ipairs(itemsToDisplay) do
 		local btn = Instance.new("TextButton")
 		btn.Size = UDim2.new(1, 0, 0, 22)
 		btn.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
 		btn.Font = Enum.Font.GothamMedium
 		
-		local tag = remote:IsA("RemoteEvent") and "[RE] " or "[RF] "
+		local labelTag = "[OBJ] "
+		if item:IsA("Folder") or item:IsA("Model") then
+			labelTag = "[DIR] "
+		elseif item:IsA("RemoteEvent") then
+			labelTag = "[RE] "
+		elseif item:IsA("RemoteFunction") then
+			labelTag = "[RF] "
+		end
+
 		btn.TextTruncate = Enum.TextTruncate.AtEnd
-		btn.Text = " " .. tag .. remote.Name
+		btn.Text = " " .. labelTag .. item.Name
 		btn.TextColor3 = Color3.fromRGB(240, 240, 240)
 		btn.TextSize = 10
 		btn.TextXAlignment = Enum.TextXAlignment.Left
@@ -228,47 +241,77 @@ local function ScanRemotes()
 		
 		local btnCorner = Instance.new("UICorner") btnCorner.CornerRadius = UDim.new(0, 4) btnCorner.Parent = btn
 
+		-- Klik item untuk memilih remote atau melihat isi folder
 		btn.MouseButton1Click:Connect(function()
-			selectedRemote = remote
-			local path = remote:GetFullName()
-			InfoBox.Text = string.format("-- Dipilih: %s\n-- Tipe: %s\n-- Path: %s\n\n-- Ketik argumen di bawah ini lalu klik FIRE untuk eksekusi:\narguments = {\n    \"arg1\",\n    123\n}", remote.Name, remote.ClassName, path)
+			if item:IsA("RemoteEvent") or item:IsA("RemoteFunction") then
+				activeRemote = item
+				InfoBox.Text = string.format("-- Dipilih Remote:\n-- Nama: %s\n-- Tipe: %s\n-- Path: %s\n\nKlik tombol INJECT untuk merun remote ini.", item.Name, item.ClassName, item:GetFullName())
+			else
+				-- Jika folder biasa, tampilkan informasi isi children-nya
+				local infoText = string.format("-- Folder: %s\n-- Tipe: %s\n\n[Isi Folder]:\n", item.Name, item.ClassName)
+				for _, sub in ipairs(item:GetChildren()) do
+					infoText = infoText .. " - " .. sub.Name .. " (" .. sub.ClassName .. ")\n"
+				end
+				InfoBox.Text = infoText
+			end
 		end)
+
+		-- Tombol Buka jika itu folder/model agar masuk ke dalam hierarki
+		if not (item:IsA("RemoteEvent") or item:IsA("RemoteFunction")) then
+			local enterBtn = Instance.new("TextButton")
+			enterBtn.Size = UDim2.new(0, 38, 1, 0)
+			enterBtn.Position = UDim2.new(1, -38, 0, 0)
+			enterBtn.BackgroundTransparency = 1
+			enterBtn.Font = Enum.Font.GothamBold
+			enterBtn.Text = "BUKA >"
+			enterBtn.TextColor3 = Color3.fromRGB(0, 229, 255)
+			enterBtn.TextSize = 8
+			enterBtn.Parent = btn
+			
+			enterBtn.MouseButton1Click:Connect(function()
+				LoadDirectory(item)
+			end)
+		end
 	end
-	
-	InfoBox.Text = string.format("-- Selesai memindai! Ditemukan %d Remotes. Silakan pilih salah satu di panel kanan.", #foundRemotes)
 end
 
-ScanRemotes()
+LoadDirectory(nil)
 
-ScanRemotesBtn.MouseButton1Click:Connect(function()
-	ScanRemotes()
+BackBtn.MouseButton1Click:Connect(function()
+	if currentParentInstance and currentParentInstance.Parent and currentParentInstance.Parent ~= game then
+		LoadDirectory(currentParentInstance.Parent)
+	else
+		LoadDirectory(nil)
+	end
 end)
 
--- Tombol Fire / Invoke Remote Terpilih
-FireBtn.MouseButton1Click:Connect(function()
-	if not selectedRemote then
-		InfoBox.Text = "-- [ERROR] Belum ada Remote yang dipilih dari panel kanan!"
+-- Tombol INJECT (Run Remote yang dipilih)
+InjectBtn.MouseButton1Click:Connect(function()
+	if not activeRemote then
+		InfoBox.Text = "-- [ERROR] Belum ada RemoteEvent / RemoteFunction yang dipilih dari panel kanan!"
 		return
 	end
 
 	local success, err = pcall(function()
-		if selectedRemote:IsA("RemoteEvent") then
-			selectedRemote:FireServer("IKYYXD_Injected", os.time())
-			InfoBox.Text = string.format("-- [SUCCESS] Berhasil FireServer() pada: %s", selectedRemote.Name)
-		elseif selectedRemote:IsA("RemoteFunction") then
-			local res = selectedRemote:InvokeServer("IKYYXD_Injected", os.time())
-			InfoBox.Text = string.format("-- [SUCCESS] Berhasil InvokeServer() pada: %s\n-- Hasil Response: %s", selectedRemote.Name, tostring(res))
+		if activeRemote:IsA("RemoteEvent") then
+			-- Menjalankan / Fire RemoteEvent ke server
+			activeRemote:FireServer()
+			InfoBox.Text = string.format("-- [SUCCESS] Berhasil INJECT (FireServer) pada remote: %s", activeRemote.Name)
+		elseif activeRemote:IsA("RemoteFunction") then
+			-- Menjalankan / Invoke RemoteFunction ke server
+			local response = activeRemote:InvokeServer()
+			InfoBox.Text = string.format("-- [SUCCESS] Berhasil INJECT (InvokeServer) pada remote: %s\n-- Respon Server: %s", activeRemote.Name, tostring(response))
 		end
 	end)
 
 	if not success then
-		InfoBox.Text = string.format("-- [FIRE FAILED]: %s", tostring(err))
+		InfoBox.Text = string.format("-- [INJECT FAILED]: %s", tostring(err))
 	end
 end)
 
 SaveBtn.MouseButton1Click:Connect(function()
 	if writefile then
-		local filename = "IKYYXD_Remotes_" .. os.time() .. ".txt"
+		local filename = "IKYYXD_RemoteLog_" .. os.time() .. ".txt"
 		writefile(filename, InfoBox.Text)
 		InfoBox.Text = "-- [SAVED] workspace/" .. filename .. "\n\n" .. InfoBox.Text
 	else
