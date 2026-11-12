@@ -1,391 +1,507 @@
---[[\
-    Project: IKYYXD DEX1.0 StarterGui Copier & Injector Edition
-    Author: sptzyy / IkyyXD
-]]--
+-- ======================================================
+-- IKYYXD DEX1.0 - STARTERGUI COPIER & DECOMPILER EDITION
+-- COPYRIGHT (C) IkyyXD - ALL RIGHTS RESERVED
+-- ======================================================
 
-local CoreGui = game:GetService("CoreGui")
-local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
 local StarterGui = game:GetService("StarterGui")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
 
-if CoreGui:FindFirstChild("IKYYXDDEX") then
-    CoreGui.IKYYXDDEX:Destroy()
-end
+-- Hapus GUI lama jika ada
+local oldGui = LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("IKYYXDGuiCopier")
+if oldGui then oldGui:Destroy() end
 
+--------------------------------------------------
+-- 1. UTAMA: SCREEN GUI & FLOATING ICON (Cyan Accent)
+--------------------------------------------------
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "IKYYXDDEX"
+ScreenGui.Name = "IKYYXDGuiCopier"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-ScreenGui.Parent = CoreGui
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
 
--- Main Frame (Kompak untuk HP - 540 x 340)
+-- Floating Icon Kecil
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Name = "ToggleButton"
+ToggleButton.Size = UDim2.new(0, 32, 0, 32)
+ToggleButton.Position = UDim2.new(0, 10, 0.5, -16)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+ToggleButton.Text = "IK"
+ToggleButton.TextSize = 12
+ToggleButton.TextColor3 = Color3.fromRGB(0, 229, 255)
+ToggleButton.Font = Enum.Font.SourceSansBold
+ToggleButton.Active = true
+ToggleButton.Draggable = true
+ToggleButton.Parent = ScreenGui
+
+local UICornerIcon = Instance.new("UICorner")
+UICornerIcon.CornerRadius = UDim.new(0, 6)
+UICornerIcon.Parent = ToggleButton
+
+local UIStrokeIcon = Instance.new("UIStroke")
+UIStrokeIcon.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+UIStrokeIcon.Color = Color3.fromRGB(0, 229, 255)
+UIStrokeIcon.Thickness = 1.5
+UIStrokeIcon.Parent = ToggleButton
+
+-- Main Frame (Lebar: 460px, Tinggi: 220px)
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 540, 0, 340)
-MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
-MainFrame.BorderSizePixel = 0
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 460, 0, 220)
+MainFrame.Position = UDim2.new(0.5, -230, 0.5, -110)
+MainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Visible = true
 MainFrame.Parent = ScreenGui
 
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 10)
-UICorner.Parent = MainFrame
+local UICornerMain = Instance.new("UICorner")
+UICornerMain.CornerRadius = UDim.new(0, 8)
+UICornerMain.Parent = MainFrame
 
--- Garis pinggir Neon Cyan terang
-local UIStroke = Instance.new("UIStroke")
-UIStroke.Color = Color3.fromRGB(0, 229, 255)
-UIStroke.Transparency = 0.2
-UIStroke.Thickness = 1.5
-UIStroke.Parent = MainFrame
+local UIStrokeMain = Instance.new("UIStroke")
+UIStrokeMain.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+UIStrokeMain.Color = Color3.fromRGB(0, 229, 255)
+UIStrokeMain.Thickness = 1.5
+UIStrokeMain.Parent = MainFrame
 
--- Top Bar (Dragging Handler)
-local TopBar = Instance.new("Frame")
-TopBar.Size = UDim2.new(1, 0, 0, 30)
-TopBar.BackgroundTransparency = 1
-TopBar.Parent = MainFrame
-
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, -130, 1, 0)
-TitleLabel.Position = UDim2.new(0, 10, 0, 0)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Text = "IKYYXD DEX1.0 // Gui Copier"
-TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleLabel.TextSize = 11
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = TopBar
-
-local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 35, 0, 20)
-CloseBtn.AnchorPoint = Vector2.new(1, 0.5)
-CloseBtn.Position = UDim2.new(1, -8, 0.5, 0)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
-CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.Text = "X"
-CloseBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-CloseBtn.TextSize = 10
-CloseBtn.Parent = TopBar
-local CloseCorner = Instance.new("UICorner") CloseCorner.CornerRadius = UDim.new(0, 5) CloseCorner.Parent = CloseBtn
-
--- === PANEL KIRI: Preview Properti, Tombol COPY, PASTE, & SAVE ===
-local LeftPanel = Instance.new("Frame")
-LeftPanel.Size = UDim2.new(0.45, -6, 1, -40)
-LeftPanel.Position = UDim2.new(0, 6, 0, 34)
-LeftPanel.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-LeftPanel.BorderSizePixel = 0
-LeftPanel.Parent = MainFrame
-local LeftCorner = Instance.new("UICorner") LeftCorner.CornerRadius = UDim.new(0, 6) LeftCorner.Parent = LeftPanel
-
-local LeftTitle = Instance.new("TextLabel")
-LeftTitle.Size = UDim2.new(1, -165, 0, 22)
-LeftTitle.Position = UDim2.new(0, 6, 0, 6)
-LeftTitle.BackgroundTransparency = 1
-LeftTitle.Font = Enum.Font.GothamBold
-LeftTitle.Text = "Properties"
-LeftTitle.TextColor3 = Color3.fromRGB(0, 229, 255)
-LeftTitle.TextSize = 11
-LeftTitle.TextXAlignment = Enum.TextXAlignment.Left
-LeftTitle.Parent = LeftPanel
-
--- Tombol PASTE (Tempel ke StarterGui / PlayerGui)
-local PasteBtn = Instance.new("TextButton")
-PasteBtn.Size = UDim2.new(0, 45, 0, 20)
-PasteBtn.Position = UDim2.new(1, -160, 0, 7)
-PasteBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
-PasteBtn.Font = Enum.Font.GothamBold
-PasteBtn.Text = "PASTE"
-PasteBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-PasteBtn.TextSize = 8
-PasteBtn.Parent = LeftPanel
-local PasteCorner = Instance.new("UICorner") PasteCorner.CornerRadius = UDim.new(0, 4) PasteCorner.Parent = PasteBtn
-
--- Tombol COPY
-local CopyBtn = Instance.new("TextButton")
-CopyBtn.Size = UDim2.new(0, 45, 0, 20)
-CopyBtn.Position = UDim2.new(1, -110, 0, 7)
-CopyBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-CopyBtn.Font = Enum.Font.GothamBold
-CopyBtn.Text = "COPY"
-CopyBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-CopyBtn.TextSize = 8
-CopyBtn.Parent = LeftPanel
-local CopyCorner = Instance.new("UICorner") CopyCorner.CornerRadius = UDim.new(0, 4) CopyCorner.Parent = CopyBtn
-
--- Tombol SAVE
-local SaveBtn = Instance.new("TextButton")
-SaveBtn.Size = UDim2.new(0, 50, 0, 20)
-SaveBtn.Position = UDim2.new(1, -60, 0, 7)
-SaveBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
-SaveBtn.Font = Enum.Font.GothamBold
-SaveBtn.Text = "SAVE"
-SaveBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-SaveBtn.TextSize = 8
-SaveBtn.Parent = LeftPanel
-local SaveCorner = Instance.new("UICorner") SaveCorner.CornerRadius = UDim.new(0, 4) SaveCorner.Parent = SaveBtn
-
--- ScrollingFrame Preview Properti GUI
-local PreviewScroll = Instance.new("ScrollingFrame")
-PreviewScroll.Size = UDim2.new(1, -12, 1, -34)
-PreviewScroll.Position = UDim2.new(0, 6, 0, 30)
-PreviewScroll.BackgroundTransparency = 1
-PreviewScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-PreviewScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-PreviewScroll.ScrollBarThickness = 3
-PreviewScroll.ScrollBarImageColor3 = Color3.fromRGB(0, 229, 255)
-PreviewScroll.Parent = LeftPanel
-
-local InfoBox = Instance.new("TextBox")
-InfoBox.Size = UDim2.new(1, 0, 1, 0)
-InfoBox.Position = UDim2.new(0, 0, 0, 0)
-InfoBox.BackgroundTransparency = 1
-InfoBox.MultiLine = true
-InfoBox.ClearTextOnFocus = false
-InfoBox.TextWrapped = true
-InfoBox.TextEditable = true
-InfoBox.Font = Enum.Font.Code
-InfoBox.Text = "-- Pilih objek GUI di sebelah kanan untuk melihat properti akuratnya."
-InfoBox.TextColor3 = Color3.fromRGB(240, 240, 240)
-InfoBox.TextSize = 10
-InfoBox.TextXAlignment = Enum.TextXAlignment.Left
-InfoBox.TextYAlignment = Enum.TextYAlignment.Top
-InfoBox.Parent = PreviewScroll
-
-InfoBox:GetPropertyChangedSignal("Text"):Connect(function()
-	InfoBox.Size = UDim2.new(1, 0, 0, InfoBox.TextBounds.Y + 40)
-	PreviewScroll.CanvasSize = UDim2.new(0, 0, 0, InfoBox.TextBounds.Y + 40)
+ToggleButton.MouseButton1Click:Connect(function()
+	MainFrame.Visible = not MainFrame.Visible
 end)
 
--- === PANEL KANAN: Navigasi StarterGui & Pemilihan Objek ===
-local RightPanel = Instance.new("Frame")
-RightPanel.Size = UDim2.new(0.55, -10, 1, -40)
-RightPanel.Position = UDim2.new(0.45, 4, 0, 34)
-RightPanel.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-RightPanel.BorderSizePixel = 0
-RightPanel.Parent = MainFrame
-local RightCorner = Instance.new("UICorner") RightCorner.CornerRadius = UDim.new(0, 6) RightCorner.Parent = RightPanel
+--------------------------------------------------
+-- 2. WATERMARK PALING BAWAH (@IkyyXD)
+--------------------------------------------------
+local BottomWatermark = Instance.new("TextLabel")
+BottomWatermark.Size = UDim2.new(1, 0, 0, 16)
+BottomWatermark.Position = UDim2.new(0, 0, 1, -16)
+BottomWatermark.BackgroundTransparency = 1
+BottomWatermark.Text = "IKYYXD DEX1.0 // @IkyyXD"
+BottomWatermark.TextColor3 = Color3.fromRGB(150, 150, 150)
+BottomWatermark.TextSize = 9
+BottomWatermark.Font = Enum.Font.SourceSansBold
+BottomWatermark.Parent = MainFrame
 
--- Tombol Kembali (Back)
-local BackBtn = Instance.new("TextButton")
-BackBtn.Size = UDim2.new(1, -12, 0, 22)
-BackBtn.Position = UDim2.new(0, 6, 0, 6)
-BackBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
-BackBtn.Font = Enum.Font.GothamBold
-BackBtn.Text = "[ KEMBALI KE STARTERGUI ]"
-BackBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-BackBtn.TextSize = 9
-BackBtn.Visible = false
-BackBtn.Parent = RightPanel
-local BackCorner = Instance.new("UICorner") BackCorner.CornerRadius = UDim.new(0, 4) BackCorner.Parent = BackBtn
+--------------------------------------------------
+-- 3. PAGE KIRI: LIST FITUR MINI
+--------------------------------------------------
+local PageKiri = Instance.new("Frame")
+PageKiri.Name = "PageKiri"
+PageKiri.Size = UDim2.new(0, 142, 1, -22)
+PageKiri.Position = UDim2.new(0, 6, 0, 6)
+PageKiri.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+PageKiri.Parent = MainFrame
 
--- ScrollingFrame untuk Daftar Objek GUI
-local ObjectScroll = Instance.new("ScrollingFrame")
-ObjectScroll.Size = UDim2.new(1, -12, 1, -12)
-ObjectScroll.Position = UDim2.new(0, 6, 0, 6)
-ObjectScroll.BackgroundTransparency = 1
-ObjectScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-ObjectScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-ObjectScroll.ScrollBarThickness = 3
-ObjectScroll.ScrollBarImageColor3 = Color3.fromRGB(0, 229, 255)
-ObjectScroll.Parent = RightPanel
+local UICornerKiri = Instance.new("UICorner")
+UICornerKiri.CornerRadius = UDim.new(0, 6)
+UICornerKiri.Parent = PageKiri
 
-local UIList = Instance.new("UIListLayout")
-UIList.SortOrder = Enum.SortOrder.LayoutOrder
-UIList.Padding = UDim.new(0, 3)
-UIList.Parent = ObjectScroll
+local TitleKiri = Instance.new("TextLabel")
+TitleKiri.Size = UDim2.new(1, 0, 0, 18)
+TitleKiri.Position = UDim2.new(0, 0, 0, 2)
+TitleKiri.BackgroundTransparency = 1
+TitleKiri.Text = "GUI FEATURES"
+TitleKiri.TextColor3 = Color3.fromRGB(0, 229, 255)
+TitleKiri.TextSize = 10
+TitleKiri.Font = Enum.Font.SourceSansBold
+TitleKiri.Parent = PageKiri
 
-local currentParentInstance = nil
-local activeSelectedInstance = nil
-local copiedInstanceData = nil -- Menyimpan salinan objek GUI
+local ListContainer = Instance.new("Frame")
+ListContainer.Size = UDim2.new(1, -12, 1, -26)
+ListContainer.Position = UDim2.new(0, 6, 0, 22)
+ListContainer.BackgroundTransparency = 1
+ListContainer.Parent = PageKiri
 
--- Fungsi untuk Menampilkan Hierarki StarterGui & PlayerGui
-local function LoadDirectory(instanceToExplore)
-	for _, child in ipairs(ObjectScroll:GetChildren()) do
-		if child:IsA("TextButton") then
-			child:Destroy()
-		end
-	end
+local UIListKiri = Instance.new("UIListLayout")
+UIListKiri.SortOrder = Enum.SortOrder.LayoutOrder
+UIListKiri.Padding = UDim.new(0, 3)
+UIListKiri.Parent = ListContainer
 
-	currentParentInstance = instanceToExplore
-	local itemsToDisplay = {}
-
-	if instanceToExplore == nil then
-		BackBtn.Visible = false
-		ObjectScroll.Size = UDim2.new(1, -12, 1, -12)
-		ObjectScroll.Position = UDim2.new(0, 6, 0, 6)
-		
-		-- Root utama GUI game
-		local localPlayer = Players.LocalPlayer
-		local playerGui = localPlayer and localPlayer:FindFirstChild("PlayerGui")
-		
-		itemsToDisplay = {
-			StarterGui,
-			playerGui
-		}
-	else
-		BackBtn.Visible = true
-		ObjectScroll.Size = UDim2.new(1, -12, 1, -36)
-		ObjectScroll.Position = UDim2.new(0, 6, 0, 30)
-		itemsToDisplay = instanceToExplore:GetChildren()
-	end
-
-	for _, item in ipairs(itemsToDisplay) do
-		if item then
-			local btn = Instance.new("TextButton")
-			btn.Size = UDim2.new(1, 0, 0, 22)
-			btn.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
-			btn.Font = Enum.Font.GothamMedium
-			
-			local labelTag = "[GUI] "
-			if item:IsA("ScreenGui") then
-				labelTag = "[SG] "
-			elseif item:IsA("Frame") then
-				labelTag = "[FRM] "
-			elseif item:IsA("TextButton") or item:IsA("ImageButton") then
-				labelTag = "[BTN] "
-			elseif item:IsA("TextLabel") or item:IsA("ImageLabel") then
-				labelTag = "[LBL] "
-			elseif item:IsA("Folder") then
-				labelTag = "[DIR] "
-			end
-
-			btn.TextTruncate = Enum.TextTruncate.AtEnd
-			btn.Text = " " .. labelTag .. item.Name
-			btn.TextColor3 = Color3.fromRGB(240, 240, 240)
-			btn.TextSize = 10
-			btn.TextXAlignment = Enum.TextXAlignment.Left
-            btn.Parent = ObjectScroll
-			
-			local btnCorner = Instance.new("UICorner") btnCorner.CornerRadius = UDim.new(0, 4) btnCorner.Parent = btn
-
-			-- Klik item untuk melihat Properti Akuratnya
-			btn.MouseButton1Click:Connect(function()
-				activeSelectedInstance = item
-				
-				local propText = string.format("-- [PROPERTIES: %s]\n-- ClassName: %s\n-- Parent: %s\n\n", item.Name, item.ClassName, tostring(item.Parent))
-				
-				-- Ambil properti umum yang akurat sesuai aslinya
-				pcall(function()
-					if item:IsA("GuiObject") or item:IsA("LayerCollector") then
-						propText = propText .. string.format("Size = UDim2.new(%s)\n", tostring(item.Size))
-						propText = propText .. string.format("Position = UDim2.new(%s)\n", tostring(item.Position))
-						propText = propText .. string.format("BackgroundColor3 = Color3.fromRGB(%d, %d, %d)\n", item.BackgroundColor3.R*255, item.BackgroundColor3.G*255, item.BackgroundColor3.B*255)
-						propText = propText .. string.format("BackgroundTransparency = %.2f\n", item.BackgroundTransparency)
-						propText = propText .. string.format("Visible = %s\n", tostring(item.Visible))
-					end
-					if item:IsA("TextButton") or item:IsA("TextLabel") or item:IsA("TextBox") then
-						propText = propText .. string.format("Text = \"%s\"\n", item.Text)
-						propText = propText .. string.format("TextSize = %d\n", item.TextSize)
-						propText = propText .. string.format("TextColor3 = Color3.fromRGB(%d, %d, %d)\n", item.TextColor3.R*255, item.TextColor3.G*255, item.TextColor3.B*255)
-					end
-				end)
-
-				propText = propText .. "\n[Children (" .. #item:GetChildren() .. ")]:\n"
-				for _, sub in ipairs(item:GetChildren()) do
-					propText = propText .. " - " .. sub.Name .. " (" .. sub.ClassName .. ")\n"
-				end
-
-				InfoBox.Text = propText
-			end)
-
-			-- Tombol Buka jika objek memiliki anak (children)
-			if #item:GetChildren() > 0 then
-				local enterBtn = Instance.new("TextButton")
-				enterBtn.Size = UDim2.new(0, 38, 1, 0)
-				enterBtn.Position = UDim2.new(1, -38, 0, 0)
-				enterBtn.BackgroundTransparency = 1
-				enterBtn.Font = Enum.Font.GothamBold
-				enterBtn.Text = "BUKA >"
-				enterBtn.TextColor3 = Color3.fromRGB(0, 229, 255)
-				enterBtn.TextSize = 8
-				enterBtn.Parent = btn
-				
-				enterBtn.MouseButton1Click:Connect(function()
-					LoadDirectory(item)
-				end)
-			end
-		end
-	end
+local function createFeatureLabel(text, order)
+	local lbl = Instance.new("TextLabel")
+	lbl.Size = UDim2.new(1, 0, 0, 22)
+	lbl.LayoutOrder = order
+	lbl.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
+	lbl.Text = text
+	lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
+	lbl.TextSize = 9
+	lbl.Font = Enum.Font.SourceSans
+	lbl.Parent = ListContainer
+	
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = lbl
+	return lbl
 end
 
-LoadDirectory(nil)
+createFeatureLabel("• StarterGui Only", 1)
+createFeatureLabel("• All Properties Sync", 2)
+createFeatureLabel("• Script Decompiler", 3)
+createFeatureLabel("• Auto Storage Backup", 4)
+createFeatureLabel("• Direct Inject/Paste", 5)
 
-BackBtn.MouseButton1Click:Connect(function()
-	if currentParentInstance and currentParentInstance.Parent and currentParentInstance.Parent ~= game then
-		LoadDirectory(currentParentInstance.Parent)
-	else
-		LoadDirectory(nil)
-	end
+--------------------------------------------------
+-- 4. PAGE TENGAH: PROFILE MINI
+--------------------------------------------------
+local PageTengah = Instance.new("Frame")
+PageTengah.Name = "PageTengah"
+PageTengah.Size = UDim2.new(0, 142, 1, -22)
+PageTengah.Position = UDim2.new(0, 154, 0, 6)
+PageTengah.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+PageTengah.Parent = MainFrame
+
+local UICornerTengah = Instance.new("UICorner")
+UICornerTengah.CornerRadius = UDim.new(0, 6)
+UICornerTengah.Parent = PageTengah
+
+local TitleTengah = Instance.new("TextLabel")
+TitleTengah.Size = UDim2.new(1, 0, 0, 18)
+TitleTengah.Position = UDim2.new(0, 0, 0, 2)
+TitleTengah.BackgroundTransparency = 1
+TitleTengah.Text = "PROFILE AKUN"
+TitleTengah.TextColor3 = Color3.fromRGB(0, 229, 255)
+TitleTengah.TextSize = 10
+TitleTengah.Font = Enum.Font.SourceSansBold
+TitleTengah.Parent = PageTengah
+
+local AvatarImg = Instance.new("ImageLabel")
+AvatarImg.Size = UDim2.new(0, 32, 0, 32)
+AvatarImg.Position = UDim2.new(0, 6, 0, 22)
+AvatarImg.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+AvatarImg.Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=150&h=150"
+AvatarImg.Parent = PageTengah
+
+local UICornerAvatar = Instance.new("UICorner")
+UICornerAvatar.CornerRadius = UDim.new(1, 0)
+UICornerAvatar.Parent = AvatarImg
+
+local ProfileDetails = Instance.new("TextLabel")
+ProfileDetails.Size = UDim2.new(1, -44, 0, 32)
+ProfileDetails.Position = UDim2.new(0, 42, 0, 22)
+ProfileDetails.BackgroundTransparency = 1
+ProfileDetails.TextXAlignment = Enum.TextXAlignment.Left
+ProfileDetails.TextYAlignment = Enum.TextYAlignment.Center
+ProfileDetails.Text = "👤 " .. LocalPlayer.DisplayName .. "\n🗓️ " .. LocalPlayer.AccountAge .. " Hari"
+ProfileDetails.TextColor3 = Color3.fromRGB(220, 220, 220)
+ProfileDetails.TextSize = 9
+ProfileDetails.Font = Enum.Font.SourceSans
+ProfileDetails.Parent = PageTengah
+
+local InfoList = Instance.new("TextLabel")
+InfoList.Size = UDim2.new(1, -12, 0, 115)
+InfoList.Position = UDim2.new(0, 6, 0, 60)
+InfoList.BackgroundTransparency = 1
+InfoList.TextXAlignment = Enum.TextXAlignment.Left
+InfoList.TextYAlignment = Enum.TextYAlignment.Top
+InfoList.TextColor3 = Color3.fromRGB(180, 180, 180)
+InfoList.TextSize = 9
+InfoList.Font = Enum.Font.SourceSans
+InfoList.Text = "👥 Friends: Loading...\n⭐ Followers: Loading...\n📌 Following: Loading..."
+InfoList.Parent = PageTengah
+
+task.spawn(function()
+	local friendsCount, followersCount, followingCount = "0", "0", "0"
+	pcall(function() friendsCount = tostring(#Players:GetFriendsAsync(LocalPlayer.UserId):GetCurrentPage()) end)
+	pcall(function() followersCount = tostring(HttpService:JSONDecode(game:HttpGet("https://friends.roblox.com/v1/users/" .. LocalPlayer.UserId .. "/followers/count")).count) end)
+	pcall(function() followingCount = tostring(HttpService:JSONDecode(game:HttpGet("https://friends.roblox.com/v1/users/" .. LocalPlayer.UserId .. "/followings/count")).count) end)
+	InfoList.Text = "👥 Friends: " .. friendsCount .. "\n⭐ Followers: " .. followersCount .. "\n📌 Following: " .. followingCount
 end)
 
--- Tombol COPY (Menyalin objek GUI yang sedang dipilih)
-CopyBtn.MouseButton1Click:Connect(function()
-	if not activeSelectedInstance then
-		InfoBox.Text = "-- [ERROR] Pilih objek GUI terlebih dahulu di panel kanan untuk di-COPY!"
-		return
-	end
+--------------------------------------------------
+-- 5. PAGE KANAN: KONTROL, LIST & CONSOLE LOG
+--------------------------------------------------
+local PageKanan = Instance.new("Frame")
+PageKanan.Name = "PageKanan"
+PageKanan.Size = UDim2.new(0, 150, 1, -22)
+PageKanan.Position = UDim2.new(0, 302, 0, 6)
+PageKanan.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+PageKanan.Parent = MainFrame
 
-	pcall(function()
-		copiedInstanceData = activeSelectedInstance:Clone()
-		InfoBox.Text = string.format("-- [SUCCESS] Objek '%s (%s)' berhasil di-COPY ke memori!\n-- Sekarang Anda bisa pindah ke game lain dan tekan tombol PASTE.", activeSelectedInstance.Name, activeSelectedInstance.ClassName)
+local UICornerKanan = Instance.new("UICorner")
+UICornerKanan.CornerRadius = UDim.new(0, 6)
+UICornerKanan.Parent = PageKanan
+
+local TitleKanan = Instance.new("TextLabel")
+TitleKanan.Size = UDim2.new(1, -24, 0, 18)
+TitleKanan.Position = UDim2.new(0, 0, 0, 2)
+TitleKanan.BackgroundTransparency = 1
+TitleKanan.Text = "GUI SAVED"
+TitleKanan.TextColor3 = Color3.fromRGB(0, 229, 255)
+TitleKanan.TextSize = 10
+TitleKanan.Font = Enum.Font.SourceSansBold
+TitleKanan.Parent = PageKanan
+
+local BtnContainer = Instance.new("Frame")
+BtnContainer.Size = UDim2.new(1, -12, 0, 50)
+BtnContainer.Position = UDim2.new(0, 6, 0, 20)
+BtnContainer.BackgroundTransparency = 1
+BtnContainer.Parent = PageKanan
+
+local UIListKanan = Instance.new("UIListLayout")
+UIListKanan.SortOrder = Enum.SortOrder.LayoutOrder
+UIListKanan.Padding = UDim.new(0, 3)
+UIListKanan.Parent = BtnContainer
+
+local function createActionButton(name, text, order)
+	local btn = Instance.new("TextButton")
+	btn.Name = name
+	btn.Size = UDim2.new(1, 0, 0, 20)
+	btn.LayoutOrder = order
+	btn.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
+	btn.Text = text
+	btn.TextColor3 = Color3.fromRGB(240, 240, 240)
+	btn.TextSize = 9
+	btn.Font = Enum.Font.SourceSansBold
+	btn.Parent = BtnContainer
+	
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 3)
+	corner.Parent = btn
+	return btn
+end
+
+local CopyGuiBtn = createActionButton("CopyGuiBtn", "Copy StarterGui", 1)
+local SaveBtn     = createActionButton("SaveBtn", "Save to File", 2)
+
+-- Scroll Container List Hasil
+local ResultFrame = Instance.new("ScrollingFrame")
+ResultFrame.Name = "ResultFrame"
+ResultFrame.Size = UDim2.new(1, -12, 0, 75)
+ResultFrame.Position = UDim2.new(0, 6, 0, 74)
+ResultFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
+ResultFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+ResultFrame.ScrollBarThickness = 2
+ResultFrame.Parent = PageKanan
+
+local UICornerResult = Instance.new("UICorner")
+UICornerResult.CornerRadius = UDim.new(0, 4)
+UICornerResult.Parent = ResultFrame
+
+local ResultListLayout = Instance.new("UIListLayout")
+ResultListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ResultListLayout.Padding = UDim.new(0, 2)
+ResultListLayout.Parent = ResultFrame
+
+-- Console Log Box
+local ConsoleLog = Instance.new("TextLabel")
+ConsoleLog.Name = "ConsoleLog"
+ConsoleLog.Size = UDim2.new(1, -12, 0, 32)
+ConsoleLog.Position = UDim2.new(0, 6, 0, 154)
+ConsoleLog.BackgroundColor3 = Color3.fromRGB(8, 8, 10)
+ConsoleLog.Text = "> System Ready..."
+ConsoleLog.TextColor3 = Color3.fromRGB(0, 229, 255)
+ConsoleLog.TextSize = 8
+ConsoleLog.Font = Enum.Font.Code
+ConsoleLog.TextXAlignment = Enum.TextXAlignment.Left
+ConsoleLog.TextYAlignment = Enum.TextYAlignment.Top
+ConsoleLog.TextWrapped = true
+ConsoleLog.Parent = PageKanan
+
+local UICornerConsole = Instance.new("UICorner")
+UICornerConsole.CornerRadius = UDim.new(0, 4)
+UICornerConsole.Parent = ConsoleLog
+
+--------------------------------------------------
+-- 6. LOGIKA DECOMPILER & SERIALIZER STARTERGUI
+--------------------------------------------------
+local savedGuiStorage = {}
+local listButtons = {}
+
+local function setConsoleMessage(text, color)
+	ConsoleLog.Text = "> " .. text
+	ConsoleLog.TextColor3 = color or Color3.fromRGB(0, 229, 255)
+end
+
+-- Fungsi Decompile Script layaknya Delta / DEX Executor
+local function getScriptSource(scriptObj)
+	local success, source = pcall(function()
+		if decompile then
+			return decompile(scriptObj)
+		elseif scriptObj.Source and scriptObj.Source ~= "" then
+			return scriptObj.Source
+		end
+		return ""
 	end)
-end)
+	if success and source then
+		return source
+	end
+	return "-- [Decompile Failed / Locked]"
+end
 
--- Tombol PASTE (Menempelkan objek GUI yang disalin ke StarterGui / PlayerGui)
-PasteBtn.MouseButton1Click:Connect(function()
-	if not copiedInstanceData then
-		InfoBox.Text = "-- [ERROR] Belum ada objek GUI yang di-COPY!"
-		return
+-- Rekursif Menyalin Properti GUI & Script secara Akurat
+local function serializeInstance(obj)
+	local data = {
+		Name = obj.Name,
+		ClassName = obj.ClassName,
+		Properties = {},
+		Source = "",
+		Children = {}
+	}
+
+	-- Salin properti umum GUI secara akurat
+	pcall(function()
+		if obj:IsA("GuiObject") or obj:IsA("LayerCollector") then
+			data.Properties.Size = {obj.Size.X.Scale, obj.Size.X.Offset, obj.Size.Y.Scale, obj.Size.Y.Offset}
+			data.Properties.Position = {obj.Position.X.Scale, obj.Position.X.Offset, obj.Position.Y.Scale, obj.Position.Y.Offset}
+			data.Properties.BackgroundColor3 = {obj.BackgroundColor3.R, obj.BackgroundColor3.G, obj.BackgroundColor3.B}
+			data.Properties.BackgroundTransparency = obj.BackgroundTransparency
+			data.Properties.Visible = obj.Visible
+			data.Properties.ZIndex = obj.ZIndex
+		end
+		if obj:IsA("TextButton") or obj:IsA("TextLabel") or obj:IsA("TextBox") then
+			data.Properties.Text = obj.Text
+			data.Properties.TextSize = obj.TextSize
+			data.Properties.TextColor3 = {obj.TextColor3.R, obj.TextColor3.G, obj.TextColor3.B}
+			data.Properties.Font = obj.Font.Name
+		end
+		if obj:IsA("ImageButton") or obj:IsA("ImageLabel") then
+			data.Properties.Image = obj.Image
+		end
+	end)
+
+	-- Ambil isi script menggunakan logika decompiler jika berupa Script/LocalScript
+	if obj:IsA("LocalScript") or obj:IsA("ModuleScript") or obj:IsA("Script") then
+		data.Source = getScriptSource(obj)
 	end
 
-	local success, err = pcall(function()
-		local targetParent = StarterGui
-		local lp = Players.LocalPlayer
-		if lp and lp:FindFirstChild("PlayerGui") then
-			targetParent = lp.PlayerGui
+	-- Rekursif ke anak objek (Children)
+	for _, child in ipairs(obj:GetChildren()) do
+		table.insert(data.Children, serializeInstance(child))
+	end
+
+	return data
+end
+
+-- Rekursif Membangun Kembali (Paste) Objek GUI ke dalam Game
+local function deserializeInstance(data, parent)
+	local success, newObj = pcall(function()
+		local instance = Instance.new(data.ClassName)
+		instance.Name = data.Name
+
+		-- Terapkan kembali properti
+		local p = data.Properties
+		if p.Size then instance.Size = UDim2.new(unpack(p.Size)) end
+		if p.Position then instance.Position = UDim2.new(unpack(p.Position)) end
+		if p.BackgroundColor3 then instance.BackgroundColor3 = Color3.new(unpack(p.BackgroundColor3)) end
+		if p.BackgroundTransparency then instance.BackgroundTransparency = p.BackgroundTransparency end
+		if p.Visible ~= nil then instance.Visible = p.Visible end
+		if p.ZIndex then instance.ZIndex = p.ZIndex end
+
+		if instance:IsA("TextButton") or instance:IsA("TextLabel") or instance:IsA("TextBox") then
+			if p.Text then instance.Text = p.Text end
+			if p.TextSize then instance.TextSize = p.TextSize end
+			if p.TextColor3 then instance.TextColor3 = Color3.new(unpack(p.TextColor3)) end
+			if p.Font and Enum.Font[p.Font] then instance.Font = Enum.Font[p.Font] end
 		end
 
-		local clonedObj = copiedInstanceData:Clone()
-		clonedObj.Parent = targetParent
-		InfoBox.Text = string.format("-- [SUCCESS] Objek '%s' berhasil di-PASTE ke dalam game (%s)!", clonedObj.Name, targetParent.Name)
+		if instance:IsA("ImageButton") or instance:IsA("ImageLabel") then
+			if p.Image then instance.Image = p.Image end
+		end
+
+		-- Jika memiliki source code (Script/LocalScript), masukkan kembali kodenya
+		if (instance:IsA("LocalScript") or instance:IsA("ModuleScript") or instance:IsA("Script")) and data.Source ~= "" then
+			pcall(function()
+				instance.Source = data.Source
+			end)
+		end
+
+		instance.Parent = parent
+
+		-- Proses rekursif anak objek
+		for _, childData in ipairs(data.Children) do
+			deserializeInstance(childData, instance)
+		end
+
+		return instance
 	end)
 
 	if not success then
-		InfoBox.Text = string.format("-- [PASTE FAILED]: %s", tostring(err))
+		warn("Failed to create instance: " .. tostring(newObj))
 	end
+end
+
+-- Refresh UI List Hasil
+local function refreshResultList()
+	for _, btn in ipairs(listButtons) do
+		btn:Destroy()
+	end
+	listButtons = {}
+
+	for idx, guiData in ipairs(savedGuiStorage) do
+		local itemBtn = Instance.new("TextButton")
+		itemBtn.Size = UDim2.new(1, -4, 0, 18)
+		itemBtn.LayoutOrder = idx
+		itemBtn.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+		itemBtn.Text = idx .. ". " .. guiData.Title
+		itemBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
+		itemBtn.TextXAlignment = Enum.TextXAlignment.Left
+		itemBtn.TextSize = 8
+		itemBtn.Font = Enum.Font.SourceSans
+		itemBtn.Parent = ResultFrame
+
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 3)
+		corner.Parent = itemBtn
+
+		-- Klik item untuk langsung Paste ke PlayerGui
+		itemBtn.MouseButton1Click:Connect(function()
+			local targetParent = LocalPlayer:WaitForChild("PlayerGui")
+			for _, childData in ipairs(guiData.Items) do
+				deserializeInstance(childData, targetParent)
+			end
+			setConsoleMessage("Successfully Pasted GUI to PlayerGui!", Color3.fromRGB(0, 255, 180))
+		end)
+
+		table.insert(listButtons, itemBtn)
+	end
+
+	ResultFrame.CanvasSize = UDim2.new(0, 0, 0, ResultListLayout.AbsoluteContentSize.Y)
+end
+
+-- Tombol COPY STARTERGUI
+CopyGuiBtn.MouseButton1Click:Connect(function()
+	task.spawn(function()
+		setConsoleMessage("Copying StarterGui...", Color3.fromRGB(255, 220, 100))
+		local guiItems = {}
+
+		-- Hanya menyalin isi StarterGui
+		for _, child in ipairs(StarterGui:GetChildren()) do
+			table.insert(guiItems, serializeInstance(child))
+		end
+
+		local payload = {
+			Title = "StarterGui_Backup_" .. math.random(10, 99),
+			Items = guiItems
+		}
+
+		table.insert(savedGuiStorage, payload)
+		refreshResultList()
+		setConsoleMessage("StarterGui Copied Successfully!", Color3.fromRGB(0, 255, 180))
+	end)
 end)
 
--- Tombol SAVE (Menyimpan data properti ke file teks internal)
+-- Tombol SAVE ke File (.dat)
 SaveBtn.MouseButton1Click:Connect(function()
 	if writefile then
-		local filename = "IKYYXD_GuiBackup_" .. os.time() .. ".txt"
-		writefile(filename, InfoBox.Text)
-		InfoBox.Text = "-- [SAVED] workspace/" .. filename .. "\n\n" .. InfoBox.Text
+		pcall(function()
+			writefile("ikyyxd_startergui_data.dat", HttpService:JSONEncode(savedGuiStorage))
+			setConsoleMessage("Saved to workspace file!", Color3.fromRGB(0, 255, 180))
+		end)
 	else
-		InfoBox.Text = "-- [ERROR] writefile() tidak didukung di executor ini.\n\n" .. InfoBox.Text
+		setConsoleMessage("writefile not supported!", Color3.fromRGB(255, 100, 100))
 	end
 end)
 
-CloseBtn.MouseButton1Click:Connect(function()
-	ScreenGui:Destroy()
-end)
-
-local dragging, dragInput, dragStart, startPos
-TopBar.InputBegan:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = true
-		dragStart = input.Position
-		startPos = MainFrame.Position
-	end
-end)
-UserInputService.InputChanged:Connect(function(input)
-	if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-		local delta = input.Position - dragStart
-		MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-	end
-end)
-UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		dragging = false
-	end
-end)
+-- Auto Load Storage
+if readfile and isfile and isfile("ikyyxd_startergui_data.dat") then
+	pcall(function()
+		local content = readfile("ikyyxd_startergui_data.dat")
+		local decoded = HttpService:JSONDecode(content)
+		if type(decoded) == "table" then
+			savedGuiStorage = decoded
+			refreshResultList()
+			setConsoleMessage("Loaded saved GUI data")
+		end
+	end)
+end
