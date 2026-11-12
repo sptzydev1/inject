@@ -1,5 +1,5 @@
 --[[\
-    Project: Console Output Executor (Safe Mode)
+    Project: Console Output Executor (Clean & Fixed)
     Author: sptzyy / IkyyXD
 ]]--
 
@@ -137,7 +137,7 @@ end)
 local pendingLogs = {}
 local isReady = false
 
-local function AppendOutput(text: string)
+local function AppendOutput(text)
     if not isReady then
         table.insert(pendingLogs, text)
         return
