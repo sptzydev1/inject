@@ -1,5 +1,5 @@
 --[[\
-    Project: Console Output Executor (Active Bridge)
+    Project: Console Output Executor (Safe Mode)
     Author: sptzyy / IkyyXD
 ]]--
 
@@ -49,7 +49,7 @@ TitleLabel.Size = UDim2.new(1, -20, 1, 0)
 TitleLabel.Position = UDim2.new(0, 12, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Text = "sptzyy // Active Console"
+TitleLabel.Text = "sptzyy // Safe Console Output"
 TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
 TitleLabel.TextSize = 13
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -71,7 +71,7 @@ local ClearCorner = Instance.new("UICorner")
 ClearCorner.CornerRadius = UDim.new(0, 6)
 ClearCorner.Parent = ClearButton
 
--- ScrollingFrame untuk Output Teks
+-- ScrollingFrame untuk Output Teks (Support Edit & Scroll)
 local ScrollingFrame = Instance.new("ScrollingFrame")
 ScrollingFrame.Size = UDim2.new(1, -16, 1, -45)
 ScrollingFrame.Position = UDim2.new(0, 8, 0, 38)
@@ -83,7 +83,7 @@ ScrollingFrame.ScrollBarThickness = 4
 ScrollingFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 229, 255)
 ScrollingFrame.Parent = MainFrame
 
--- TextBox untuk Output (Support Edit & Salin)
+-- TextBox untuk Output (Support Edit & Salin Teks)
 local OutputBox = Instance.new("TextBox")
 OutputBox.Name = "OutputBox"
 OutputBox.Size = UDim2.new(1, 0, 1, 0)
@@ -92,7 +92,7 @@ OutputBox.ClearTextOnFocus = false
 OutputBox.MultiLine = true
 OutputBox.TextEditable = true
 OutputBox.Font = Enum.Font.Code
-OutputBox.Text = "-- [sptzyy] Console aktif & siap menerima log...\n"
+OutputBox.Text = "-- [sptzyy] Console siap mencatat log...\n"
 OutputBox.TextColor3 = Color3.fromRGB(0, 255, 180)
 OutputBox.TextSize = 12
 OutputBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -123,7 +123,7 @@ end)
 
 UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
-        val delta = input.Position - dragStart
+        local delta = input.Position - dragStart
         MainFrame.Position = UDim2.new(
             startPos.X.Scale,
             startPos.X.Offset + delta.X,
@@ -133,18 +133,31 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- Fungsi Utama Penambah Log
+-- Buffer log jika pesan masuk sebelum UI siap
+local pendingLogs = {}
+local isReady = false
+
 local function AppendOutput(text: string)
+    if not isReady then
+        table.insert(pendingLogs, text)
+        return
+    end
     OutputBox.Text = OutputBox.Text .. "\n" .. tostring(text)
     ScrollingFrame.CanvasPosition = Vector2.new(0, ScrollingFrame.AbsoluteCanvasSize.Y)
 end
 
-ClearButton.MouseButton1Click:Connect(background or function()
+ClearButton.MouseButton1Click:Connect(function()
     OutputBox.Text = "-- Log dibersihkan --"
 end)
 
--- Daftarkan ke Global agar script/plugin lain bisa langsung mengirim teks ke sini
+-- Daftarkan fungsi global yang aman dipanggil dari script lain
 _G.SptzyyLog = AppendOutput
 _G.AddConsoleLog = AppendOutput
 
-AppendOutput("[SUCCESS] Console terhubung ke Global Bridge (_G.SptzyyLog aktif).")
+-- Tandai siap dan cetak log tertunda
+isReady = true
+for _, log in ipairs(pendingLogs) do
+    AppendOutput(log)
+end
+
+AppendOutput("[SUCCESS] Console sptzyy berhasil aktif & terhubung.")
