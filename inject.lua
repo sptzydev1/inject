@@ -1,5 +1,5 @@
 --[[\
-    Project: IKYYXD DEX1.0 Explorer & Script Editor (Inject & Play Edition)
+    Project: IKYYXD DEX1.0 Remote Explorer & Injector Edition
     Author: sptzyy / IkyyXD
 ]]--
 
@@ -7,6 +7,7 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 if CoreGui:FindFirstChild("IKYYXDDEX") then
     CoreGui.IKYYXDDEX:Destroy()
@@ -18,9 +19,9 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = CoreGui
 
--- Main Frame (Kompak untuk HP - 520 x 320)
+-- Main Frame (Kompak untuk HP - 540 x 340)
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 520, 0, 320)
+MainFrame.Size = UDim2.new(0, 540, 0, 340)
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
@@ -31,7 +32,6 @@ local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 10)
 UICorner.Parent = MainFrame
 
--- Garis pinggir Neon Cyan terang
 local UIStroke = Instance.new("UIStroke")
 UIStroke.Color = Color3.fromRGB(0, 229, 255)
 UIStroke.Transparency = 0.2
@@ -49,7 +49,7 @@ TitleLabel.Size = UDim2.new(1, -90, 1, 0)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Text = "IKYYXD DEX1.0"
+TitleLabel.Text = "IKYYXD DEX1.0 // Remotes"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextSize = 11
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -67,7 +67,7 @@ CloseBtn.TextSize = 10
 CloseBtn.Parent = TopBar
 local CloseCorner = Instance.new("UICorner") CloseCorner.CornerRadius = UDim.new(0, 5) CloseCorner.Parent = CloseBtn
 
--- === PANEL KIRI: Preview Info & Editor Script ===
+-- === PANEL KIRI: Console & Remote Fire Injector ===
 local LeftPanel = Instance.new("Frame")
 LeftPanel.Size = UDim2.new(0.45, -6, 1, -40)
 LeftPanel.Position = UDim2.new(0, 6, 0, 34)
@@ -81,25 +81,25 @@ LeftTitle.Size = UDim2.new(1, -115, 0, 22)
 LeftTitle.Position = UDim2.new(0, 6, 0, 6)
 LeftTitle.BackgroundTransparency = 1
 LeftTitle.Font = Enum.Font.GothamBold
-LeftTitle.Text = "Preview"
+LeftTitle.Text = "Remote Injector"
 LeftTitle.TextColor3 = Color3.fromRGB(0, 229, 255)
 LeftTitle.TextSize = 11
 LeftTitle.TextXAlignment = Enum.TextXAlignment.Left
 LeftTitle.Parent = LeftPanel
 
--- Tombol Inject & Play (Agar terlihat semua player)
-local InjectBtn = Instance.new("TextButton")
-InjectBtn.Size = UDim2.new(0, 52, 0, 20)
-InjectBtn.Position = UDim2.new(1, -110, 0, 7)
-InjectBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
-InjectBtn.Font = Enum.Font.GothamBold
-InjectBtn.Text = "INJECT"
-InjectBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-InjectBtn.TextSize = 9
-InjectBtn.Parent = LeftPanel
-local InjectCorner = Instance.new("UICorner") InjectCorner.CornerRadius = UDim.new(0, 4) InjectCorner.Parent = InjectBtn
+-- Tombol Fire / Invoke Remote yang dipilih
+local FireBtn = Instance.new("TextButton")
+FireBtn.Size = UDim2.new(0, 52, 0, 20)
+FireBtn.Position = UDim2.new(1, -110, 0, 7)
+FireBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
+FireBtn.Font = Enum.Font.GothamBold
+FireBtn.Text = "FIRE"
+FireBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
+FireBtn.TextSize = 9
+FireBtn.Parent = LeftPanel
+local FireCorner = Instance.new("UICorner") FireCorner.CornerRadius = UDim.new(0, 4) FireCorner.Parent = FireBtn
 
--- Tombol Save File
+-- Tombol Save Log
 local SaveBtn = Instance.new("TextButton")
 SaveBtn.Size = UDim2.new(0, 50, 0, 20)
 SaveBtn.Position = UDim2.new(1, -54, 0, 7)
@@ -111,7 +111,7 @@ SaveBtn.TextSize = 9
 SaveBtn.Parent = LeftPanel
 local SaveCorner = Instance.new("UICorner") SaveCorner.CornerRadius = UDim.new(0, 4) SaveCorner.Parent = SaveBtn
 
--- ScrollingFrame khusus Preview
+-- ScrollingFrame Preview & Argumen Remote
 local PreviewScroll = Instance.new("ScrollingFrame")
 PreviewScroll.Size = UDim2.new(1, -12, 1, -34)
 PreviewScroll.Position = UDim2.new(0, 6, 0, 30)
@@ -131,7 +131,7 @@ InfoBox.ClearTextOnFocus = false
 InfoBox.TextWrapped = true
 InfoBox.TextEditable = true
 InfoBox.Font = Enum.Font.Code
-InfoBox.Text = "-- Klik objek di kanan untuk melihat isi/source code."
+InfoBox.Text = "-- Klik salah satu RemoteEvent / RemoteFunction di kanan untuk mengakses & Fire."
 InfoBox.TextColor3 = Color3.fromRGB(240, 240, 240)
 InfoBox.TextSize = 10
 InfoBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -143,7 +143,7 @@ InfoBox:GetPropertyChangedSignal("Text"):Connect(function()
 	PreviewScroll.CanvasSize = UDim2.new(0, 0, 0, InfoBox.TextBounds.Y + 40)
 end)
 
--- === PANEL KANAN: Search & Explorer Daftar Objek ===
+-- === PANEL KANAN: Scan Remotes & Daftar Objek ===
 local RightPanel = Instance.new("Frame")
 RightPanel.Size = UDim2.new(0.55, -10, 1, -40)
 RightPanel.Position = UDim2.new(0.45, 4, 0, 34)
@@ -152,35 +152,19 @@ RightPanel.BorderSizePixel = 0
 RightPanel.Parent = MainFrame
 local RightCorner = Instance.new("UICorner") RightCorner.CornerRadius = UDim.new(0, 6) RightCorner.Parent = RightPanel
 
--- Kotak Search Object
-local SearchBox = Instance.new("TextBox")
-SearchBox.Size = UDim2.new(1, -12, 0, 24)
-SearchBox.Position = UDim2.new(0, 6, 0, 6)
-SearchBox.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
-SearchBox.ClearTextOnFocus = false
-SearchBox.Font = Enum.Font.Gotham
-SearchBox.PlaceholderText = "Cari objek..."
-SearchBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
-SearchBox.Text = ""
-SearchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-SearchBox.TextSize = 10
-SearchBox.Parent = RightPanel
-local SearchCorner = Instance.new("UICorner") SearchCorner.CornerRadius = UDim.new(0, 5) SearchCorner.Parent = SearchBox
+-- Tombol Khusus Scan Remotes
+local ScanRemotesBtn = Instance.new("TextButton")
+ScanRemotesBtn.Size = UDim2.new(1, -12, 0, 24)
+ScanRemotesBtn.Position = UDim2.new(0, 6, 0, 6)
+ScanRemotesBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
+ScanRemotesBtn.Font = Enum.Font.GothamBold
+ScanRemotesBtn.Text = "SCAN ALL REMOTES"
+ScanRemotesBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
+ScanRemotesBtn.TextSize = 10
+ScanRemotesBtn.Parent = RightPanel
+local ScanCorner = Instance.new("UICorner") ScanCorner.CornerRadius = UDim.new(0, 5) ScanCorner.Parent = ScanRemotesBtn
 
--- Tombol Kembali (Back)
-local BackBtn = Instance.new("TextButton")
-BackBtn.Size = UDim2.new(1, -12, 0, 22)
-BackBtn.Position = UDim2.new(0, 6, 0, 34)
-BackBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
-BackBtn.Font = Enum.Font.GothamBold
-BackBtn.Text = "[ KEMBALI ]"
-BackBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
-BackBtn.TextSize = 10
-BackBtn.Visible = false
-BackBtn.Parent = RightPanel
-local BackCorner = Instance.new("UICorner") BackCorner.CornerRadius = UDim.new(0, 4) BackCorner.Parent = BackBtn
-
--- ScrollingFrame untuk Daftar Objek
+-- ScrollingFrame untuk Daftar Remotes
 local ObjectScroll = Instance.new("ScrollingFrame")
 ObjectScroll.Size = UDim2.new(1, -12, 1, -38)
 ObjectScroll.Position = UDim2.new(0, 6, 0, 34)
@@ -196,60 +180,47 @@ UIList.SortOrder = Enum.SortOrder.LayoutOrder
 UIList.Padding = UDim.new(0, 3)
 UIList.Parent = ObjectScroll
 
-local currentParentInstance = nil
+local selectedRemote = nil
 
--- Fungsi untuk Menampilkan Daftar Objek
-local function LoadDirectory(instanceToExplore)
+-- Fungsi untuk MenScan dan Menampilkan Semua RemoteEvent & RemoteFunction di Game
+local function ScanRemotes()
 	for _, child in ipairs(ObjectScroll:GetChildren()) do
 		if child:IsA("TextButton") then
 			child:Destroy()
 		end
 	end
 
-	currentParentInstance = instanceToExplore
+	InfoBox.Text = "-- Memindai seluruh RemoteEvent & RemoteFunction dalam game..."
+
+	local foundRemotes = {}
 	
-	local itemsToDisplay = {}
-	if instanceToExplore == nil then
-		BackBtn.Visible = false
-		ObjectScroll.Size = UDim2.new(1, -12, 1, -38)
-		ObjectScroll.Position = UDim2.new(0, 6, 0, 34)
-		
-		itemsToDisplay = {
-			game:GetService("Workspace"),
-			game:GetService("Players"),
-			game:GetService("Lighting"),
-			game:GetService("ReplicatedStorage"),
-			game:GetService("ReplicatedFirst"),
-			game:GetService("ServerStorage"),
-			game:GetService("ServerScriptService"),
-			game:GetService("StarterGui"),
-		}
-	else
-		BackBtn.Visible = true
-		ObjectScroll.Size = UDim2.new(1, -12, 1, -62)
-		ObjectScroll.Position = UDim2.new(0, 6, 0, 58)
-		itemsToDisplay = instanceToExplore:GetChildren()
+	-- Scan dari ReplicatedStorage, Workspace, dan Players
+	local containers = {ReplicatedStorage, Workspace}
+	for _, container in ipairs(containers) do
+		local success, descendants = pcall(function() return container:GetDescendants() end)
+		if success and descendants then
+			for _, obj in ipairs(descendants) do
+				if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+					table.insert(foundRemotes, obj)
+				end
+			end
+		end
 	end
 
-	for _, item in ipairs(itemsToDisplay) do
+	if #foundRemotes == 0 then
+		InfoBox.Text = "-- Tidak ditemukan RemoteEvent/RemoteFunction."
+		return
+	end
+
+	for _, remote in ipairs(foundRemotes) do
 		local btn = Instance.new("TextButton")
 		btn.Size = UDim2.new(1, 0, 0, 22)
 		btn.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
 		btn.Font = Enum.Font.GothamMedium
 		
-		local labelTag = "[OBJ] "
-		if item:IsA("Folder") or item:IsA("Model") then
-			labelTag = "[DIR] "
-		elseif item:IsA("Part") or item:IsA("UnionOperation") or item:IsA("MeshPart") then
-			labelTag = "[PRT] "
-		elseif item:IsA("Script") or item:IsA("LocalScript") or item:IsA("ModuleScript") then
-			labelTag = "[SCR] "
-		elseif item:IsA("Workspace") or item:IsA("Lighting") or item:IsA("ReplicatedStorage") then
-			labelTag = "[SRV] "
-		end
-
+		local tag = remote:IsA("RemoteEvent") and "[RE] " or "[RF] "
 		btn.TextTruncate = Enum.TextTruncate.AtEnd
-		btn.Text = " " .. labelTag .. item.Name
+		btn.Text = " " .. tag .. remote.Name
 		btn.TextColor3 = Color3.fromRGB(240, 240, 240)
 		btn.TextSize = 10
 		btn.TextXAlignment = Enum.TextXAlignment.Left
@@ -258,148 +229,46 @@ local function LoadDirectory(instanceToExplore)
 		local btnCorner = Instance.new("UICorner") btnCorner.CornerRadius = UDim.new(0, 4) btnCorner.Parent = btn
 
 		btn.MouseButton1Click:Connect(function()
-			local infoText = string.format("-- Nama: %s\n-- Kelas: %s\n-- Parent: %s\n\n", item.Name, item.ClassName, tostring(item.Parent))
-			
-			if (item:IsA("Script") or item:IsA("LocalScript") or item:IsA("ModuleScript")) then
-				infoText = infoText .. "-- [Source Code / Decompiled]:\n"
-				local success, result = pcall(function()
-					if decompile then
-						return decompile(item)
-					else
-						return item.Source
-					end
-				end)
-				
-				if success and result and result ~= "" then
-					infoText = infoText .. result
-				else
-					infoText = infoText .. "-- (Source kosong atau decompiler tidak didukung)"
-				end
-			else
-				infoText = infoText .. "[Children (" .. #item:GetChildren() .. ")]:\n"
-				for _, sub in ipairs(item:GetChildren()) do
-					infoText = infoText .. " - " .. sub.Name .. " (" .. sub.ClassName .. ")\n"
-				end
-			end
-			InfoBox.Text = infoText
-		end)
-
-		local enterBtn = Instance.new("TextButton")
-		enterBtn.Size = UDim2.new(0, 38, 1, 0)
-		enterBtn.Position = UDim2.new(1, -38, 0, 0)
-		enterBtn.BackgroundTransparency = 1
-		enterBtn.Font = Enum.Font.GothamBold
-		enterBtn.Text = "BUKA >"
-		enterBtn.TextColor3 = Color3.fromRGB(0, 229, 255)
-		enterBtn.TextSize = 8
-		enterBtn.Parent = btn
-		
-		enterBtn.MouseButton1Click:Connect(function()
-			LoadDirectory(item)
+			selectedRemote = remote
+			local path = remote:GetFullName()
+			InfoBox.Text = string.format("-- Dipilih: %s\n-- Tipe: %s\n-- Path: %s\n\n-- Ketik argumen di bawah ini lalu klik FIRE untuk eksekusi:\narguments = {\n    \"arg1\",\n    123\n}", remote.Name, remote.ClassName, path)
 		end)
 	end
+	
+	InfoBox.Text = string.format("-- Selesai memindai! Ditemukan %d Remotes. Silakan pilih salah satu di panel kanan.", #foundRemotes)
 end
 
-LoadDirectory(nil)
+ScanRemotes()
 
-BackBtn.MouseButton1Click:Connect(function()
-	if currentParentInstance and currentParentInstance.Parent and currentParentInstance.Parent ~= game then
-		LoadDirectory(currentParentInstance.Parent)
-	else
-		LoadDirectory(nil)
-	end
+ScanRemotesBtn.MouseButton1Click:Connect(function()
+	ScanRemotes()
 end)
 
-SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
-	local query = SearchBox.Text:lower()
-	if query == "" then
-		LoadDirectory(currentParentInstance)
-		return
-	end
-
-	for _, child in ipairs(ObjectScroll:GetChildren()) do
-		if child:IsA("TextButton") then child:Destroy() end
-	end
-
-	local function searchRecursive(parentObj)
-		for _, obj in ipairs(parentObj:GetChildren()) do
-			if obj.Name:lower():find(query) or obj.ClassName:lower():find(query) then
-				local btn = Instance.new("TextButton")
-				btn.Size = UDim2.new(1, 0, 0, 22)
-				btn.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
-				btn.Font = Enum.Font.GothamMedium
-				btn.TextTruncate = Enum.TextTruncate.AtEnd
-				btn.Text = " [FIND] " .. obj.Name
-				btn.TextColor3 = Color3.fromRGB(240, 240, 240)
-				btn.TextSize = 10
-				btn.TextXAlignment = Enum.TextXAlignment.Left
-				btn.Parent = ObjectScroll
-				local bc = Instance.new("UICorner") bc.CornerRadius = UDim.new(0, 4) bc.Parent = btn
-
-				btn.MouseButton1Click:Connect(function()
-					local infoText = string.format("-- Nama: %s\n-- Kelas: %s\n-- Parent: %s\n\n", obj.Name, obj.ClassName, tostring(obj.Parent))
-					if obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("ModuleScript") then
-						local success, result = pcall(function()
-							if decompile then return decompile(obj) else return obj.Source end
-						end)
-						infoText = infoText .. (success and result or "-- (Source terkunci)")
-					else
-						infoText = infoText .. "[Children]:\n"
-						for _, sub in ipairs(obj:GetChildren()) do
-							infoText = infoText .. " - " .. sub.Name .. " (" .. sub.ClassName .. ")\n"
-						end
-					end
-					InfoBox.Text = infoText
-				end)
-			end
-			if #ObjectScroll:GetChildren() < 80 then
-				searchRecursive(obj)
-			end
-		end
-	end
-
-	searchRecursive(game:GetService("Workspace"))
-end)
-
--- Tombol Inject & Play (Agar tereksekusi dan terlihat oleh semua player)
-InjectBtn.MouseButton1Click:Connect(function()
-	local codeToRun = InfoBox.Text
-	if codeToRun == "" or codeToRun:match("^-- Klik objek") then
-		InfoBox.Text = "-- [ERROR] Pilih atau muat script terlebih dahulu sebelum di-inject!"
+-- Tombol Fire / Invoke Remote Terpilih
+FireBtn.MouseButton1Click:Connect(function()
+	if not selectedRemote then
+		InfoBox.Text = "-- [ERROR] Belum ada Remote yang dipilih dari panel kanan!"
 		return
 	end
 
 	local success, err = pcall(function()
-		-- Coba loadstring kode dari editor preview
-		local func, loadErr = loadstring(codeToRun)
-		if func then
-			-- Eksekusi kode
-			task.spawn(func)
-			
-			-- Coba cari RemoteEvent publik di ReplicatedStorage untuk menyiarkan ke server/player lain
-			local remotes = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage
-			for _, remote in ipairs(remotes:GetDescendants()) do
-				if remote:IsA("RemoteEvent") then
-					pcall(function()
-						remote:FireServer(codeToRun)
-					end)
-				end
-			end
-			
-			InfoBox.Text = "-- [SUCCESS] Script berhasil di-inject & diputar (Broadcasted)!\n\n" .. codeToRun
-		else
-			InfoBox.Text = "-- [COMPILE ERROR]:\n" .. tostring(loadErr) .. "\n\n" .. codeToRun
+		if selectedRemote:IsA("RemoteEvent") then
+			selectedRemote:FireServer("IKYYXD_Injected", os.time())
+			InfoBox.Text = string.format("-- [SUCCESS] Berhasil FireServer() pada: %s", selectedRemote.Name)
+		elseif selectedRemote:IsA("RemoteFunction") then
+			local res = selectedRemote:InvokeServer("IKYYXD_Injected", os.time())
+			InfoBox.Text = string.format("-- [SUCCESS] Berhasil InvokeServer() pada: %s\n-- Hasil Response: %s", selectedRemote.Name, tostring(res))
 		end
 	end)
 
 	if not success then
-		InfoBox.Text = "-- [INJECT FAILED]: " .. tostring(err) .. "\n\n" .. codeToRun
+		InfoBox.Text = string.format("-- [FIRE FAILED]: %s", tostring(err))
 	end
 end)
 
 SaveBtn.MouseButton1Click:Connect(function()
 	if writefile then
-		local filename = "IKYYXD_DEX_" .. os.time() .. ".txt"
+		local filename = "IKYYXD_Remotes_" .. os.time() .. ".txt"
 		writefile(filename, InfoBox.Text)
 		InfoBox.Text = "-- [SAVED] workspace/" .. filename .. "\n\n" .. InfoBox.Text
 	else
