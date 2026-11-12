@@ -1,5 +1,5 @@
 --[[\
-    Project: Mini-DEX Explorer & Script Editor (Mobile Decompile Edition)
+    Project: IKYYXD DEX1.0 Explorer & Script Editor
     Author: sptzyy / IkyyXD
 ]]--
 
@@ -7,22 +7,22 @@ local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
 
-if CoreGui:FindFirstChild("SptzyyMiniDex") then
-    CoreGui.SptzyyMiniDex:Destroy()
+if CoreGui:FindFirstChild("IKYYXDDEX") then
+    CoreGui.IKYYXDDEX:Destroy()
 end
 
 local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "SptzyyMiniDex"
+ScreenGui.Name = "IKYYXDDEX"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = CoreGui
 
--- Main Frame (Kompak untuk HP - 520 x 320)
+-- Main Frame (Kompak untuk HP - 520 x 320, Tema Black-White-Cyan)
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 520, 0, 320)
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+MainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 MainFrame.BorderSizePixel = 0
 MainFrame.Parent = ScreenGui
 
@@ -30,10 +30,11 @@ local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 10)
 UICorner.Parent = MainFrame
 
+-- Garis pinggir Neon Cyan terang
 local UIStroke = Instance.new("UIStroke")
 UIStroke.Color = Color3.fromRGB(0, 229, 255)
-UIStroke.Transparency = 0.4
-UIStroke.Thickness = 1.3
+UIStroke.Transparency = 0.2
+UIStroke.Thickness = 1.5
 UIStroke.Parent = MainFrame
 
 -- Top Bar (Dragging Handler)
@@ -47,8 +48,8 @@ TitleLabel.Size = UDim2.new(1, -90, 1, 0)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Text = "sptzyy // Mini-DEX Mobile"
-TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
+TitleLabel.Text = "IKYYXD DEX1.0"
+TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextSize = 11
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = TopBar
@@ -57,25 +58,25 @@ local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0, 35, 0, 20)
 CloseBtn.AnchorPoint = Vector2.new(1, 0.5)
 CloseBtn.Position = UDim2.new(1, -8, 0.5, 0)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
 CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.Text = "X"
-CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
 CloseBtn.TextSize = 10
 CloseBtn.Parent = TopBar
 local CloseCorner = Instance.new("UICorner") CloseCorner.CornerRadius = UDim.new(0, 5) CloseCorner.Parent = CloseBtn
 
--- === PANEL KIRI: Preview Info, Tombol Save, & Editor Script ===
+-- === PANEL KIRI: Preview Info & Editor Script ===
 local LeftPanel = Instance.new("Frame")
 LeftPanel.Size = UDim2.new(0.45, -6, 1, -40)
 LeftPanel.Position = UDim2.new(0, 6, 0, 34)
-LeftPanel.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+LeftPanel.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
 LeftPanel.BorderSizePixel = 0
 LeftPanel.Parent = MainFrame
 local LeftCorner = Instance.new("UICorner") LeftCorner.CornerRadius = UDim.new(0, 6) LeftCorner.Parent = LeftPanel
 
 local LeftTitle = Instance.new("TextLabel")
-LeftTitle.Size = UDim2.new(1, -60, 0, 22)
+LeftTitle.Size = UDim2.new(1, -65, 0, 22)
 LeftTitle.Position = UDim2.new(0, 6, 0, 6)
 LeftTitle.BackgroundTransparency = 1
 LeftTitle.Font = Enum.Font.GothamBold
@@ -85,64 +86,82 @@ LeftTitle.TextSize = 11
 LeftTitle.TextXAlignment = Enum.TextXAlignment.Left
 LeftTitle.Parent = LeftPanel
 
--- Tombol Save File .txt di sudut kiri atas panel preview
+-- Tombol Save File
 local SaveBtn = Instance.new("TextButton")
-SaveBtn.Size = UDim2.new(0, 50, 0, 20)
-SaveBtn.Position = UDim2.new(1, -54, 0, 7)
-SaveBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 120)
+SaveBtn.Size = UDim2.new(0, 55, 0, 20)
+SaveBtn.Position = UDim2.new(1, -58, 0, 7)
+SaveBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 SaveBtn.Font = Enum.Font.GothamBold
-SaveBtn.Text = "💾 Save"
-SaveBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SaveBtn.Text = "SAVE"
+SaveBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
 SaveBtn.TextSize = 9
 SaveBtn.Parent = LeftPanel
 local SaveCorner = Instance.new("UICorner") SaveCorner.CornerRadius = UDim.new(0, 4) SaveCorner.Parent = SaveBtn
 
+-- ScrollingFrame khusus Preview
+local PreviewScroll = Instance.new("ScrollingFrame")
+PreviewScroll.Size = UDim2.new(1, -12, 1, -34)
+PreviewScroll.Position = UDim2.new(0, 6, 0, 30)
+PreviewScroll.BackgroundTransparency = 1
+PreviewScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+PreviewScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+PreviewScroll.ScrollBarThickness = 3
+PreviewScroll.ScrollBarImageColor3 = Color3.fromRGB(0, 229, 255)
+PreviewScroll.Parent = LeftPanel
+
 local InfoBox = Instance.new("TextBox")
-InfoBox.Size = UDim2.new(1, -12, 1, -34)
-InfoBox.Position = UDim2.new(0, 6, 0, 30)
+InfoBox.Size = UDim2.new(1, 0, 1, 0)
+InfoBox.Position = UDim2.new(0, 0, 0, 0)
 InfoBox.BackgroundTransparency = 1
 InfoBox.MultiLine = true
 InfoBox.ClearTextOnFocus = false
+InfoBox.TextWrapped = true
 InfoBox.TextEditable = true
 InfoBox.Font = Enum.Font.Code
 InfoBox.Text = "-- Klik objek di kanan untuk melihat isi/source code."
-InfoBox.TextColor3 = Color3.fromRGB(0, 255, 180)
+InfoBox.TextColor3 = Color3.fromRGB(240, 240, 240)
 InfoBox.TextSize = 10
 InfoBox.TextXAlignment = Enum.TextXAlignment.Left
 InfoBox.TextYAlignment = Enum.TextYAlignment.Top
-InfoBox.Parent = LeftPanel
+InfoBox.Parent = PreviewScroll
+
+InfoBox:GetPropertyChangedSignal("Text"):Connect(function()
+	InfoBox.Size = UDim2.new(1, 0, 0, InfoBox.TextBounds.Y + 40)
+	PreviewScroll.CanvasSize = UDim2.new(0, 0, 0, InfoBox.TextBounds.Y + 40)
+end)
 
 -- === PANEL KANAN: Search & Explorer Daftar Objek ===
 local RightPanel = Instance.new("Frame")
 RightPanel.Size = UDim2.new(0.55, -10, 1, -40)
 RightPanel.Position = UDim2.new(0.45, 4, 0, 34)
-RightPanel.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+RightPanel.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
 RightPanel.BorderSizePixel = 0
 RightPanel.Parent = MainFrame
 local RightCorner = Instance.new("UICorner") RightCorner.CornerRadius = UDim.new(0, 6) RightCorner.Parent = RightPanel
 
--- Kotak Search Object di atas Panel Kanan
+-- Kotak Search Object
 local SearchBox = Instance.new("TextBox")
 SearchBox.Size = UDim2.new(1, -12, 0, 24)
 SearchBox.Position = UDim2.new(0, 6, 0, 6)
-SearchBox.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
+SearchBox.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
 SearchBox.ClearTextOnFocus = false
 SearchBox.Font = Enum.Font.Gotham
-SearchBox.PlaceholderText = "🔍 Cari objek..."
+SearchBox.PlaceholderText = "Cari objek..."
+SearchBox.PlaceholderColor3 = Color3.fromRGB(150, 150, 150)
 SearchBox.Text = ""
 SearchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 SearchBox.TextSize = 10
 SearchBox.Parent = RightPanel
 local SearchCorner = Instance.new("UICorner") SearchCorner.CornerRadius = UDim.new(0, 5) SearchCorner.Parent = SearchBox
 
--- Tombol Kembali (Back) jika sedang membuka isi folder
+-- Tombol Kembali (Back)
 local BackBtn = Instance.new("TextButton")
 BackBtn.Size = UDim2.new(1, -12, 0, 22)
 BackBtn.Position = UDim2.new(0, 6, 0, 34)
-BackBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 55)
+BackBtn.BackgroundColor3 = Color3.fromRGB(0, 229, 255)
 BackBtn.Font = Enum.Font.GothamBold
-BackBtn.Text = "⬅️ [ KEMBALI ]"
-BackBtn.TextColor3 = Color3.fromRGB(0, 229, 255)
+BackBtn.Text = "[ KEMBALI ]"
+BackBtn.TextColor3 = Color3.fromRGB(10, 10, 12)
 BackBtn.TextSize = 10
 BackBtn.Visible = false
 BackBtn.Parent = RightPanel
@@ -166,7 +185,7 @@ UIList.Parent = ObjectScroll
 
 local currentParentInstance = nil
 
--- Fungsi untuk Menampilkan Daftar Objek (Hierarki)
+-- Fungsi untuk Menampilkan Daftar Objek
 local function LoadDirectory(instanceToExplore)
 	for _, child in ipairs(ObjectScroll:GetChildren()) do
 		if child:IsA("TextButton") then
@@ -202,29 +221,29 @@ local function LoadDirectory(instanceToExplore)
 	for _, item in ipairs(itemsToDisplay) do
 		local btn = Instance.new("TextButton")
 		btn.Size = UDim2.new(1, 0, 0, 22)
-		btn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+		btn.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
 		btn.Font = Enum.Font.GothamMedium
 		
-		local icon = "📦 "
+		local labelTag = "[OBJ] "
 		if item:IsA("Folder") or item:IsA("Model") then
-			icon = "📁 "
+			labelTag = "[DIR] "
 		elseif item:IsA("Part") or item:IsA("UnionOperation") or item:IsA("MeshPart") then
-			icon = "🧱 "
+			labelTag = "[PRT] "
 		elseif item:IsA("Script") or item:IsA("LocalScript") or item:IsA("ModuleScript") then
-			icon = "📜 "
+			labelTag = "[SCR] "
 		elseif item:IsA("Workspace") or item:IsA("Lighting") or item:IsA("ReplicatedStorage") then
-			icon = "🌐 "
+			labelTag = "[SRV] "
 		end
 
-		btn.Text = " " .. icon .. item.Name
-		btn.TextColor3 = Color3.fromRGB(220, 220, 220)
+		btn.TextTruncate = Enum.TextTruncate.AtEnd
+		btn.Text = " " .. labelTag .. item.Name
+		btn.TextColor3 = Color3.fromRGB(240, 240, 240)
 		btn.TextSize = 10
 		btn.TextXAlignment = Enum.TextXAlignment.Left
 		btn.Parent = ObjectScroll
 		
 		local btnCorner = Instance.new("UICorner") btnCorner.CornerRadius = UDim.new(0, 4) btnCorner.Parent = btn
 
-		-- Aksi Klik Item (Mendukung Decompile untuk Script & LocalScript)
 		btn.MouseButton1Click:Connect(function()
 			local infoText = string.format("-- Nama: %s\n-- Kelas: %s\n-- Parent: %s\n\n", item.Name, item.ClassName, tostring(item.Parent))
 			
@@ -241,7 +260,7 @@ local function LoadDirectory(instanceToExplore)
 				if success and result and result ~= "" then
 					infoText = infoText .. result
 				else
-					infoText = infoText .. "-- (Source kosong atau decompiler tidak didukung executor)"
+					infoText = infoText .. "-- (Source kosong atau decompiler tidak didukung)"
 				end
 			else
 				infoText = infoText .. "[Children (" .. #item:GetChildren() .. ")]:\n"
@@ -257,7 +276,7 @@ local function LoadDirectory(instanceToExplore)
 		enterBtn.Position = UDim2.new(1, -38, 0, 0)
 		enterBtn.BackgroundTransparency = 1
 		enterBtn.Font = Enum.Font.GothamBold
-		enterBtn.Text = "Buka ➡️"
+		enterBtn.Text = "BUKA >"
 		enterBtn.TextColor3 = Color3.fromRGB(0, 229, 255)
 		enterBtn.TextSize = 8
 		enterBtn.Parent = btn
@@ -294,10 +313,11 @@ SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
 			if obj.Name:lower():find(query) or obj.ClassName:lower():find(query) then
 				local btn = Instance.new("TextButton")
 				btn.Size = UDim2.new(1, 0, 0, 22)
-				btn.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
+				btn.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
 				btn.Font = Enum.Font.GothamMedium
-				btn.Text = " 🔍 " .. obj.Name
-				btn.TextColor3 = Color3.fromRGB(220, 220, 220)
+				btn.TextTruncate = Enum.TextTruncate.AtEnd
+				btn.Text = " [FIND] " .. obj.Name
+				btn.TextColor3 = Color3.fromRGB(240, 240, 240)
 				btn.TextSize = 10
 				btn.TextXAlignment = Enum.TextXAlignment.Left
 				btn.Parent = ObjectScroll
@@ -330,7 +350,7 @@ end)
 
 SaveBtn.MouseButton1Click:Connect(function()
 	if writefile then
-		local filename = "sptzyy_dex_" .. os.time() .. ".txt"
+		local filename = "IKYYXD_DEX_" .. os.time() .. ".txt"
 		writefile(filename, InfoBox.Text)
 		InfoBox.Text = "-- [SAVED] workspace/" .. filename .. "\n\n" .. InfoBox.Text
 	else
