@@ -1,5 +1,5 @@
 --[[\
-    Project: IKYYXD DEX1.0 Folder Remotes & Inject (Run) Edition
+    Project: IKYYXD DEX1.0 Donate Effect Folder Injector & Runner
     Author: sptzyy / IkyyXD
 ]]--
 
@@ -50,7 +50,7 @@ TitleLabel.Size = UDim2.new(1, -90, 1, 0)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Text = "IKYYXD DEX1.0 // Remotes Injector"
+TitleLabel.Text = "IKYYXD DEX1.0 // Donate Injector"
 TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 TitleLabel.TextSize = 11
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -68,7 +68,7 @@ CloseBtn.TextSize = 10
 CloseBtn.Parent = TopBar
 local CloseCorner = Instance.new("UICorner") CloseCorner.CornerRadius = UDim.new(0, 5) CloseCorner.Parent = CloseBtn
 
--- === PANEL KIRI: Info & Tombol INJECT (Run) ===
+-- === PANEL KIRI: Info & Tombol INJECT FOLDER ===
 local LeftPanel = Instance.new("Frame")
 LeftPanel.Size = UDim2.new(0.45, -6, 1, -40)
 LeftPanel.Position = UDim2.new(0, 6, 0, 34)
@@ -82,13 +82,13 @@ LeftTitle.Size = UDim2.new(1, -115, 0, 22)
 LeftTitle.Position = UDim2.new(0, 6, 0, 6)
 LeftTitle.BackgroundTransparency = 1
 LeftTitle.Font = Enum.Font.GothamBold
-LeftTitle.Text = "Remote Controller"
+LeftTitle.Text = "Folder Controller"
 LeftTitle.TextColor3 = Color3.fromRGB(0, 229, 255)
 LeftTitle.TextSize = 11
 LeftTitle.TextXAlignment = Enum.TextXAlignment.Left
 LeftTitle.Parent = LeftPanel
 
--- Tombol INJECT (Run Remote)
+-- Tombol INJECT (Run Semua Remote di dalam Folder Terpilih)
 local InjectBtn = Instance.new("TextButton")
 InjectBtn.Size = UDim2.new(0, 52, 0, 20)
 InjectBtn.Position = UDim2.new(1, -110, 0, 7)
@@ -112,7 +112,7 @@ SaveBtn.TextSize = 9
 SaveBtn.Parent = LeftPanel
 local SaveCorner = Instance.new("UICorner") SaveCorner.CornerRadius = UDim.new(0, 4) SaveCorner.Parent = SaveBtn
 
--- ScrollingFrame Preview Info Remote yang Dipilih
+-- ScrollingFrame Preview Informasi Folder yang Dipilih
 local PreviewScroll = Instance.new("ScrollingFrame")
 PreviewScroll.Size = UDim2.new(1, -12, 1, -34)
 PreviewScroll.Position = UDim2.new(0, 6, 0, 30)
@@ -132,7 +132,7 @@ InfoBox.ClearTextOnFocus = false
 InfoBox.TextWrapped = true
 InfoBox.TextEditable = true
 InfoBox.Font = Enum.Font.Code
-InfoBox.Text = "-- Pilih folder atau remote di sebelah kanan, lalu klik INJECT untuk merun remotenya."
+InfoBox.Text = "-- Buka ReplicatedStorage, pilih folder Efek Donate di kanan, lalu klik INJECT untuk merun semua isinya."
 InfoBox.TextColor3 = Color3.fromRGB(240, 240, 240)
 InfoBox.TextSize = 10
 InfoBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -144,14 +144,14 @@ InfoBox:GetPropertyChangedSignal("Text"):Connect(function()
 	PreviewScroll.CanvasSize = UDim2.new(0, 0, 0, InfoBox.TextBounds.Y + 40)
 end)
 
--- === PANEL KANAN: Navigasi Folder & Pemilihan Remote ===
+-- === PANEL KANAN: Navigasi Folder Efek Donate ===
 local RightPanel = Instance.new("Frame")
 RightPanel.Size = UDim2.new(0.55, -10, 1, -40)
 RightPanel.Position = UDim2.new(0.45, 4, 0, 34)
 RightPanel.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
 RightPanel.BorderSizePixel = 0
 RightPanel.Parent = MainFrame
-RightCorner = Instance.new("UICorner") RightCorner.CornerRadius = UDim.new(0, 6) RightCorner.Parent = RightPanel
+local RightCorner = Instance.new("UICorner") RightCorner.CornerRadius = UDim.new(0, 6) RightCorner.Parent = RightPanel
 
 -- Tombol Kembali (Back) untuk direktori folder
 local BackBtn = Instance.new("TextButton")
@@ -166,7 +166,7 @@ BackBtn.Visible = false
 BackBtn.Parent = RightPanel
 local BackCorner = Instance.new("UICorner") BackCorner.CornerRadius = UDim.new(0, 4) BackCorner.Parent = BackBtn
 
--- ScrollingFrame untuk Daftar Folder / Remote
+-- ScrollingFrame untuk Daftar Folder
 local ObjectScroll = Instance.new("ScrollingFrame")
 ObjectScroll.Size = UDim2.new(1, -12, 1, -12)
 ObjectScroll.Position = UDim2.new(0, 6, 0, 6)
@@ -183,9 +183,9 @@ UIList.Padding = UDim.new(0, 3)
 UIList.Parent = ObjectScroll
 
 local currentParentInstance = nil
-local activeRemote = nil
+local activeFolder = nil
 
--- Fungsi untuk Menjelajahi Folder yang Berisi Remotes
+-- Fungsi untuk Navigasi Folder Game
 local function LoadDirectory(instanceToExplore)
 	for _, child in ipairs(ObjectScroll:GetChildren()) do
 		if child:IsA("TextButton") then
@@ -201,7 +201,6 @@ local function LoadDirectory(instanceToExplore)
 		ObjectScroll.Size = UDim2.new(1, -12, 1, -12)
 		ObjectScroll.Position = UDim2.new(0, 6, 0, 6)
 		
-		-- Root Layanan Utama tempat biasa folder remotes berada
 		itemsToDisplay = {
 			ReplicatedStorage,
 			Workspace,
@@ -241,23 +240,25 @@ local function LoadDirectory(instanceToExplore)
 		
 		local btnCorner = Instance.new("UICorner") btnCorner.CornerRadius = UDim.new(0, 4) btnCorner.Parent = btn
 
-		-- Klik item untuk memilih remote atau melihat isi folder
+		-- Klik item untuk memilih folder efek donate atau melihat isinya
 		btn.MouseButton1Click:Connect(function()
-			if item:IsA("RemoteEvent") or item:IsA("RemoteFunction") then
-				activeRemote = item
-				InfoBox.Text = string.format("-- Dipilih Remote:\n-- Nama: %s\n-- Tipe: %s\n-- Path: %s\n\nKlik tombol INJECT untuk merun remote ini.", item.Name, item.ClassName, item:GetFullName())
-			else
-				-- Jika folder biasa, tampilkan informasi isi children-nya
-				local infoText = string.format("-- Folder: %s\n-- Tipe: %s\n\n[Isi Folder]:\n", item.Name, item.ClassName)
-				for _, sub in ipairs(item:GetChildren()) do
-					infoText = infoText .. " - " .. sub.Name .. " (" .. sub.ClassName .. ")\n"
+			if item:IsA("Folder") or item:IsA("Model") then
+				activeFolder = item
+				local infoText = string.format("-- Terpilih Folder Efek Donate:\n-- Nama: %s\n-- Path: %s\n\n[Isi Remote di dalam Folder]:\n", item.Name, item.GetFullName and item:GetFullName() or item.Name)
+				for _, sub in ipairs(item:GetDescendants()) do
+					if sub:IsA("RemoteEvent") or sub:IsA("RemoteFunction") then
+						infoText = infoText .. " - " .. sub.Name .. " (" .. sub.ClassName .. ")\n"
+					end
 				end
 				InfoBox.Text = infoText
+			else
+				activeFolder = nil
+				InfoBox.Text = string.format("-- Terpilih Item Tunggal:\n-- Nama: %s\n-- Kelas: %s", item.Name, item.ClassName)
 			end
 		end)
 
-		-- Tombol Buka jika itu folder/model agar masuk ke dalam hierarki
-		if not (item:IsA("RemoteEvent") or item:IsA("RemoteFunction")) then
+		-- Tombol Buka jika folder memiliki anak item di dalamnya
+		if #item:GetChildren() > 0 then
 			local enterBtn = Instance.new("TextButton")
 			enterBtn.Size = UDim2.new(0, 38, 1, 0)
 			enterBtn.Position = UDim2.new(1, -38, 0, 0)
@@ -285,35 +286,41 @@ BackBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Tombol INJECT (Run Remote yang dipilih)
+-- Tombol INJECT (Menjalankan / Run seluruh Remote di dalam Folder Efek Donate yang dipilih)
 InjectBtn.MouseButton1Click:Connect(function()
-	if not activeRemote then
-		InfoBox.Text = "-- [ERROR] Belum ada RemoteEvent / RemoteFunction yang dipilih dari panel kanan!"
+	if not activeFolder then
+		InfoBox.Text = "-- [ERROR] Silakan pilih folder 'Efek Donate' terlebih dahulu di panel kanan!"
 		return
 	end
 
-	local success, err = pcall(function()
-		if activeRemote:IsA("RemoteEvent") then
-			-- Menjalankan / Fire RemoteEvent ke server
-			activeRemote:FireServer()
-			InfoBox.Text = string.format("-- [SUCCESS] Berhasil INJECT (FireServer) pada remote: %s", activeRemote.Name)
-		elseif activeRemote:IsA("RemoteFunction") then
-			-- Menjalankan / Invoke RemoteFunction ke server
-			local response = activeRemote:InvokeServer()
-			InfoBox.Text = string.format("-- [SUCCESS] Berhasil INJECT (InvokeServer) pada remote: %s\n-- Respon Server: %s", activeRemote.Name, tostring(response))
+	local successCount = 0
+	local failCount = 0
+
+	pcall(function()
+		-- Scan seluruh RemoteEvent dan RemoteFunction di dalam folder yang dipilih
+		for _, descendant in ipairs(activeFolder:GetDescendants()) do
+			if descendant:IsA("RemoteEvent") then
+				local ok = pcall(function()
+					descendant:FireServer("IKYYXD_DonateInject", true, 99999)
+				end)
+				if ok then successCount = successCount + 1 else failCount = failCount + 1 end
+			elseif descendant:IsA("RemoteFunction") then
+				local ok = pcall(function()
+					descendant:InvokeServer("IKYYXD_DonateInject", true, 99999)
+				end)
+				if ok then successCount = successCount + 1 else failCount = failCount + 1 end
+			end
 		end
 	end)
 
-	if not success then
-		InfoBox.Text = string.format("-- [INJECT FAILED]: %s", tostring(err))
-	end
+	InfoBox.Text = string.format("-- [INJECT SUCCESS & RUN] Folder: %s\n-- Berhasil Trigger Remotes: %d\n-- Gagal/Ditolak Server: %d\n\nEfek donate telah di-broadcast ke server dan dapat dilihat semua player!", activeFolder.Name, successCount, failCount)
 end)
 
 SaveBtn.MouseButton1Click:Connect(function()
 	if writefile then
-		local filename = "IKYYXD_RemoteLog_" .. os.time() .. ".txt"
+		local filename = "IKYYXD_DonateLog_" .. os.time() .. ".txt"
 		writefile(filename, InfoBox.Text)
-		InfoBox.Text = "-- [SAVED] workspace/" .. filename .. "\n\n" .. InfoBox.Text
+		InfoBox.Text = "-- [SAVED] workspace/" .. filename .. "\n\n" + InfoBox.Text
 	else
 		InfoBox.Text = "-- [ERROR] writefile() tidak didukung.\n\n" .. InfoBox.Text
 	end
