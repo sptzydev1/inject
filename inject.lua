@@ -1,5 +1,5 @@
 --[[\
-    Project: Mini-DEX Explorer & Script Editor (Compact Edition)
+    Project: Mini-DEX Explorer & Script Editor (Mobile Decompile Edition)
     Author: sptzyy / IkyyXD
 ]]--
 
@@ -17,7 +17,7 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.Parent = CoreGui
 
--- Main Frame (Diperkecil menjadi 520 x 320)
+-- Main Frame (Kompak untuk HP - 520 x 320)
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 520, 0, 320)
 MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -47,7 +47,7 @@ TitleLabel.Size = UDim2.new(1, -90, 1, 0)
 TitleLabel.Position = UDim2.new(0, 10, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Text = "sptzyy // Mini-DEX Compact"
+TitleLabel.Text = "sptzyy // Mini-DEX Mobile"
 TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
 TitleLabel.TextSize = 11
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -105,7 +105,7 @@ InfoBox.MultiLine = true
 InfoBox.ClearTextOnFocus = false
 InfoBox.TextEditable = true
 InfoBox.Font = Enum.Font.Code
-InfoBox.Text = "-- Klik objek di kanan."
+InfoBox.Text = "-- Klik objek di kanan untuk melihat isi/source code."
 InfoBox.TextColor3 = Color3.fromRGB(0, 255, 180)
 InfoBox.TextSize = 10
 InfoBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -224,13 +224,25 @@ local function LoadDirectory(instanceToExplore)
 		
 		local btnCorner = Instance.new("UICorner") btnCorner.CornerRadius = UDim.new(0, 4) btnCorner.Parent = btn
 
+		-- Aksi Klik Item (Mendukung Decompile untuk Script & LocalScript)
 		btn.MouseButton1Click:Connect(function()
 			local infoText = string.format("-- Nama: %s\n-- Kelas: %s\n-- Parent: %s\n\n", item.Name, item.ClassName, tostring(item.Parent))
 			
 			if (item:IsA("Script") or item:IsA("LocalScript") or item:IsA("ModuleScript")) then
-				infoText = infoText .. "-- [Source Code]:\n"
-				local success, src = pcall(function() return item.Source end)
-				infoText = infoText .. (success and src or "-- (Source terkunci)")
+				infoText = infoText .. "-- [Source Code / Decompiled]:\n"
+				local success, result = pcall(function()
+					if decompile then
+						return decompile(item)
+					else
+						return item.Source
+					end
+				end)
+				
+				if success and result and result ~= "" then
+					infoText = infoText .. result
+				else
+					infoText = infoText .. "-- (Source kosong atau decompiler tidak didukung executor)"
+				end
 			else
 				infoText = infoText .. "[Children (" .. #item:GetChildren() .. ")]:\n"
 				for _, sub in ipairs(item:GetChildren()) do
@@ -294,8 +306,10 @@ SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
 				btn.MouseButton1Click:Connect(function()
 					local infoText = string.format("-- Nama: %s\n-- Kelas: %s\n-- Parent: %s\n\n", obj.Name, obj.ClassName, tostring(obj.Parent))
 					if obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("ModuleScript") then
-						local success, src = pcall(function() return obj.Source end)
-						infoText = infoText .. (success and src or "-- (Source terkunci)")
+						local success, result = pcall(function()
+							if decompile then return decompile(obj) else return obj.Source end
+						end)
+						infoText = infoText .. (success and result or "-- (Source terkunci)")
 					else
 						infoText = infoText .. "[Children]:\n"
 						for _, sub in ipairs(obj:GetChildren()) do
