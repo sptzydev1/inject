@@ -1,5 +1,5 @@
 -- ======================================================
--- IKYYXD DEX1.0 - STARTERGUI COPIER & DECOMPILER EDITION
+-- IKYYXD DEX1.0 - GUI COPIER & DECOMPILER EDITION
 -- COPYRIGHT (C) IkyyXD - ALL RIGHTS RESERVED
 -- ======================================================
 
@@ -135,7 +135,7 @@ local function createFeatureLabel(text, order)
 	return lbl
 end
 
-createFeatureLabel("• StarterGui Only", 1)
+createFeatureLabel("• PlayerGui & StarterGui", 1)
 createFeatureLabel("• All Properties Sync", 2)
 createFeatureLabel("• Script Decompiler", 3)
 createFeatureLabel("• Auto Storage Backup", 4)
@@ -261,7 +261,7 @@ local function createActionButton(name, text, order)
 	return btn
 end
 
-local CopyGuiBtn = createActionButton("CopyGuiBtn", "Copy StarterGui", 1)
+local CopyGuiBtn = createActionButton("CopyGuiBtn", "Copy GUI Active", 1)
 local SaveBtn     = createActionButton("SaveBtn", "Save to File", 2)
 
 -- Scroll Container List Hasil
@@ -303,7 +303,7 @@ UICornerConsole.CornerRadius = UDim.new(0, 4)
 UICornerConsole.Parent = ConsoleLog
 
 --------------------------------------------------
--- 6. LOGIKA DECOMPILER & SERIALIZER STARTERGUI
+-- 6. LOGIKA DECOMPILER & SERIALIZER GUI AKTIF
 --------------------------------------------------
 local savedGuiStorage = {}
 local listButtons = {}
@@ -367,13 +367,16 @@ local function serializeInstance(obj)
 
 	-- Rekursif ke anak objek (Children)
 	for _, child in ipairs(obj:GetChildren()) do
-		table.insert(data.Children, serializeInstance(child))
+		-- Abaikan tool pencatat GUI kita sendiri agar tidak ikut tersalin
+		if child.Name ~= "IKYYXDGuiCopier" then
+			table.insert(data.Children, serializeInstance(child))
+		end
 	end
 
 	return data
 end
 
--- Rekursif Membangun Kembali (Paste) Objek GUI ke dalam Game
+-- Rekursif Membangun Kembali (Paste) Objek GUI ke dalam Game / StarterGui
 local function deserializeInstance(data, parent)
 	local success, newObj = pcall(function()
 		local instance = Instance.new(data.ClassName)
@@ -444,13 +447,17 @@ local function refreshResultList()
 		corner.CornerRadius = UDim.new(0, 3)
 		corner.Parent = itemBtn
 
-		-- Klik item untuk langsung Paste ke PlayerGui
+		-- Klik item untuk langsung Paste ke PlayerGui & StarterGui agar tersimpan permanen
 		itemBtn.MouseButton1Click:Connect(function()
 			local targetParent = LocalPlayer:WaitForChild("PlayerGui")
 			for _, childData in ipairs(guiData.Items) do
 				deserializeInstance(childData, targetParent)
+				-- Masukkan juga ke StarterGui jika bisa diakses
+				pcall(function()
+					deserializeInstance(childData, StarterGui)
+				end)
 			end
-			setConsoleMessage("Successfully Pasted GUI to PlayerGui!", Color3.fromRGB(0, 255, 180))
+			setConsoleMessage("Successfully Pasted GUI!", Color3.fromRGB(0, 255, 180))
 		end)
 
 		table.insert(listButtons, itemBtn)
@@ -459,25 +466,40 @@ local function refreshResultList()
 	ResultFrame.CanvasSize = UDim2.new(0, 0, 0, ResultListLayout.AbsoluteContentSize.Y)
 end
 
--- Tombol COPY STARTERGUI
+-- Tombol COPY GUI AKTIF (Menggabungkan PlayerGui dan StarterGui agar akurat)
 CopyGuiBtn.MouseButton1Click:Connect(function()
 	task.spawn(function()
-		setConsoleMessage("Copying StarterGui...", Color3.fromRGB(255, 220, 100))
+		setConsoleMessage("Copying Active GUI...", Color3.fromRGB(255, 220, 100))
 		local guiItems = {}
+		local checkedNames = {}
 
-		-- Hanya menyalin isi StarterGui
+		-- 1. Salin dari PlayerGui (GUI yang sedang aktif tampil di layar game)
+		local playerGui = LocalPlayer:FindFirstChild("PlayerGui")
+		if playerGui then
+			for _, child in ipairs(playerGui:GetChildren()) do
+				if child:IsA("ScreenGui") and child.Name ~= "IKYYXDGuiCopier" and not checkedNames[child.Name] then
+					checkedNames[child.Name] = true
+					table.insert(guiItems, serializeInstance(child))
+				end
+			end
+		end
+
+		-- 2. Salin juga dari StarterGui (sebagai cadangan cetak biru game)
 		for _, child in ipairs(StarterGui:GetChildren()) do
-			table.insert(guiItems, serializeInstance(child))
+			if child:IsA("ScreenGui") and not checkedNames[child.Name] then
+				checkedNames[child.Name] = true
+				table.insert(guiItems, serializeInstance(child))
+			end
 		end
 
 		local payload = {
-			Title = "StarterGui_Backup_" .. math.random(10, 99),
+			Title = "ActiveGui_Backup_" .. math.random(10, 99),
 			Items = guiItems
 		}
 
 		table.insert(savedGuiStorage, payload)
 		refreshResultList()
-		setConsoleMessage("StarterGui Copied Successfully!", Color3.fromRGB(0, 255, 180))
+		setConsoleMessage("GUI Copied Successfully!", Color3.fromRGB(0, 255, 180))
 	end)
 end)
 
