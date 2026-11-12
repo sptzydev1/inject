@@ -1,11 +1,10 @@
---[[
-    Project: Console Output Executor (Auto-Capture Version)
+--[[\
+    Project: Console Output Executor (Active Bridge)
     Author: sptzyy / IkyyXD
 ]]--
 
 local CoreGui = game:GetService("CoreGui")
 local UserInputService = game:GetService("UserInputService")
-local LogService = game:GetService("LogService")
 
 -- Bersihkan GUI lama jika ada
 if CoreGui:FindFirstChild("SptzyyExecutorConsole") then
@@ -50,7 +49,7 @@ TitleLabel.Size = UDim2.new(1, -20, 1, 0)
 TitleLabel.Position = UDim2.new(0, 12, 0, 0)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.Text = "sptzyy // Auto-Scan Console"
+TitleLabel.Text = "sptzyy // Active Console"
 TitleLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
 TitleLabel.TextSize = 13
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -72,7 +71,7 @@ local ClearCorner = Instance.new("UICorner")
 ClearCorner.CornerRadius = UDim.new(0, 6)
 ClearCorner.Parent = ClearButton
 
--- ScrollingFrame untuk Output Teks (Support Edit & Scroll)
+-- ScrollingFrame untuk Output Teks
 local ScrollingFrame = Instance.new("ScrollingFrame")
 ScrollingFrame.Size = UDim2.new(1, -16, 1, -45)
 ScrollingFrame.Position = UDim2.new(0, 8, 0, 38)
@@ -84,7 +83,7 @@ ScrollingFrame.ScrollBarThickness = 4
 ScrollingFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 229, 255)
 ScrollingFrame.Parent = MainFrame
 
--- TextBox untuk Output (Support edit teks & salin manual)
+-- TextBox untuk Output (Support Edit & Salin)
 local OutputBox = Instance.new("TextBox")
 OutputBox.Name = "OutputBox"
 OutputBox.Size = UDim2.new(1, 0, 1, 0)
@@ -93,7 +92,7 @@ OutputBox.ClearTextOnFocus = false
 OutputBox.MultiLine = true
 OutputBox.TextEditable = true
 OutputBox.Font = Enum.Font.Code
-OutputBox.Text = "-- [sptzyy] Auto-Scanner aktif. Menunggu eksekusi script...\n"
+OutputBox.Text = "-- [sptzyy] Console aktif & siap menerima log...\n"
 OutputBox.TextColor3 = Color3.fromRGB(0, 255, 180)
 OutputBox.TextSize = 12
 OutputBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -124,7 +123,7 @@ end)
 
 UserInputService.InputChanged:Connect(function(input)
     if input == dragInput and dragging then
-        local delta = input.Position - dragStart
+        val delta = input.Position - dragStart
         MainFrame.Position = UDim2.new(
             startPos.X.Scale,
             startPos.X.Offset + delta.X,
@@ -134,37 +133,18 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- Fungsi Menambahkan Log ke Console
+-- Fungsi Utama Penambah Log
 local function AppendOutput(text: string)
     OutputBox.Text = OutputBox.Text .. "\n" .. tostring(text)
     ScrollingFrame.CanvasPosition = Vector2.new(0, ScrollingFrame.AbsoluteCanvasSize.Y)
 end
 
-ClearButton.MouseButton1Click:Connect(function()
+ClearButton.MouseButton1Click:Connect(background or function()
     OutputBox.Text = "-- Log dibersihkan --"
 end)
 
--- ==========================================================
--- AUTO-SCANNER: Menangkap semua output game / script lain
--- ==========================================================
-LogService.MessageOut:Connect(function(message, messageType)
-    local prefix = "[INFO]"
-    if messageType == Enum.MessageType.MessageWarning then
-        prefix = "[WARN]"
-    elseif messageType == Enum.MessageType.MessageError then
-        prefix = "[ERROR]"
-    elseif messageType == Enum.MessageType.MessageOutput then
-        prefix = "[OUT]"
-    end
-    
-    AppendOutput(string.format("%s %s", prefix, message))
-end)
-
--- Global bridge jika script lain ingin mengirim teks custom
+-- Daftarkan ke Global agar script/plugin lain bisa langsung mengirim teks ke sini
 _G.SptzyyLog = AppendOutput
+_G.AddConsoleLog = AppendOutput
 
--- Test simulasi scan saat pertama kali dijalankan
-task.spawn(function()
-    task.wait(0.5)
-    print("Sistem scan & executor console berhasil diinisialisasi oleh sptzyy.")
-end)
+AppendOutput("[SUCCESS] Console terhubung ke Global Bridge (_G.SptzyyLog aktif).")
