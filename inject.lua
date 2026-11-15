@@ -1,1 +1,201 @@
-Fungsi local API = "https://perma-key-api-v2.herdiansyah0239.workers.dev" local HttpService = game:GetService("HttpService") local UIS = game:GetService("UserInputService") local Players = game:GetService("Players") local player = Players.LocalPlayer local TweenService pcall(function() TweenService = game:GetService("TweenService") end) local function safeTweenCreate(object, tweenInfo, properties) local service = TweenService local createMethod if service ~= nil then local okMethod, method = pcall(function() return service["Create"] end) if okMethod then createMethod = method end end if object ~= nil and type(properties) == "table" and type(createMethod) == "function" then local okTween, tween = pcall(createMethod, service, object, tweenInfo, properties) if okTween and tween ~= nil then local okPlay, playMethod = pcall(function() return tween.Play end) if okPlay and type(playMethod) == "function" then return tween end end end local listeners = {} local completed = {} function completed:Connect(callback) if type(callback) ~= "function" then return {Disconnect = function() end} end local connection = {Connected = true} function connection:Disconnect() self.Connected = false end table.insert(listeners, {callback = callback, connection = connection}) return connection end function completed:Wait() return nil end local tween = {Completed = completed} function tween:Play() if object ~= nil and type(properties) == "table" then pcall(function() for key, value in pairs(properties) do object[key] = value end end) end for _, item in ipairs(listeners) do if item.connection.Connected then pcall(item.callback) end end end function tween:Cancel() end function tween:Pause() end return tween end local DEBUG_ENABLED = false local function debugLog(message, ...) if DEBUG_ENABLED then local formatted = string.format(tostring(message), ...) -- Keep diagnostics in the loader UI; do not write them to executor console. end end local function debugWarn(message, ...) if DEBUG_ENABLED then local formatted = string.format(tostring(message), ...) -- Keep diagnostics in the loader UI; do not write them to executor console. end end -- Loader diagnostics stay in the on-screen status UI, not the executor console. local function notify(message) -- Notification is shown through the on-screen notification UI only. pcall(function() game:GetService("StarterGui"):SetCore("SendNotification", {Title="PERMA DIW STUDIO", Text=message, Duration=6}) end) end debugLog("Creating ScreenGui...") local logoTargets = {} local logoAsset = nil local logoFile = "PERMA_DIW_STUDIO_LOGO.png" local function registerLogo(image) table.insert(logoTargets, image) if logoAsset then image.Image = logoAsset end end task.spawn(function() local env = _G pcall(function() if type(getgenv) == "function" then env = getgenv() end end) local getAsset = env.getcustomasset or env.getsynasset local read = env.readfile local isFile = env.isfile local write = env.writefile if type(getAsset) ~= "function" then return end local cached = false if type(isFile) == "function" and type(read) == "function" then pcall(function() if isFile(logoFile) then local asset = getAsset(logoFile) if type(asset) == "string" then logoAsset = asset; cached = true end end end) end if not cached and type(write) == "function" then local okImage, data = pcall(function() return game:HttpGet("https://perma-key-api-v2.herdiansyah0239.workers.dev/logo") end) if okImage and type(data) == "string" and #data > 1000 then pcall(write, logoFile, data) local okAsset, asset = pcall(getAsset, logoFile) if okAsset and type(asset) == "string" then logoAsset = asset end end end if logoAsset then for _, image in ipairs(logoTargets) do pcall(function() image.Image = logoAsset end) end end end) local gui = Instance.new("ScreenGui") gui.Name = "PermaKeyLoader" gui.ResetOnSpawn = false gui.IgnoreGuiInset = true gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling gui.DisplayOrder = 1000000 gui.Enabled = true local ok = pcall(function() gui.Parent = game:GetService("CoreGui") end) if not ok then gui.Parent = player:WaitForChild("PlayerGui") end debugLog("ScreenGui parent set; CoreGui success=%s", tostring(ok)) -- Full-screen splash with a visible five-second countdown. local loadingOverlay = Instance.new("Frame") loadingOverlay.Name = "LoadingOverlay" loadingOverlay.Position = UDim2.fromScale(0, 0) loadingOverlay.Size = UDim2.fromScale(1, 1) loadingOverlay.BackgroundColor3 = Color3.fromRGB(3, 7, 16) loadingOverlay.BackgroundTransparency = 0.7 loadingOverlay.BorderSizePixel = 0 loadingOverlay.Active = true loadingOverlay.Visible = true loadingOverlay.ZIndex = 1 loadingOverlay.Parent = gui local splashCard = Instance.new("Frame") splashCard.Name = "LoadingCard" splashCard.AnchorPoint = Vector2.new(0.5, 0.5) splashCard.Position = UDim2.fromScale(0.5, 0.5) splashCard.Size = UDim2.new(0.72, 0, 0, 108) splashCard.BackgroundColor3 = Color3.fromRGB(8, 15, 29) splashCard.BorderSizePixel = 0 splashCard.ZIndex = 2 splashCard.Parent = loadingOverlay local splashConstraint = Instance.new("UISizeConstraint", splashCard) splashConstraint.MinSize = Vector2.new(238, 108) splashConstraint.MaxSize = Vector2.new(255, 108) Instance.new("UICorner", splashCard).CornerRadius = UDim.new(0, 13) local splashStroke = Instance.new("UIStroke", splashCard) splashStroke.Color = Color3.fromRGB(45, 180, 230) splashStroke.Thickness = 1.35 local splashGradient = Instance.new("UIGradient", splashCard) splashGradient.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 70, 125)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(35, 200, 255)), ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 70, 125)) }) splashGradient.Rotation = 0 splashGradient.Rotation = 25 local splashLogo = Instance.new("ImageLabel", splashCard) splashLogo.Name = "PDSLogo" splashLogo.Size = UDim2.fromOffset(28, 28) splashLogo.Position = UDim2.fromOffset(12, 10) splashLogo.BackgroundTransparency = 1 splashLogo.ScaleType = Enum.ScaleType.Fit splashLogo.ZIndex = 4 registerLogo(splashLogo) local splashTitle = Instance.new("TextLabel", splashCard) splashTitle.Name = "Title" splashTitle.BackgroundTransparency = 1 splashTitle.Position = UDim2.new(0, 46, 0, 9) splashTitle.Size = UDim2.new(1, -56, 0, 30) splashTitle.Font = Enum.Font.GothamBold splashTitle.Text = "PERMA IMPORT RBXM TO STUDIO LITE" splashTitle.TextColor3 = Color3.fromRGB(244, 249, 255) splashTitle.TextScaled = true splashTitle.TextWrapped = true splashTitle.ZIndex = 3 local titleGradient = Instance.new("UIGradient", splashTitle) titleGradient.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(92, 190, 255)), ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)) }) local splashStrokeGradient = Instance.new("UIGradient", splashStroke) splashStrokeGradient.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0.00, Color3.fromRGB(3, 7, 15)), ColorSequenceKeypoint.new(0.18, Color3.fromRGB(12, 45, 105)), ColorSequenceKeypoint.new(0.38, Color3.fromRGB(35, 130, 255)), ColorSequenceKeypoint.new(0.52, Color3.fromRGB(245, 250, 255)), ColorSequenceKeypoint.new(0.68, Color3.fromRGB(42, 130, 255)), ColorSequenceKeypoint.new(0.84, Color3.fromRGB(7, 18, 39)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(3, 7, 15)) }) local splashCardGradient = splashGradient local function animateLoaderGradient(gradient, duration) task.spawn(function() while gui.Parent and gradient.Parent do gradient.Offset = Vector2.new(-1, 0) local tween = safeTweenCreate(gradient, TweenInfo.new(duration or 2.5, Enum.EasingStyle.Linear), {Offset = Vector2.new(1, 0)}) tween:Play() task.wait(duration or 2.5) end end) end animateLoaderGradient(splashCardGradient, 2.5) animateLoaderGradient(splashStrokeGradient, 2.5) animateLoaderGradient(titleGradient, 2.5) task.spawn(function() while gui.Parent and splashCard.Parent do for _, gradient in ipairs({barGradient}) do gradient.Offset = Vector2.new(-1, 0) local tween = safeTweenCreate(gradient, TweenInfo.new(2.5, Enum.EasingStyle.Linear), {Offset = Vector2.new(1, 0)}) tween:Play() end task.wait(2.5) end end) local splashSub = Instance.new("TextLabel", splashCard) splashSub.BackgroundTransparency = 1 splashSub.Position = UDim2.new(0, 46, 0, 38) splashSub.Size = UDim2.new(1, -56, 0, 16) splashSub.Font = Enum.Font.GothamMedium splashSub.Text = "PERMA DIW STUDIO" splashSub.TextColor3 = Color3.fromRGB(190, 218, 245) splashSub.TextSize = 11 splashSub.ZIndex = 3 local loadingStatus = Instance.new("TextLabel", splashCard) loadingStatus.BackgroundTransparency = 1 loadingStatus.Position = UDim2.new(0, 12, 0, 54) loadingStatus.Size = UDim2.new(1, -24, 0, 20) loadingStatus.Font = Enum.Font.Gotham loadingStatus.Text = "Loading system... 5" loadingStatus.TextColor3 = Color3.fromRGB(225, 237, 250) loadingStatus.TextSize = 10 loadingStatus.ZIndex = 3 local barBack = Instance.new("Frame", splashCard) barBack.Position = UDim2.new(0, 14, 0, 75) barBack.Size = UDim2.new(1, -28, 0, 5) barBack.BackgroundColor3 = Color3.fromRGB(21, 34, 52) barBack.BorderSizePixel = 0 barBack.ClipsDescendants = true barBack.ZIndex = 3 Instance.new("UICorner", barBack).CornerRadius = UDim.new(1, 0) local barFill = Instance.new("Frame", barBack) barFill.Size = UDim2.new(0, 0, 1, 0) barFill.BackgroundColor3 = Color3.fromRGB(58, 167, 255) barFill.BorderSizePixel = 0 barFill.ZIndex = 4 Instance.new("UICorner", barFill).CornerRadius = UDim.new(1, 0) local barGradient = Instance.new("UIGradient", barFill) barGradient.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 135, 255)), ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)) }) local loadingFoot = Instance.new("TextLabel", splashCard) loadingFoot.BackgroundTransparency = 1 loadingFoot.Position = UDim2.new(0, 12, 0, 85) loadingFoot.Size = UDim2.new(1, -24, 0, 16) loadingFoot.Font = Enum.Font.Gotham loadingFoot.Text = "PREPARING INTERFACE" loadingFoot.TextColor3 = Color3.fromRGB(135, 164, 197) loadingFoot.TextSize = 8 loadingFoot.ZIndex = 3 pcall(function() if not TweenService then TweenService = game:GetService("TweenService") end end) -- Unified PERMA blue / black / white theme: smoothly rotate UI gradients through 360 degrees. task.spawn(function() local spinning = {} while gui.Parent do for _, item in ipairs(gui:GetDescendants()) do if item:IsA("UIGradient") and not spinning[item] then spinning[item] = true task.spawn(function() if not item.Parent then spinning[item] = nil; return end item.Rotation = 0 local tween = safeTweenCreate(item, TweenInfo.new(6, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {Rotation = 360}) tween:Play() tween.Completed:Wait() if item.Parent then item.Rotation = 0 end spinning[item] = nil end) end end task.wait(0.8) end end) for second = 5, 1, -1 do if not gui.Parent then return end loadingStatus.Text = "Loading system... " .. tostring(second) safeTweenCreate(barFill, TweenInfo.new(1, Enum.EasingStyle.Linear), { Size = UDim2.new((6 - second) / 5, 0, 1, 0) }):Play() task.wait(1) end loadingStatus.Text = "System ready" barFill.Size = UDim2.new(1, 0, 1, 0) task.wait(0.15) loadingOverlay:Destroy() debugLog("Building key panel...") local fadeGroup = Instance.new("Frame", gui) fadeGroup.Name = "PermaFadeGroup"; fadeGroup.BackgroundTransparency = 1; fadeGroup.Size = UDim2.fromScale(1, 1); fadeGroup.Position = UDim2.fromScale(0, 0); fadeGroup.Active = false; fadeGroup.ZIndex = 10 local frame = Instance.new("Frame", gui) frame.Name = "KeyPanel" frame.AnchorPoint = Vector2.new(0.5, 0.5) frame.ZIndex = 1 frame.Size = UDim2.new(0.82, 0, 0, 168) local panelConstraint = Instance.new("UISizeConstraint", frame) panelConstraint.MinSize = Vector2.new(238, 168) panelConstraint.MaxSize = Vector2.new(285, 168) frame.Position = UDim2.fromScale(0.5, 0.5) frame.BackgroundColor3 = Color3.fromRGB(7, 11, 20) frame.BorderSizePixel = 0 frame.Active = true local panelGradient = Instance.new("UIGradient", frame) panelGradient.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0.00, Color3.fromRGB(3, 7, 15)), ColorSequenceKeypoint.new(0.18, Color3.fromRGB(12, 45, 105)), ColorSequenceKeypoint.new(0.38, Color3.fromRGB(35, 130, 255)), ColorSequenceKeypoint.new(0.52, Color3.fromRGB(245, 250, 255)), ColorSequenceKeypoint.new(0.68, Color3.fromRGB(42, 130, 255)), ColorSequenceKeypoint.new(0.84, Color3.fromRGB(7, 18, 39)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(3, 7, 15)) }) panelGradient.Rotation = 0 animateLoaderGradient(panelGradient, 2.5) local dragHandle = Instance.new("Frame", frame) dragHandle.Name = "DragHandle" dragHandle.Size = UDim2.new(1, 0, 0, 61) dragHandle.Position = UDim2.fromOffset(0, 0) dragHandle.BackgroundTransparency = 1 dragHandle.BorderSizePixel = 0 dragHandle.Active = true dragHandle.ZIndex = 2 local dragging, dragStart, startPosition dragHandle.InputBegan:Connect(function(inputObject) if inputObject.UserInputType == Enum.UserInputType.MouseButton1 or inputObject.UserInputType == Enum.UserInputType.Touch then dragging = true dragStart = inputObject.Position startPosition = frame.Position inputObject.Changed:Connect(function() if inputObject.UserInputState == Enum.UserInputState.End then dragging = false end end) end end) UIS.InputChanged:Connect(function(inputObject) if dragging and (inputObject.UserInputType == Enum.UserInputType.MouseMovement or inputObject.UserInputType == Enum.UserInputType.Touch) then local delta = inputObject.Position - dragStart frame.Position = UDim2.new( startPosition.X.Scale, startPosition.X.Offset + delta.X, startPosition.Y.Scale, startPosition.Y.Offset + delta.Y ) end end) local corner = Instance.new("UICorner", frame); corner.CornerRadius = UDim.new(0, 12) local stroke = Instance.new("UIStroke", frame); stroke.Color = Color3.fromRGB(45, 180, 230); stroke.Thickness = 1.5 local panelStrokeGradient = Instance.new("UIGradient", stroke) panelStrokeGradient.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0.00, Color3.fromRGB(3, 7, 15)), ColorSequenceKeypoint.new(0.18, Color3.fromRGB(12, 45, 105)), ColorSequenceKeypoint.new(0.38, Color3.fromRGB(35, 130, 255)), ColorSequenceKeypoint.new(0.52, Color3.fromRGB(245, 250, 255)), ColorSequenceKeypoint.new(0.68, Color3.fromRGB(42, 130, 255)), ColorSequenceKeypoint.new(0.84, Color3.fromRGB(7, 18, 39)), ColorSequenceKeypoint.new(1.00, Color3.fromRGB(3, 7, 15)) }) animateLoaderGradient(panelStrokeGradient, 2.5) local panelLogo = Instance.new("ImageLabel", frame) panelLogo.Name = "PDSLogo" panelLogo.Size = UDim2.fromOffset(25, 25) panelLogo.Position = UDim2.fromOffset(12, 7) panelLogo.BackgroundTransparency = 1 panelLogo.ScaleType = Enum.ScaleType.Fit panelLogo.ZIndex = 6 registerLogo(panelLogo) local title = Instance.new("TextLabel", frame) title.Size = UDim2.new(1, -48, 0, 30); title.Position = UDim2.fromOffset(42, 5); title.TextSize = 11 title.BackgroundTransparency = 1; title.Text = "PERMA IMPORT RBXM TO STUDIO LITE"; title.TextColor3 = Color3.fromRGB(228, 243, 255) title.Font = Enum.Font.GothamBold; title.TextSize = 14; title.TextWrapped = true; title.ZIndex = 5 local freeBadge = Instance.new("TextLabel", frame) freeBadge.Size = UDim2.fromOffset(112, 18); freeBadge.Position = UDim2.fromOffset(12, 38); freeBadge.ZIndex = 5 freeBadge.Name = "FreeBadge" freeBadge.BackgroundColor3 = Color3.fromRGB(5, 35, 61); freeBadge.BorderSizePixel = 0 freeBadge.Text = "✓ FREE KEY"; freeBadge.TextColor3 = Color3.fromRGB(255, 255, 255) freeBadge.TextStrokeTransparency = 1 freeBadge.Font = Enum.Font.GothamBlack; freeBadge.TextSize = 9 Instance.new("UICorner", freeBadge).CornerRadius = UDim.new(0, 6) local premiumBadge = Instance.new("TextLabel", frame) premiumBadge.Size = UDim2.fromOffset(112, 18); premiumBadge.Position = UDim2.fromOffset(132, 38); premiumBadge.ZIndex = 5 premiumBadge.Name = "PremiumBadge" premiumBadge.BackgroundColor3 = Color3.fromRGB(76, 51, 8); premiumBadge.BorderSizePixel = 0 premiumBadge.Text = "★ PREMIUM KEY"; premiumBadge.TextColor3 = Color3.fromRGB(255, 255, 255) premiumBadge.TextStrokeTransparency = 1 premiumBadge.Font = Enum.Font.GothamBlack; premiumBadge.TextSize = 8 Instance.new("UICorner", premiumBadge).CornerRadius = UDim.new(0, 6) local freeBadgeStroke = Instance.new("UIStroke", freeBadge) freeBadgeStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border freeBadgeStroke.Color = Color3.fromRGB(62, 210, 255) freeBadgeStroke.Thickness = 1.25 freeBadgeStroke.Transparency = 0 local freeBadgeGradient = Instance.new("UIGradient", freeBadge) freeBadgeGradient.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 70, 125)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(35, 200, 255)), ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 70, 125)) }) local premiumBadgeStroke = Instance.new("UIStroke", premiumBadge) premiumBadgeStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border premiumBadgeStroke.Color = Color3.fromRGB(255, 205, 72) premiumBadgeStroke.Thickness = 1.25 premiumBadgeStroke.Transparency = 0 local premiumBadgeGradient = Instance.new("UIGradient", premiumBadge) premiumBadgeGradient.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fromRGB(110, 68, 0)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 220, 105)), ColorSequenceKeypoint.new(1, Color3.fromRGB(110, 68, 0))}) task.spawn(function() while gui.Parent do safeTweenCreate(freeBadgeGradient, TweenInfo.new(2.5, Enum.EasingStyle.Linear), {Offset = Vector2.new(1, 0)}):Play() safeTweenCreate(premiumBadgeGradient, TweenInfo.new(2.5, Enum.EasingStyle.Linear), {Offset = Vector2.new(1, 0)}):Play() safeTweenCreate(stroke, TweenInfo.new(2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {Transparency = 0.15}):Play() task.wait(2.5) freeBadgeGradient.Offset = Vector2.new(-1, 0) premiumBadgeGradient.Offset = Vector2.new(-1, 0) end end) local input = Instance.new("TextBox", frame) input.Size = UDim2.new(1, -24, 0, 28); input.Position = UDim2.fromOffset(12, 65); input.ZIndex = 6; input.TextEditable = true; input.Visible = true; input.ClearTextOnFocus = false input.BackgroundColor3 = Color3.fromRGB(14, 25, 43); input.TextColor3 = Color3.fromRGB(245, 248, 255) input.PlaceholderText = "Paste your FREE or PREMIUM key"; input.PlaceholderColor3 = Color3.fromRGB(120, 145, 180); input.TextTransparency = 0 local savedKey = "" pcall(function() local read = (type(getgenv) == "function" and getgenv().readfile) or readfile if type(read) == "function" then local value = read("PERMA_IMPORT_LAST_KEY.txt") if type(value) == "string" then savedKey = string.gsub(value, "^%s*(.-)%s*$", "%1") end end end) input.Text = savedKey; input.ClearTextOnFocus = false; input.Font = Enum.Font.Code; input.TextSize = 11 local ic = Instance.new("UICorner", input); ic.CornerRadius = UDim.new(0, 9) input.BorderSizePixel = 0 -- Match the importer: solid dark-blue textbox with a cyan outline only. local inputStroke = Instance.new("UIStroke", input) inputStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border inputStroke.Color = Color3.fromRGB(62, 210, 255) inputStroke.Thickness = 1.1 inputStroke.Transparency = 0.12 local button = Instance.new("TextButton", frame) button.Size = UDim2.new(0.5, -18, 0, 26); button.Position = UDim2.new(0.5, 4, 0, 101); button.ZIndex = 6 button.BackgroundColor3 = Color3.fromRGB(35, 105, 210); button.TextColor3 = Color3.fromRGB(255,255,255) button.Text = "VERIFICATION KEY"; button.Font = Enum.Font.GothamBold; button.TextSize = 10 button.TextStrokeTransparency = 1 button.BorderSizePixel = 0 local bc = Instance.new("UICorner", button); bc.CornerRadius = UDim.new(0, 8) local buttonGradient = Instance.new("UIGradient", button) buttonGradient.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(13, 48, 100)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(35, 105, 210)), ColorSequenceKeypoint.new(1, Color3.fromRGB(13, 48, 100)) }) local buttonStroke = Instance.new("UIStroke", button) buttonStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border buttonStroke.Color = Color3.fromRGB(62, 210, 255) buttonStroke.Thickness = 1.25 buttonStroke.Transparency = 0.05 local status = Instance.new("TextLabel", frame) status.Size = UDim2.new(1, -24, 0, 30); status.Position = UDim2.fromOffset(12, 139); status.ZIndex = 6 status.BackgroundTransparency = 1; status.TextColor3 = Color3.fromRGB(180, 200, 220) status.Text = "Enter your key to verify access." status.Font = Enum.Font.Gotham; status.TextSize = 10; status.TextWrapped = true local getFree = Instance.new("TextButton", frame) getFree.Size = UDim2.new(0.5, -18, 0, 26); getFree.Position = UDim2.fromOffset(12, 101); getFree.ZIndex = 6 getFree.BackgroundColor3 = Color3.fromRGB(13, 30, 49); getFree.TextColor3 = Color3.fromRGB(255,255,255) getFree.Text = "GET FREE KEY ↗"; getFree.Font = Enum.Font.GothamBold; getFree.TextSize = 10 getFree.TextStrokeTransparency = 1 getFree.BorderSizePixel = 0 local gfc = Instance.new("UICorner", getFree); gfc.CornerRadius = UDim.new(0, 8) local getFreeGradient = Instance.new("UIGradient", getFree) getFreeGradient.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(4, 18, 35)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(17, 65, 105)), ColorSequenceKeypoint.new(1, Color3.fromRGB(4, 18, 35)) }) local getFreeStroke = Instance.new("UIStroke", getFree) getFreeStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border getFreeStroke.Color = Color3.fromRGB(87, 196, 255) getFreeStroke.Thickness = 1.4 getFreeStroke.Transparency = 0 local function fadeClose(callback) if callback then callback() end end fadeGroup.BackgroundTransparency = 1 frame.Visible = true getFree.Activated:Connect(function() debugLog("Get Free Key button clicked") local url = "https://permafreekey.pages.dev/" local opened = pcall(function() game:GetService("GuiService"):OpenBrowserWindow(url) end) if not opened then local copied = pcall(function() local fn = (type(getgenv)=="function" and getgenv().setclipboard) or setclipboard if type(fn)=="function" then fn(url) else error("clipboard unavailable") end end) status.Text = copied and "Free Key website link copied. Open your browser to continue." or ("Copy unavailable. Open: "..url) else status.Text = "Free Key website opened." end end) local busy = false local function verifyKey() debugLog("Verify/execute button clicked") if busy then debugLog("Ignored click because loader is busy"); return end local key = string.gsub(input.Text or "", "^%s*(.-)%s*$", "%1") if key == "" then debugWarn("Verification cancelled: empty key"); status.Text = "Please enter a key first."; status.TextColor3 = Color3.fromRGB(255, 190, 70); return end debugLog("Sending key validation request to /execute (key value hidden)") busy = true; button.Text = "PLEASE WAIT"; status.Text = "Verifying key with server..."; status.TextColor3 = Color3.fromRGB(220, 230, 245) task.spawn(function() local success, result = pcall(function() return game:HttpGet(API .. "/execute?key=" .. HttpService:UrlEncode(key)) end) if not success then debugWarn("API request failed: %s", tostring(result)) status.Text = "Connection failed. Please try again."; status.TextColor3 = Color3.fromRGB(255, 85, 95) button.Text = "Verify Key"; busy = false; return end debugLog("API response received; length=%d", #tostring(result)) if string.find(result, "PERMA_KEY_ERROR:", 1, true) == 1 then local message = string.sub(result, 17, 220) debugWarn("Key rejected by API: %s", tostring(message)) local lowerMessage = string.lower(message) if string.find(lowerMessage, "expired", 1, true) or string.find(lowerMessage, "revoked", 1, true) then input.Text = "" savedKey = "" pcall(function() local write = (type(getgenv) == "function" and getgenv().writefile) or writefile if type(write) == "function" then write("PERMA_IMPORT_LAST_KEY.txt", "") end end) end local expired = string.find(lowerMessage, "expired", 1, true) ~= nil or string.find(lowerMessage, "kadaluarsa", 1, true) ~= nil if expired then status.Text = "Key expired. Please get a new key." elseif string.find(lowerMessage, "invalid", 1, true) or string.find(lowerMessage, "not found", 1, true) or string.find(lowerMessage, "revoked", 1, true) or string.find(lowerMessage, "tidak valid", 1, true) or string.find(lowerMessage, "tidak ditemukan", 1, true) then status.Text = "Invalid key. Please check your key and try again." else status.Text = "Verification failed: " .. message end status.TextColor3 = Color3.fromRGB(255, 80, 90) button.Text = "Verify Key"; busy = false; return end status.Text = "Key valid! Importer will open in 3 seconds..."; status.TextColor3 = Color3.fromRGB(70, 230, 135) local isPremium = string.find(key, "-PRO-", 1, true) ~= nil freeBadge.Text = "✓ FREE KEY" premiumBadge.Text = "★ PREMIUM KEY" freeBadge.BackgroundTransparency = isPremium and 0.55 or 0 premiumBadge.BackgroundTransparency = isPremium and 0 or 0.55 local authEnv = _G pcall(function() if type(getgenv) == "function" then authEnv = getgenv() end end) pcall(function() authEnv.PERMA_KEY_AUTHORIZED = true; authEnv.PERMA_KEY_TYPE = string.find(key, "-PRO-", 1, true) and "PREMIUM" or "FREE" end) pcall(function() local write = (type(getgenv)=="function" and getgenv().writefile) or writefile if type(write)=="function" then write("PERMA_IMPORT_LAST_KEY.txt", key) end end) debugLog("Key accepted; compiling importer source...") task.wait(3) if not gui.Parent then return end local compile, chunk = pcall(loadstring, result) if not compile or type(chunk) ~= "function" then debugWarn("Importer compile failed: %s", tostring(chunk)) status.Text = "Failed to load importer. Please try again."; status.TextColor3 = Color3.fromRGB(255, 80, 90) button.Text = "Verify Key"; busy = false; return end fadeClose(function() gui:Destroy() end) task.wait(0.30) debugLog("Executing importer chunk...") local ran, failure = pcall(chunk) if not ran then debugWarn("Importer runtime error: %s", tostring(failure)); notify("Script mengalami error. Periksa console.") else debugLog("Importer chunk returned without an immediate error") end end) end button.Activated:Connect(verifyKey) if savedKey ~= "" then status.Text = "Saved key found. Verifying automatically..."; status.TextColor3 = Color3.fromRGB(220, 230, 245) task.defer(function() if button and button.Parent and gui and gui.Parent then verifyKey() end end) end
+local API = "https://perma-key-api-v2.herdiansyah0239.workers.dev"
+local ENDPOINT = API .. "/execute-public" -- Endpoint tanpa key di server
+
+local Players = game:GetService("Players")
+local StarterGui = game:GetService("StarterGui")
+local TweenService = game:GetService("TweenService")
+local player = Players.LocalPlayer
+
+local function notify(message)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = "PERMA DIW STUDIO",
+			Text = message,
+			Duration = 6,
+		})
+	end)
+end
+
+-- ===== GUI =====
+local gui = Instance.new("ScreenGui")
+gui.Name = "PermaLoader"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.DisplayOrder = 1000000
+
+local okParent = pcall(function()
+	gui.Parent = game:GetService("CoreGui")
+end)
+if not okParent then
+	gui.Parent = player:WaitForChild("PlayerGui")
+end
+
+local overlay = Instance.new("Frame")
+overlay.Size = UDim2.fromScale(1, 1)
+overlay.BackgroundColor3 = Color3.fromRGB(3, 7, 16)
+overlay.BackgroundTransparency = 0.7
+overlay.BorderSizePixel = 0
+overlay.Active = true
+overlay.Parent = gui
+
+local card = Instance.new("Frame")
+card.AnchorPoint = Vector2.new(0.5, 0.5)
+card.Position = UDim2.fromScale(0.5, 0.5)
+card.Size = UDim2.new(0.72, 0, 0, 108)
+card.BackgroundColor3 = Color3.fromRGB(8, 15, 29)
+card.BorderSizePixel = 0
+card.ZIndex = 2
+card.Parent = overlay
+
+local constraint = Instance.new("UISizeConstraint", card)
+constraint.MinSize = Vector2.new(238, 108)
+constraint.MaxSize = Vector2.new(255, 108)
+Instance.new("UICorner", card).CornerRadius = UDim.new(0, 13)
+
+local stroke = Instance.new("UIStroke", card)
+stroke.Color = Color3.fromRGB(45, 180, 230)
+stroke.Thickness = 1.35
+
+local strokeGradient = Instance.new("UIGradient", stroke)
+strokeGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0.00, Color3.fromRGB(3, 7, 15)),
+	ColorSequenceKeypoint.new(0.38, Color3.fromRGB(35, 130, 255)),
+	ColorSequenceKeypoint.new(0.52, Color3.fromRGB(245, 250, 255)),
+	ColorSequenceKeypoint.new(0.68, Color3.fromRGB(42, 130, 255)),
+	ColorSequenceKeypoint.new(1.00, Color3.fromRGB(3, 7, 15)),
+})
+
+local title = Instance.new("TextLabel", card)
+title.BackgroundTransparency = 1
+title.Position = UDim2.new(0, 12, 0, 9)
+title.Size = UDim2.new(1, -24, 0, 30)
+title.Font = Enum.Font.GothamBold
+title.Text = "PERMA IMPORT RBXM TO STUDIO LITE"
+title.TextColor3 = Color3.fromRGB(244, 249, 255)
+title.TextScaled = true
+title.TextWrapped = true
+title.ZIndex = 3
+
+local sub = Instance.new("TextLabel", card)
+sub.BackgroundTransparency = 1
+sub.Position = UDim2.new(0, 12, 0, 38)
+sub.Size = UDim2.new(1, -24, 0, 16)
+sub.Font = Enum.Font.GothamMedium
+sub.Text = "PERMA DIW STUDIO"
+sub.TextColor3 = Color3.fromRGB(190, 218, 245)
+sub.TextSize = 11
+sub.ZIndex = 3
+
+local statusLabel = Instance.new("TextLabel", card)
+statusLabel.BackgroundTransparency = 1
+statusLabel.Position = UDim2.new(0, 12, 0, 54)
+statusLabel.Size = UDim2.new(1, -24, 0, 20)
+statusLabel.Font = Enum.Font.Gotham
+statusLabel.Text = "Loading system... 5"
+statusLabel.TextColor3 = Color3.fromRGB(225, 237, 250)
+statusLabel.TextSize = 10
+statusLabel.ZIndex = 3
+
+local barBack = Instance.new("Frame", card)
+barBack.Position = UDim2.new(0, 14, 0, 75)
+barBack.Size = UDim2.new(1, -28, 0, 5)
+barBack.BackgroundColor3 = Color3.fromRGB(21, 34, 52)
+barBack.BorderSizePixel = 0
+barBack.ClipsDescendants = true
+barBack.ZIndex = 3
+Instance.new("UICorner", barBack).CornerRadius = UDim.new(1, 0)
+
+local barFill = Instance.new("Frame", barBack)
+barFill.Size = UDim2.new(0, 0, 1, 0)
+barFill.BackgroundColor3 = Color3.fromRGB(58, 167, 255)
+barFill.BorderSizePixel = 0
+barFill.ZIndex = 4
+Instance.new("UICorner", barFill).CornerRadius = UDim.new(1, 0)
+
+local barGradient = Instance.new("UIGradient", barFill)
+barGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+	ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 135, 255)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+})
+
+local foot = Instance.new("TextLabel", card)
+foot.BackgroundTransparency = 1
+foot.Position = UDim2.new(0, 12, 0, 85)
+foot.Size = UDim2.new(1, -24, 0, 16)
+foot.Font = Enum.Font.Gotham
+foot.Text = "PREPARING INTERFACE"
+foot.TextColor3 = Color3.fromRGB(135, 164, 197)
+foot.TextSize = 8
+foot.ZIndex = 3
+
+-- ===== Animasi gradient =====
+local function animateGradient(gradient, duration)
+	task.spawn(function()
+		while gui.Parent and gradient.Parent do
+			gradient.Offset = Vector2.new(-1, 0)
+			local ok, tween = pcall(function()
+				return TweenService:Create(gradient, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
+					Offset = Vector2.new(1, 0),
+				})
+			end)
+			if ok and tween then tween:Play() end
+			task.wait(duration)
+		end
+	end)
+end
+animateGradient(strokeGradient, 2.5)
+animateGradient(barGradient, 2.5)
+
+-- ===== Countdown 5 detik =====
+for second = 5, 1, -1 do
+	if not gui.Parent then return end
+	statusLabel.Text = "Loading system... " .. tostring(second)
+	pcall(function()
+		TweenService:Create(barFill, TweenInfo.new(1, Enum.EasingStyle.Linear), {
+			Size = UDim2.new((6 - second) / 5, 0, 1, 0),
+		}):Play()
+	end)
+	task.wait(1)
+end
+statusLabel.Text = "System ready"
+barFill.Size = UDim2.new(1, 0, 1, 0)
+task.wait(0.15)
+
+-- ===== Set Environment & Ambil Importer Tanpa Key =====
+local env = _G
+pcall(function()
+	if type(getgenv) == "function" then env = getgenv() end
+end)
+env.PERMA_KEY_AUTHORIZED = true
+env.PERMA_KEY_TYPE = "FREE"
+
+statusLabel.Text = "Downloading importer..."
+local ok, result = pcall(function()
+	return game:HttpGet(ENDPOINT)
+end)
+
+if not ok or type(result) ~= "string" or result == "" then
+	statusLabel.Text = "Connection failed."
+	notify("Koneksi gagal atau endpoint tidak merespons.")
+	task.wait(2)
+	gui:Destroy()
+	return
+end
+
+local compiled, chunk = pcall(loadstring, result)
+if not compiled or type(chunk) ~= "function" then
+	statusLabel.Text = "Failed to load script."
+	notify("Gagal mengompilasi skrip importer.")
+	gui:Destroy()
+	return
+end
+
+gui:Destroy()
+task.wait(0.3)
+
+local ran, err = pcall(chunk)
+if not ran then
+	notify("Script error: " .. tostring(err))
+end
