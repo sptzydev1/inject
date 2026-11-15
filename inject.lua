@@ -1,520 +1,340 @@
--- ======================================================
--- IKYYXD DEX1.0 - SAFE STARTERGUI COPIER & DECOMPILER
--- COPYRIGHT (C) IkyyXD - ALL RIGHTS RESERVED
--- ======================================================
-
-local Players = game:GetService("Players")
+local API = "https://perma-key-api-v2.herdiansyah0239.workers.dev"
 local HttpService = game:GetService("HttpService")
-local RunService = game:GetService("RunService")
-local StarterGui = game:GetService("StarterGui")
-local LocalPlayer = Players.LocalPlayer
+local UIS = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local TweenService
 
--- Hapus GUI lama jika ada
-local oldGui = LocalPlayer:WaitForChild("PlayerGui"):FindFirstChild("IKYYXDStarterGuiSafe")
-if oldGui then oldGui:Destroy() end
-
---------------------------------------------------
--- 1. UTAMA: SCREEN GUI & FLOATING ICON (Cyan Accent)
---------------------------------------------------
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "IKYYXDStarterGuiSafe"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-
--- Floating Icon Kecil
-local ToggleButton = Instance.new("TextButton")
-ToggleButton.Name = "ToggleButton"
-ToggleButton.Size = UDim2.new(0, 32, 0, 32)
-ToggleButton.Position = UDim2.new(0, 10, 0.5, -16)
-ToggleButton.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
-ToggleButton.Text = "IK"
-ToggleButton.TextSize = 12
-ToggleButton.TextColor3 = Color3.fromRGB(0, 229, 255)
-ToggleButton.Font = Enum.Font.SourceSansBold
-ToggleButton.Active = true
-ToggleButton.Draggable = true
-ToggleButton.Parent = ScreenGui
-
-local UICornerIcon = Instance.new("UICorner")
-UICornerIcon.CornerRadius = UDim.new(0, 6)
-UICornerIcon.Parent = ToggleButton
-
-local UIStrokeIcon = Instance.new("UIStroke")
-UIStrokeIcon.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-UIStrokeIcon.Color = Color3.fromRGB(0, 229, 255)
-UIStrokeIcon.Thickness = 1.5
-UIStrokeIcon.Parent = ToggleButton
-
--- Main Frame (Lebar: 460px, Tinggi: 220px)
-local MainFrame = Instance.new("Frame")
-MainFrame.Name = "MainFrame"
-MainFrame.Size = UDim2.new(0, 460, 0, 220)
-MainFrame.Position = UDim2.new(0.5, -230, 0.5, -110)
-MainFrame.BackgroundColor3 = Color3.fromRGB(12, 12, 16)
-MainFrame.Active = true
-MainFrame.Draggable = true
-MainFrame.Visible = true
-MainFrame.Parent = ScreenGui
-
-local UICornerMain = Instance.new("UICorner")
-UICornerMain.CornerRadius = UDim.new(0, 8)
-UICornerMain.Parent = MainFrame
-
-local UIStrokeMain = Instance.new("UIStroke")
-UIStrokeMain.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-UIStrokeMain.Color = Color3.fromRGB(0, 229, 255)
-UIStrokeMain.Thickness = 1.5
-UIStrokeMain.Parent = MainFrame
-
-ToggleButton.MouseButton1Click:Connect(function()
-	MainFrame.Visible = not MainFrame.Visible
+pcall(function()
+    TweenService = game:GetService("TweenService")
 end)
 
---------------------------------------------------
--- 2. WATERMARK PALING BAWAH (@IkyyXD)
---------------------------------------------------
-local BottomWatermark = Instance.new("TextLabel")
-BottomWatermark.Size = UDim2.new(1, 0, 0, 16)
-BottomWatermark.Position = UDim2.new(0, 0, 1, -16)
-BottomWatermark.BackgroundTransparency = 1
-BottomWatermark.Text = "IKYYXD DEX1.0 // @IkyyXD"
-BottomWatermark.TextColor3 = Color3.fromRGB(150, 150, 150)
-BottomWatermark.TextSize = 9
-BottomWatermark.Font = Enum.Font.SourceSansBold
-BottomWatermark.Parent = MainFrame
-
---------------------------------------------------
--- 3. PAGE KIRI: LIST FITUR MINI
---------------------------------------------------
-local PageKiri = Instance.new("Frame")
-PageKiri.Name = "PageKiri"
-PageKiri.Size = UDim2.new(0, 142, 1, -22)
-PageKiri.Position = UDim2.new(0, 6, 0, 6)
-PageKiri.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-PageKiri.Parent = MainFrame
-
-local UICornerKiri = Instance.new("UICorner")
-UICornerKiri.CornerRadius = UDim.new(0, 6)
-UICornerKiri.Parent = PageKiri
-
-local TitleKiri = Instance.new("TextLabel")
-TitleKiri.Size = UDim2.new(1, 0, 0, 18)
-TitleKiri.Position = UDim2.new(0, 0, 0, 2)
-TitleKiri.BackgroundTransparency = 1
-TitleKiri.Text = "GUI FEATURES"
-TitleKiri.TextColor3 = Color3.fromRGB(0, 229, 255)
-TitleKiri.TextSize = 10
-TitleKiri.Font = Enum.Font.SourceSansBold
-TitleKiri.Parent = PageKiri
-
-local ListContainer = Instance.new("Frame")
-ListContainer.Size = UDim2.new(1, -12, 1, -26)
-ListContainer.Position = UDim2.new(0, 6, 0, 22)
-ListContainer.BackgroundTransparency = 1
-ListContainer.Parent = PageKiri
-
-local UIListKiri = Instance.new("UIListLayout")
-UIListKiri.SortOrder = Enum.SortOrder.LayoutOrder
-UIListKiri.Padding = UDim.new(0, 3)
-UIListKiri.Parent = ListContainer
-
-local function createFeatureLabel(text, order)
-	local lbl = Instance.new("TextLabel")
-	lbl.Size = UDim2.new(1, 0, 0, 22)
-	lbl.LayoutOrder = order
-	lbl.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
-	lbl.Text = text
-	lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
-	lbl.TextSize = 9
-	lbl.Font = Enum.Font.SourceSans
-	lbl.Parent = ListContainer
-	
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 4)
-	corner.Parent = lbl
-	return lbl
+local function safeTweenCreate(object, tweenInfo, properties)
+    local service = TweenService
+    local createMethod
+    if service ~= nil then
+        local okMethod, method = pcall(function() return service["Create"] end)
+        if okMethod then createMethod = method end
+    end
+    if object ~= nil and type(properties) == "table" and type(createMethod) == "function" then
+        local okTween, tween = pcall(createMethod, service, object, tweenInfo, properties)
+        if okTween and tween ~= nil then
+            local okPlay, playMethod = pcall(function() return tween.Play end)
+            if okPlay and type(playMethod) == "function" then return tween end
+        end
+    end
+    local listeners = {}
+    local completed = {}
+    function completed:Connect(callback)
+        if type(callback) ~= "function" then return {Disconnect = function() end} end
+        local connection = {Connected = true}
+        function connection:Disconnect() self.Connected = false end
+        table.insert(listeners, {callback = callback, connection = connection})
+        return connection
+    end
+    function completed:Wait() return nil end
+    local tween = {Completed = completed}
+    function tween:Play()
+        if object ~= nil and type(properties) == "table" then
+            pcall(function()
+                for key, value in pairs(properties) do object[key] = value end
+            end)
+        end
+        for _, item in ipairs(listeners) do
+            if item.connection.Connected then pcall(item.callback) end
+        end
+    end
+    function tween:Cancel() end
+    function tween:Pause() end
+    return tween
 end
 
-createFeatureLabel("• StarterGui Scan Only", 1)
-createFeatureLabel("• Safe Paste (Disabled)", 2)
-createFeatureLabel("• Script Decompiler", 3)
-createFeatureLabel("• Auto Storage Backup", 4)
-createFeatureLabel("• Direct Inject/Paste", 5)
+local function notify(message)
+    pcall(function()
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "PERMA DIW STUDIO",
+            Text = message,
+            Duration = 6
+        })
+    end)
+end
 
---------------------------------------------------
--- 4. PAGE TENGAH: PROFILE MINI
---------------------------------------------------
-local PageTengah = Instance.new("Frame")
-PageTengah.Name = "PageTengah"
-PageTengah.Size = UDim2.new(0, 142, 1, -22)
-PageTengah.Position = UDim2.new(0, 154, 0, 6)
-PageTengah.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-PageTengah.Parent = MainFrame
+local logoTargets = {}
+local logoAsset = nil
+local logoFile = "PERMA_DIW_STUDIO_LOGO.png"
 
-local UICornerTengah = Instance.new("UICorner")
-UICornerTengah.CornerRadius = UDim.new(0, 6)
-UICornerTengah.Parent = PageTengah
-
-local TitleTengah = Instance.new("TextLabel")
-TitleTengah.Size = UDim2.new(1, 0, 0, 18)
-TitleTengah.Position = UDim2.new(0, 0, 0, 2)
-TitleTengah.BackgroundTransparency = 1
-TitleTengah.Text = "PROFILE AKUN"
-TitleTengah.TextColor3 = Color3.fromRGB(0, 229, 255)
-TitleTengah.TextSize = 10
-TitleTengah.Font = Enum.Font.SourceSansBold
-TitleTengah.Parent = PageTengah
-
-local AvatarImg = Instance.new("ImageLabel")
-AvatarImg.Size = UDim2.new(0, 32, 0, 32)
-AvatarImg.Position = UDim2.new(0, 6, 0, 22)
-AvatarImg.BackgroundColor3 = Color3.fromRGB(30, 30, 40)
-AvatarImg.Image = "rbxthumb://type=AvatarHeadShot&id=" .. LocalPlayer.UserId .. "&w=150&h=150"
-AvatarImg.Parent = PageTengah
-
-local UICornerAvatar = Instance.new("UICorner")
-UICornerAvatar.CornerRadius = UDim.new(1, 0)
-UICornerAvatar.Parent = AvatarImg
-
-local ProfileDetails = Instance.new("TextLabel")
-ProfileDetails.Size = UDim2.new(1, -44, 0, 32)
-ProfileDetails.Position = UDim2.new(0, 42, 0, 22)
-ProfileDetails.BackgroundTransparency = 1
-ProfileDetails.TextXAlignment = Enum.TextXAlignment.Left
-ProfileDetails.TextYAlignment = Enum.TextYAlignment.Center
-ProfileDetails.Text = "👤 " .. LocalPlayer.DisplayName .. "\n🗓️ " .. LocalPlayer.AccountAge .. " Hari"
-ProfileDetails.TextColor3 = Color3.fromRGB(220, 220, 220)
-ProfileDetails.TextSize = 9
-ProfileDetails.Font = Enum.Font.SourceSans
-ProfileDetails.Parent = PageTengah
-
-local InfoList = Instance.new("TextLabel")
-InfoList.Size = UDim2.new(1, -12, 0, 115)
-InfoList.Position = UDim2.new(0, 6, 0, 60)
-InfoList.BackgroundTransparency = 1
-InfoList.TextXAlignment = Enum.TextXAlignment.Left
-InfoList.TextYAlignment = Enum.TextYAlignment.Top
-InfoList.TextColor3 = Color3.fromRGB(180, 180, 180)
-InfoList.TextSize = 9
-InfoList.Font = Enum.Font.SourceSans
-InfoList.Text = "👥 Friends: Loading...\n⭐ Followers: Loading...\n📌 Following: Loading..."
-InfoList.Parent = PageTengah
+local function registerLogo(image)
+    table.insert(logoTargets, image)
+    if logoAsset then image.Image = logoAsset end
+end
 
 task.spawn(function()
-	local friendsCount, followersCount, followingCount = "0", "0", "0"
-	pcall(function() friendsCount = tostring(#Players:GetFriendsAsync(LocalPlayer.UserId):GetCurrentPage()) end)
-	pcall(function() followersCount = tostring(HttpService:JSONDecode(game:HttpGet("https://friends.roblox.com/v1/users/" .. LocalPlayer.UserId .. "/followers/count")).count) end)
-	pcall(function() followingCount = tostring(HttpService:JSONDecode(game:HttpGet("https://friends.roblox.com/v1/users/" .. LocalPlayer.UserId .. "/followings/count")).count) end)
-	InfoList.Text = "👥 Friends: " .. friendsCount .. "\n⭐ Followers: " .. followersCount .. "\n📌 Following: " .. followingCount
+    local env = _G
+    pcall(function()
+        if type(getgenv) == "function" then env = getgenv() end
+    end)
+    local getAsset = env.getcustomasset or env.getsynasset
+    local read = env.readfile
+    local isFile = env.isfile
+    local write = env.writefile
+    if type(getAsset) ~= "function" then return end
+    
+    local cached = false
+    if type(isFile) == "function" and type(read) == "function" then
+        pcall(function()
+            if isFile(logoFile) then
+                local asset = getAsset(logoFile)
+                if type(asset) == "string" then logoAsset = asset; cached = true end
+            end
+        end)
+    end
+    
+    if not cached and type(write) == "function" then
+        local okImage, data = pcall(function()
+            return game:HttpGet(API .. "/logo")
+        end)
+        if okImage and type(data) == "string" and #data > 1000 then
+            pcall(write, logoFile, data)
+            local okAsset, asset = pcall(getAsset, logoFile)
+            if okAsset and type(asset) == "string" then logoAsset = asset end
+        end
+    end
+    
+    if logoAsset then
+        for _, image in ipairs(logoTargets) do
+            pcall(function() image.Image = logoAsset end)
+        end
+    end
 end)
 
---------------------------------------------------
--- 5. PAGE KANAN: KONTROL, LIST & CONSOLE LOG
---------------------------------------------------
-local PageKanan = Instance.new("Frame")
-PageKanan.Name = "PageKanan"
-PageKanan.Size = UDim2.new(0, 150, 1, -22)
-PageKanan.Position = UDim2.new(0, 302, 0, 6)
-PageKanan.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-PageKanan.Parent = MainFrame
+local gui = Instance.new("ScreenGui")
+gui.Name = "PermaKeyLoader"
+gui.ResetOnSpawn = false
+gui.IgnoreGuiInset = true
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.DisplayOrder = 1000000
+gui.Enabled = true
 
-local UICornerKanan = Instance.new("UICorner")
-UICornerKanan.CornerRadius = UDim.new(0, 6)
-UICornerKanan.Parent = PageKanan
-
-local TitleKanan = Instance.new("TextLabel")
-TitleKanan.Size = UDim2.new(1, -24, 0, 18)
-TitleKanan.Position = UDim2.new(0, 0, 0, 2)
-TitleKanan.BackgroundTransparency = 1
-TitleKanan.Text = "GUI SAVED"
-TitleKanan.TextColor3 = Color3.fromRGB(0, 229, 255)
-TitleKanan.TextSize = 10
-TitleKanan.Font = Enum.Font.SourceSansBold
-TitleKanan.Parent = PageKanan
-
-local BtnContainer = Instance.new("Frame")
-BtnContainer.Size = UDim2.new(1, -12, 0, 50)
-BtnContainer.Position = UDim2.new(0, 6, 0, 20)
-BtnContainer.BackgroundTransparency = 1
-BtnContainer.Parent = PageKanan
-
-local UIListKanan = Instance.new("UIListLayout")
-UIListKanan.SortOrder = Enum.SortOrder.LayoutOrder
-UIListKanan.Padding = UDim.new(0, 3)
-UIListKanan.Parent = BtnContainer
-
-local function createActionButton(name, text, order)
-	local btn = Instance.new("TextButton")
-	btn.Name = name
-	btn.Size = UDim2.new(1, 0, 0, 20)
-	btn.LayoutOrder = order
-	btn.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
-	btn.Text = text
-	btn.TextColor3 = Color3.fromRGB(240, 240, 240)
-	btn.TextSize = 9
-	btn.Font = Enum.Font.SourceSansBold
-	btn.Parent = BtnContainer
-	
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 3)
-	corner.Parent = btn
-	return btn
+local ok = pcall(function()
+    gui.Parent = game:GetService("CoreGui")
+end)
+if not ok then
+    gui.Parent = player:WaitForChild("PlayerGui")
 end
 
-local CopyGuiBtn = createActionButton("CopyGuiBtn", "Scan StarterGui", 1)
-local SaveBtn     = createActionButton("SaveBtn", "Save to File", 2)
+-- Full-screen splash dengan animasi hitung mundur
+local loadingOverlay = Instance.new("Frame")
+loadingOverlay.Name = "LoadingOverlay"
+loadingOverlay.Position = UDim2.fromScale(0, 0)
+loadingOverlay.Size = UDim2.fromScale(1, 1)
+loadingOverlay.BackgroundColor3 = Color3.fromRGB(3, 7, 16)
+loadingOverlay.BackgroundTransparency = 0.7
+loadingOverlay.BorderSizePixel = 0
+loadingOverlay.Active = true
+loadingOverlay.Visible = true
+loadingOverlay.ZIndex = 1
+loadingOverlay.Parent = gui
 
--- Scroll Container List Hasil
-local ResultFrame = Instance.new("ScrollingFrame")
-ResultFrame.Name = "ResultFrame"
-ResultFrame.Size = UDim2.new(1, -12, 0, 75)
-ResultFrame.Position = UDim2.new(0, 6, 0, 74)
-ResultFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 12)
-ResultFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-ResultFrame.ScrollBarThickness = 2
-ResultFrame.Parent = PageKanan
+local splashCard = Instance.new("Frame")
+splashCard.Name = "LoadingCard"
+splashCard.AnchorPoint = Vector2.new(0.5, 0.5)
+splashCard.Position = UDim2.fromScale(0.5, 0.5)
+splashCard.Size = UDim2.new(0.72, 0, 0, 108)
+splashCard.BackgroundColor3 = Color3.fromRGB(8, 15, 29)
+splashCard.BorderSizePixel = 0
+splashCard.ZIndex = 2
+splashCard.Parent = loadingOverlay
 
-local UICornerResult = Instance.new("UICorner")
-UICornerResult.CornerRadius = UDim.new(0, 4)
-UICornerResult.Parent = ResultFrame
+local splashConstraint = Instance.new("UISizeConstraint", splashCard)
+splashConstraint.MinSize = Vector2.new(238, 108)
+splashConstraint.MaxSize = Vector2.new(255, 108)
+Instance.new("UICorner", splashCard).CornerRadius = UDim.new(0, 13)
 
-local ResultListLayout = Instance.new("UIListLayout")
-ResultListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ResultListLayout.Padding = UDim.new(0, 2)
-ResultListLayout.Parent = ResultFrame
+local splashStroke = Instance.new("UIStroke", splashCard)
+splashStroke.Color = Color3.fromRGB(45, 180, 230)
+splashStroke.Thickness = 1.35
 
--- Console Log Box
-local ConsoleLog = Instance.new("TextLabel")
-ConsoleLog.Name = "ConsoleLog"
-ConsoleLog.Size = UDim2.new(1, -12, 0, 32)
-ConsoleLog.Position = UDim2.new(0, 6, 0, 154)
-ConsoleLog.BackgroundColor3 = Color3.fromRGB(8, 8, 10)
-ConsoleLog.Text = "> System Ready..."
-ConsoleLog.TextColor3 = Color3.fromRGB(0, 229, 255)
-ConsoleLog.TextSize = 8
-ConsoleLog.Font = Enum.Font.Code
-ConsoleLog.TextXAlignment = Enum.TextXAlignment.Left
-ConsoleLog.TextYAlignment = Enum.TextYAlignment.Top
-ConsoleLog.TextWrapped = true
-ConsoleLog.Parent = PageKanan
+local splashGradient = Instance.new("UIGradient", splashCard)
+splashGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 70, 125)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(35, 200, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 70, 125))
+})
+splashGradient.Rotation = 25
 
-local UICornerConsole = Instance.new("UICorner")
-UICornerConsole.CornerRadius = UDim.new(0, 4)
-UICornerConsole.Parent = ConsoleLog
+local splashLogo = Instance.new("ImageLabel", splashCard)
+splashLogo.Name = "PDSLogo"
+splashLogo.Size = UDim2.fromOffset(28, 28)
+splashLogo.Position = UDim2.fromOffset(12, 10)
+splashLogo.BackgroundTransparency = 1
+splashLogo.ScaleType = Enum.ScaleType.Fit
+splashLogo.ZIndex = 4
+registerLogo(splashLogo)
 
---------------------------------------------------
--- 6. LOGIKA DECOMPILER & SAFE STARTERGUI SERIALIZER
---------------------------------------------------
-local savedGuiStorage = {}
-local listButtons = {}
+local splashTitle = Instance.new("TextLabel", splashCard)
+splashTitle.Name = "Title"
+splashTitle.BackgroundTransparency = 1
+splashTitle.Position = UDim2.new(0, 46, 0, 9)
+splashTitle.Size = UDim2.new(1, -56, 0, 30)
+splashTitle.Font = Enum.Font.GothamBold
+splashTitle.Text = "PERMA IMPORT RBXM TO STUDIO LITE"
+splashTitle.TextColor3 = Color3.fromRGB(244, 249, 255)
+splashTitle.TextScaled = true
+splashTitle.TextWrapped = true
+splashTitle.ZIndex = 3
 
-local function setConsoleMessage(text, color)
-	ConsoleLog.Text = "> " .. text
-	ConsoleLog.TextColor3 = color or Color3.fromRGB(0, 229, 255)
+local titleGradient = Instance.new("UIGradient", splashTitle)
+titleGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(92, 190, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+})
+
+local splashStrokeGradient = Instance.new("UIGradient", splashStroke)
+splashStrokeGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0.00, Color3.fromRGB(3, 7, 15)),
+    ColorSequenceKeypoint.new(0.18, Color3.fromRGB(12, 45, 105)),
+    ColorSequenceKeypoint.new(0.38, Color3.fromRGB(35, 130, 255)),
+    ColorSequenceKeypoint.new(0.52, Color3.fromRGB(245, 250, 255)),
+    ColorSequenceKeypoint.new(0.68, Color3.fromRGB(42, 130, 255)),
+    ColorSequenceKeypoint.new(0.84, Color3.fromRGB(7, 18, 39)),
+    ColorSequenceKeypoint.new(1.00, Color3.fromRGB(3, 7, 15))
+})
+
+local function animateLoaderGradient(gradient, duration)
+    task.spawn(function()
+        while gui.Parent and gradient.Parent do
+            gradient.Offset = Vector2.new(-1, 0)
+            local tween = safeTweenCreate(gradient, TweenInfo.new(duration or 2.5, Enum.EasingStyle.Linear), {Offset = Vector2.new(1, 0)})
+            tween:Play()
+            task.wait(duration or 2.5)
+        end
+    end)
 end
 
--- Fungsi Decompile Script layaknya Delta / DEX Executor
-local function getScriptSource(scriptObj)
-	local success, source = pcall(function()
-		if decompile then
-			return decompile(scriptObj)
-		elseif scriptObj.Source and scriptObj.Source ~= "" then
-			return scriptObj.Source
-		end
-		return ""
-	end)
-	if success and source then
-		return source
-	end
-	return "-- [Decompile Failed / Locked]"
-end
+animateLoaderGradient(splashGradient, 2.5)
+animateLoaderGradient(splashStrokeGradient, 2.5)
+animateLoaderGradient(titleGradient, 2.5)
 
--- Rekursif Menyalin Properti GUI & Script secara Akurat dari StarterGui
-local function serializeInstance(obj)
-	local data = {
-		Name = obj.Name,
-		ClassName = obj.ClassName,
-		Properties = {},
-		Source = "",
-		Children = {}
-	}
+local splashSub = Instance.new("TextLabel", splashCard)
+splashSub.BackgroundTransparency = 1
+splashSub.Position = UDim2.new(0, 46, 0, 38)
+splashSub.Size = UDim2.new(1, -56, 0, 16)
+splashSub.Font = Enum.Font.GothamMedium
+splashSub.Text = "PERMA DIW STUDIO"
+splashSub.TextColor3 = Color3.fromRGB(190, 218, 245)
+splashSub.TextSize = 11
+splashSub.ZIndex = 3
 
-	-- Salin properti umum GUI secara akurat
-	pcall(function()
-		if obj:IsA("GuiObject") or obj:IsA("LayerCollector") then
-			data.Properties.Size = {obj.Size.X.Scale, obj.Size.X.Offset, obj.Size.Y.Scale, obj.Size.Y.Offset}
-			data.Properties.Position = {obj.Position.X.Scale, obj.Position.X.Offset, obj.Position.Y.Scale, obj.Position.Y.Offset}
-			data.Properties.BackgroundColor3 = {obj.BackgroundColor3.R, obj.BackgroundColor3.G, obj.BackgroundColor3.B}
-			data.Properties.BackgroundTransparency = obj.BackgroundTransparency
-			-- Jika ScreenGui atau Frame utama, atur paksa ke false agar aman tidak langsung aktif memenuhi layar saat dipaste
-			if obj:IsA("ScreenGui") then
-				data.Properties.Enabled = false
-			else
-				data.Properties.Visible = obj.Visible
-			end
-			data.Properties.ZIndex = obj.ZIndex
-		end
-		if obj:IsA("TextButton") or obj:IsA("TextLabel") or obj:IsA("TextBox") then
-			data.Properties.Text = obj.Text
-			data.Properties.TextSize = obj.TextSize
-			data.Properties.TextColor3 = {obj.TextColor3.R, obj.TextColor3.G, obj.TextColor3.B}
-			data.Properties.Font = obj.Font.Name
-		end
-		if obj:IsA("ImageButton") or obj:IsA("ImageLabel") then
-			data.Properties.Image = obj.Image
-		end
-	end)
+local loadingStatus = Instance.new("TextLabel", splashCard)
+loadingStatus.BackgroundTransparency = 1
+loadingStatus.Position = UDim2.new(0, 12, 0, 54)
+loadingStatus.Size = UDim2.new(1, -24, 0, 20)
+loadingStatus.Font = Enum.Font.Gotham
+loadingStatus.Text = "Bypassing key verification... 3"
+loadingStatus.TextColor3 = Color3.fromRGB(225, 237, 250)
+loadingStatus.TextSize = 10
+loadingStatus.ZIndex = 3
 
-	-- Ambil isi script menggunakan logika decompiler jika berupa Script/LocalScript
-	if obj:IsA("LocalScript") or obj:IsA("ModuleScript") or obj:IsA("Script") then
-		data.Source = getScriptSource(obj)
-	end
+local barBack = Instance.new("Frame", splashCard)
+barBack.Position = UDim2.new(0, 14, 0, 75)
+barBack.Size = UDim2.new(1, -28, 0, 5)
+barBack.BackgroundColor3 = Color3.fromRGB(21, 34, 52)
+barBack.BorderSizePixel = 0
+barBack.ClipsDescendants = true
+barBack.ZIndex = 3
+Instance.new("UICorner", barBack).CornerRadius = UDim.new(1, 0)
 
-	-- Rekursif ke anak objek (Children)
-	for _, child in ipairs(obj:GetChildren()) do
-		table.insert(data.Children, serializeInstance(child))
-	end
+local barFill = Instance.new("Frame", barBack)
+barFill.Size = UDim2.new(0, 0, 1, 0)
+barFill.BackgroundColor3 = Color3.fromRGB(58, 167, 255)
+barFill.BorderSizePixel = 0
+barFill.ZIndex = 4
+Instance.new("UICorner", barFill).CornerRadius = UDim.new(1, 0)
 
-	return data
-end
+local barGradient = Instance.new("UIGradient", barFill)
+barGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(0.5, Color3.fromRGB(40, 135, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+})
 
--- Rekursif Membangun Kembali (Paste) Objek GUI secara Aman ke StarterGui
-local function deserializeInstance(data, parent)
-	local success, newObj = pcall(function()
-		local instance = Instance.new(data.ClassName)
-		instance.Name = data.Name
-
-		-- Terapkan kembali properti
-		local p = data.Properties
-		if p.Size then instance.Size = UDim2.new(unpack(p.Size)) end
-		if p.Position then instance.Position = UDim2.new(unpack(p.Position)) end
-		if p.BackgroundColor3 then instance.BackgroundColor3 = Color3.new(unpack(p.BackgroundColor3)) end
-		if p.BackgroundTransparency then instance.BackgroundTransparency = p.BackgroundTransparency end
-		
-		-- Pengamanan agar saat dipaste tidak langsung aktif tampil menutupi layar
-		if instance:IsA("ScreenGui") then
-			instance.Enabled = false
-		elseif p.Visible ~= nil then 
-			instance.Visible = p.Visible 
-		end
-		
-		if p.ZIndex then instance.ZIndex = p.ZIndex end
-
-		if instance:IsA("TextButton") or instance:IsA("TextLabel") or instance:IsA("TextBox") then
-			if p.Text then instance.Text = p.Text end
-			if p.TextSize then instance.TextSize = p.TextSize end
-			if p.TextColor3 then instance.TextColor3 = Color3.new(unpack(p.TextColor3)) end
-			if p.Font and Enum.Font[p.Font] then instance.Font = Enum.Font[p.Font] end
-		end
-
-		if instance:IsA("ImageButton") or instance:IsA("ImageLabel") then
-			if p.Image then instance.Image = p.Image end
-		end
-
-		-- Jika memiliki source code (Script/LocalScript), masukkan kembali kodenya
-		if (instance:IsA("LocalScript") or instance:IsA("ModuleScript") or instance:IsA("Script")) and data.Source ~= "" then
-			pcall(function()
-				instance.Source = data.Source
-			end)
-		end
-
-		instance.Parent = parent
-
-		-- Proses rekursif anak objek
-		for _, childData in ipairs(data.Children) do
-			deserializeInstance(childData, instance)
-		end
-
-		return instance
-	end)
-
-	if not success then
-		warn("Failed to create instance: " .. tostring(newObj))
-	end
-end
-
--- Refresh UI List Hasil
-local function refreshResultList()
-	for _, btn in ipairs(listButtons) do
-		btn:Destroy()
-	end
-	listButtons = {}
-
-	for idx, guiData in ipairs(savedGuiStorage) do
-		local itemBtn = Instance.new("TextButton")
-		itemBtn.Size = UDim2.new(1, -4, 0, 18)
-		itemBtn.LayoutOrder = idx
-		itemBtn.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
-		itemBtn.Text = idx .. ". " .. guiData.Title
-		itemBtn.TextColor3 = Color3.fromRGB(220, 220, 220)
-		itemBtn.TextXAlignment = Enum.TextXAlignment.Left
-		itemBtn.TextSize = 8
-		itemBtn.Font = Enum.Font.SourceSans
-		itemBtn.Parent = ResultFrame
-
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, 3)
-		corner.Parent = itemBtn
-
-		-- Klik item untuk aman menempelkan kembali ke StarterGui (Enabled = false / Tidak langsung muncul)
-		itemBtn.MouseButton1Click:Connect(function()
-			for _, childData in ipairs(guiData.Items) do
-				pcall(function()
-					deserializeInstance(childData, StarterGui)
-				end)
-			end
-			setConsoleMessage("Pasted safely to StarterGui (Disabled)!", Color3.fromRGB(0, 255, 180))
-		end)
-
-		table.insert(listButtons, itemBtn)
-	end
-
-	ResultFrame.CanvasSize = UDim2.new(0, 0, 0, ResultListLayout.AbsoluteContentSize.Y)
-end
-
--- Tombol SCAN / COPY STARTERGUI MURNI
-CopyGuiBtn.MouseButton1Click:Connect(function()
-	task.spawn(function()
-		setConsoleMessage("Scanning StarterGui...", Color3.fromRGB(255, 220, 100))
-		local guiItems = {}
-
-		-- Murni hanya memindai isi dari wadah StarterGui game
-		for _, child in ipairs(StarterGui:GetChildren()) do
-			table.insert(guiItems, serializeInstance(child))
-		end
-
-		local payload = {
-			Title = "StarterGui_Safe_" .. math.random(10, 99),
-			Items = guiItems
-		}
-
-		table.insert(savedGuiStorage, payload)
-		refreshResultList()
-		setConsoleMessage("StarterGui Scanned Successfully!", Color3.fromRGB(0, 255, 180))
-	end)
+task.spawn(function()
+    while gui.Parent and splashCard.Parent do
+        barGradient.Offset = Vector2.new(-1, 0)
+        local tween = safeTweenCreate(barGradient, TweenInfo.new(2.5, Enum.EasingStyle.Linear), {Offset = Vector2.new(1, 0)})
+        tween:Play()
+        task.wait(2.5)
+    end
 end)
 
--- Tombol SAVE ke File (.dat)
-SaveBtn.MouseButton1Click:Connect(function()
-	if writefile then
-		pcall(function()
-			writefile("ikyyxd_startergui_safe.dat", HttpService:JSONEncode(savedGuiStorage))
-			setConsoleMessage("Saved to workspace file!", Color3.fromRGB(0, 255, 180))
-		end)
-	else
-		setConsoleMessage("writefile not supported!", Color3.fromRGB(255, 100, 100))
-	end
+local loadingFoot = Instance.new("TextLabel", splashCard)
+loadingFoot.BackgroundTransparency = 1
+loadingFoot.Position = UDim2.new(0, 12, 0, 85)
+loadingFoot.Size = UDim2.new(1, -24, 0, 16)
+loadingFoot.Font = Enum.Font.Gotham
+loadingFoot.Text = "LOADING SYSTEM BYPASS"
+loadingFoot.TextColor3 = Color3.fromRGB(135, 164, 197)
+loadingFoot.TextSize = 8
+loadingFoot.ZIndex = 3
+
+-- Animasi rotasi gradient UI secara keseluruhan
+task.spawn(function()
+    local spinning = {}
+    while gui.Parent do
+        for _, item in ipairs(gui:GetDescendants()) do
+            if item:IsA("UIGradient") and not spinning[item] then
+                spinning[item] = true
+                task.spawn(function()
+                    if not item.Parent then spinning[item] = nil; return end
+                    item.Rotation = 0
+                    local tween = safeTweenCreate(item, TweenInfo.new(6, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut), {Rotation = 360})
+                    tween:Play()
+                    tween.Completed:Wait()
+                    if item.Parent then item.Rotation = 0 end
+                    spinning[item] = nil
+                end)
+            end
+        end
+        task.wait(0.8)
+    end
 end)
 
--- Auto Load Storage
-if readfile and isfile and isfile("ikyyxd_startergui_safe.dat") then
-	pcall(function()
-		local content = readfile("ikyyxd_startergui_safe.dat")
-		local decoded = HttpService:JSONDecode(content)
-		if type(decoded) == "table" then
-			savedGuiStorage = decoded
-			refreshResultList()
-			setConsoleMessage("Loaded saved StarterGui data")
-		end
-	end)
+-- Hitung mundur splash screen loader
+for second = 3, 1, -1 do
+    if not gui.Parent then return end
+    loadingStatus.Text = "Bypassing key verification... " .. tostring(second)
+    safeTweenCreate(barFill, TweenInfo.new(1, Enum.EasingStyle.Linear), {
+        Size = UDim2.new((4 - second) / 3, 0, 1, 0)
+    }):Play()
+    task.wait(1)
 end
+
+loadingStatus.Text = "Connecting to server..."
+barFill.Size = UDim2.new(1, 0, 1, 0)
+
+-- Mengambil skrip utama secara langsung dari server API
+task.spawn(function()
+    local success, result = pcall(function()
+        return game:HttpGet(API .. "/execute?key=BYPASS_KEY_FULL_FEATURE")
+    end)
+    
+    task.wait(0.5)
+    loadingOverlay:Destroy()
+
+    if not success or not result or result == "" then
+        notify("Gagal mengambil skrip dari server API.")
+        return
+    end
+
+    local compile, chunk = pcall(loadstring, result)
+    if not compile or type(chunk) ~= "function" then
+        notify("Gagal mengompilasi skrip utama.")
+        return
+    end
+
+    local ran, failure = pcall(chunk)
+    if not ran then
+        notify("Terjadi kesalahan saat menjalankan skrip: " .. tostring(failure))
+    end
+end)
