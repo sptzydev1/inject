@@ -323,7 +323,6 @@ local function parseTxtEntries(content: string, forceKind: "auto" | "audio" | "r
 		end
 	end
 
-	-- 1. Parse blok RBXM: ["Dances"] / ["Emotes"] = { { "Nama", 12345, "Dance" }, ... }
 	if forceKind ~= "audio" then
 		for section, blockBody in content:gmatch('%["([Dd]ances|[Ee]motes)"%]%s*=%s*{(.-)}') do
 			local defaultStatus = (section:lower():sub(1, 5) == "dance") and "Dance" or "Emote"
@@ -353,7 +352,6 @@ local function parseTxtEntries(content: string, forceKind: "auto" | "audio" | "r
 		end
 	end
 
-	-- 2. Parse blok Audio tabel Luau: ["SongName"], ["SoundIds"], ["PlaybackSpeed"], ["ImageId"]
 	if forceKind ~= "rbxm" then
 		for block in content:gmatch("{(.-)}%s*,?") do
 			local songName = block:match('%["SongName"%]%s*=%s*"(.-)"') or block:match("%[%\"SongName\"%]%s*=%s*'(.-)'")
@@ -391,7 +389,6 @@ local function parseTxtEntries(content: string, forceKind: "auto" | "audio" | "r
 			end
 		end
 
-		-- 3. Parse format teks baris: NAMA: ... / SONG ID: ... / PLAYBACK: ...
 		local curName: string? = nil
 		local curId: string? = nil
 		local curPlayback: number? = nil
@@ -436,7 +433,6 @@ local function parseTxtEntries(content: string, forceKind: "auto" | "audio" | "r
 	return entries
 end
 
--- Format JSON bertumpuk (pretty-printed) per item agar mudah dibaca & disalin
 local function formatStackedJson(rows: {{[string]: any}}): string
 	if #rows == 0 then
 		return "[]"
@@ -447,7 +443,6 @@ local function formatStackedJson(rows: {{[string]: any}}): string
 			return HttpService:JSONEncode(row)
 		end)
 		if ok and type(singleEncoded) == "string" then
-			-- Pecah field utama agar bertumpuk ke bawah
 			local pretty = singleEncoded
 				:gsub("^%{", "{\n  ")
 				:gsub('%,"', ',\n  "')
@@ -527,6 +522,117 @@ local function getHeaderCaseInsensitive(headers: any, targetKey: string): string
 		end
 	end
 	return nil
+end
+
+local function slugifyGameName(name: string): string
+	local slug = trim(name):gsub("[^%w%s%-]", ""):gsub("%s+", "-")
+	slug = slug:gsub("%-+", "-"):gsub("^%-+", ""):gsub("%-+$", "")
+	return slug ~= "" and slug or "Game"
+end
+
+-- ==========================================
+-- HELPER INFO LENGKAP UNIVERSE
+-- ==========================================
+local function fetchUniverseInfo(universeId: string, cookieVal: string?): string
+	local cleanUniv = trim(universeId):match("%d+") or ""
+	if cleanUniv == "" then
+		return "nama : -\ndescription : -\nstatus publik/private : -\ntautannya : -"
+	end
+
+	local nameVal: string? = nil
+	local descVal: string? = nil
+	local isPublicVal: boolean? = nil
+	local rootPlaceId: string? = nil
+
+	-- 1. Coba endpoint develop.roblox.com (bisa baca status private/public jika cookie valid)
+	local devHeaders: {[string]: string} = {}
+	if cookieVal and trim(cookieVal) ~= "" then
+		devHeaders["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal)
+	end
+
+	local devRes, devOk = apiRequest({
+		Url = "https://develop.roblox.com/v1/universes/" .. cleanUniv,
+		Method = "GET",
+		Headers = devHeaders,
+		Retries = 1,
+	})
+
+	if devOk and devRes and devRes.Body then
+		local okDec, decoded = pcall(function()
+			return HttpService:JSONDecode(tostring(devRes.Body))
+		end)
+		if okDec and type(decoded) == "table" then
+			if type(decoded.name) == "string" and trim(decoded.name) ~= "" then
+				nameVal = trim(decoded.name)
+			end
+			if type(decoded.description) == "string" then
+				descVal = decoded.description
+			end
+			if type(decoded.isActive) == "boolean" then
+				isPublicVal = decoded.isActive
+			elseif type(decoded.privacyType) == "string" then
+				local pLow = decoded.privacyType:lower()
+				if pLow:find("public") or pLow:find("open") then
+					isPublicVal = true
+				elseif pLow:find("private") or pLow:find("closed") then
+					isPublicVal = false
+				end
+			end
+			if decoded.rootPlaceId ~= nil and tostring(decoded.rootPlaceId):match("%d+") then
+				rootPlaceId = tostring(decoded.rootPlaceId):match("%d+")
+			end
+		end
+	end
+
+	-- 2. Lengkapi/verifikasi via games.roblox.com/v1/games?universeIds=...
+	local gameRes, gameOk = apiRequest({
+		Url = "https://games.roblox.com/v1/games?universeIds=" .. cleanUniv,
+		Method = "GET",
+		Retries = 1,
+	})
+
+	if gameOk and gameRes and gameRes.Body then
+		local okDec, decoded = pcall(function()
+			return HttpService:JSONDecode(tostring(gameRes.Body))
+		end)
+		if okDec and type(decoded) == "table" and type(decoded.data) == "table" and type(decoded.data[1]) == "table" then
+			local g = decoded.data[1]
+			if not nameVal and type(g.name) == "string" and trim(g.name) ~= "" then
+				nameVal = trim(g.name)
+			end
+			if not descVal and type(g.description) == "string" then
+				descVal = g.description
+			end
+			if g.rootPlaceId ~= nil and tostring(g.rootPlaceId):match("%d+") then
+				rootPlaceId = tostring(g.rootPlaceId):match("%d+")
+			end
+			-- Jika muncul di games API publik dan belum terdeteksi private
+			if isPublicVal == nil then
+				isPublicVal = true
+			end
+		end
+	end
+
+	local finalName = nameVal or ("Universe #" .. cleanUniv)
+	local finalDesc = (descVal and trim(descVal) ~= "") and trim(descVal) or "(kosong)"
+	local statusText = "Tidak diketahui"
+	if isPublicVal == true then
+		statusText = "Publik (Public)"
+	elseif isPublicVal == false then
+		statusText = "Private"
+	end
+
+	local linkUrl = "https://www.roblox.com/games/" .. cleanUniv
+	if rootPlaceId and rootPlaceId ~= "" then
+		linkUrl = "https://www.roblox.com/games/" .. rootPlaceId .. "/" .. slugifyGameName(finalName)
+	end
+
+	return table.concat({
+		"nama : " .. finalName,
+		"description : " .. finalDesc,
+		"status publik/private : " .. statusText,
+		"tautannya : " .. linkUrl,
+	}, "\n")
 end
 
 local function buildMultipartAssetBody(requestJson: string, payloadContent: string, filename: string)
@@ -1228,7 +1334,6 @@ local BersStroke = Instance.new("UIStroke", BersihkanBtn)
 BersStroke.Color = Color3.fromRGB(68, 64, 100)
 BersStroke.Thickness = 1
 
--- Progress bar
 local spoofBar = Instance.new("Frame")
 spoofBar.Size = UDim2.new(1, -24, 0, 4)
 spoofBar.Position = UDim2.new(0, 12, 0, 111)
@@ -1244,7 +1349,6 @@ spoofFill.BorderSizePixel = 0
 spoofFill.Parent = spoofBar
 Instance.new("UICorner", spoofFill).CornerRadius = UDim.new(1, 0)
 
--- 1) Console Proses (atas)
 local procScroll = Instance.new("ScrollingFrame")
 procScroll.Name = "ProcessConsole"
 procScroll.Size = UDim2.new(1, -24, 0, 44)
@@ -1279,7 +1383,6 @@ procBox.MultiLine = true
 procBox.TextWrapped = true
 procBox.Parent = procScroll
 
--- 2) Console JSON Hasil Bertumpuk (bawah, bisa diedit & dicopy)
 local jsonScroll = Instance.new("ScrollingFrame")
 jsonScroll.Name = "JsonResultConsole"
 jsonScroll.Size = UDim2.new(1, -24, 0, 82)
@@ -2267,7 +2370,7 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 	task.spawn(function()
 		local csrf = ""
 		local sukses, gagal = 0, 0
-		local lines: {string} = {}
+		local blocks: {string} = {}
 
 		for i = 1, count do
 			local bodyTbl: {[string]: any} = { templatePlaceId = tplId }
@@ -2308,30 +2411,52 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 			if ok and res then
 				sukses += 1
 				saveTextFile("Logs/place_" .. tostring(os.time()) .. "_" .. tostring(i) .. ".json", bodyStr)
-				table.insert(lines, "#" .. tostring(i) .. " OK: " .. bodyStr)
+
+				local createdUnivId: string? = nil
+				local okDec, decoded = pcall(function()
+					return HttpService:JSONDecode(bodyStr)
+				end)
+				if okDec and type(decoded) == "table" then
+					if decoded.universeId ~= nil then
+						createdUnivId = tostring(decoded.universeId):match("%d+")
+					elseif decoded.id ~= nil then
+						createdUnivId = tostring(decoded.id):match("%d+")
+					end
+				end
+				if not createdUnivId then
+					createdUnivId = bodyStr:match('"universeId"%s*:%s*(%d+)')
+				end
+
+				if createdUnivId and createdUnivId ~= "" then
+					TargetUniverseBox.Text = createdUnivId
+					local univInfo = fetchUniverseInfo(createdUnivId, cookieVal)
+					table.insert(blocks, string.format("#%d OK (Universe %s)\n%s", i, createdUnivId, univInfo))
+				else
+					table.insert(blocks, "#" .. tostring(i) .. " OK: " .. bodyStr)
+				end
 			else
 				gagal += 1
-				table.insert(lines, "#" .. tostring(i) .. " Gagal (" .. info .. "): " .. bodyStr:sub(1, 140))
+				table.insert(blocks, "#" .. tostring(i) .. " Gagal (" .. info .. "): " .. bodyStr:sub(1, 140))
 			end
 
-			updateToolsOutcome((gagal == 0) and "working" or "err", i / count, table.concat(lines, "\n"))
+			updateToolsOutcome((gagal == 0) and "working" or "err", i / count, table.concat(blocks, "\n\n"))
 			if i < count then
 				task.wait(1)
 			end
 		end
 
 		local allOk = (sukses > 0 and gagal == 0)
-		updateToolsOutcome(allOk and "ok" or "err", 1, table.concat(lines, "\n"))
+		updateToolsOutcome(allOk and "ok" or "err", 1, table.concat(blocks, "\n\n"))
 		notify("Place Maker", string.format("Selesai: %d berhasil, %d gagal.", sukses, gagal))
 		isCreatingPlace = false
 	end)
 end)
 
--- Proses Asset Permissions
+-- Proses Asset Permissions + Info Lengkap Universe
 local isGrantingPerm = false
 GrantPermBtn.MouseButton1Click:Connect(function()
 	if isGrantingPerm then return end
-	local _, apiKey = syncCredentialsFromInputs()
+	local cookieVal, apiKey = syncCredentialsFromInputs()
 	if apiKey == "" then
 		updateToolsOutcome("err", 0, "API Key (x-api-key) belum diisi di Setting.")
 		notify("Permissions", "API Key kosong.")
@@ -2396,6 +2521,10 @@ GrantPermBtn.MouseButton1Click:Connect(function()
 				task.wait(1)
 			end
 		end
+
+		local univInfoText = fetchUniverseInfo(univId, cookieVal)
+		table.insert(lines, "")
+		table.insert(lines, univInfoText)
 
 		local allOk = (suksesBatch > 0 and gagalBatch == 0)
 		updateToolsOutcome(allOk and "ok" or "err", 1, table.concat(lines, "\n"))
