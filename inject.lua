@@ -1,11 +1,8 @@
 --!strict
 -- Plugin Studio Lite (Delta Executor Edition) by Ikyy
--- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Hasil
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
-local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
@@ -24,46 +21,87 @@ if OLD_SOUND_GROUP then
 end
 
 -- ==========================================
--- KONFIGURASI & STATE
+-- KONFIGURASI, TEMA & STATE
 -- ==========================================
-local CONFIG = {
-	BaseUrl = "https://ygfstudio.my.id",
-	WorkspaceRoot = "IkyyStudioLite",
-	Cookie = "",
-	ApiKey = "",
-	PermApiKey = "",
-	UploadApiKey = "",
-	DefaultUniverseId = "10516113765",
-	IsMinimized = false,
-	ActiveTab = "Spoof",
-	SpoofFilter = "Auto", -- Auto, Suara, Stiker, Model, Anim
-	SpoofSourceMode = "ID", -- "ID" atau "TXT"
-	SessionId = "YGF_0000",
-	UserAgent = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
+export type GuiTheme = {
+	name: string,
+	accent: Color3,
+	accentSoft: Color3,
+	stroke: Color3,
+	gradStart: Color3,
+	gradEnd: Color3,
+	eqEven: Color3,
+	eqOdd: Color3,
 }
 
-local MEMORY_FILES: {[string]: string} = {}
-
-export type SpoofEntry = {
-	kind: "audio" | "rbxm",
+export type FontPreset = {
 	name: string,
-	id: string,
-	playbackSpeed: number?,
-	imageId: string?,
-	statusType: string?, -- "Dance" / "Emote" (untuk rbxm)
+	font: Enum.Font,
+	boldFont: Enum.Font,
+}
+
+local GUI_THEMES: {GuiTheme} = {
+	{
+		name = "Violet Neon",
+		accent = Color3.fromRGB(108, 86, 245),
+		accentSoft = Color3.fromRGB(52, 46, 86),
+		stroke = Color3.fromRGB(92, 72, 168),
+		gradStart = Color3.fromRGB(22, 20, 34),
+		gradEnd = Color3.fromRGB(13, 12, 20),
+		eqEven = Color3.fromRGB(122, 98, 255),
+		eqOdd = Color3.fromRGB(80, 210, 255),
+	},
+	{
+		name = "Cyan Cyber",
+		accent = Color3.fromRGB(14, 165, 233),
+		accentSoft = Color3.fromRGB(22, 62, 86),
+		stroke = Color3.fromRGB(34, 150, 210),
+		gradStart = Color3.fromRGB(14, 24, 34),
+		gradEnd = Color3.fromRGB(10, 15, 22),
+		eqEven = Color3.fromRGB(34, 211, 238),
+		eqOdd = Color3.fromRGB(59, 130, 246),
+	},
+	{
+		name = "Magenta Glow",
+		accent = Color3.fromRGB(217, 70, 239),
+		accentSoft = Color3.fromRGB(82, 34, 92),
+		stroke = Color3.fromRGB(185, 68, 205),
+		gradStart = Color3.fromRGB(28, 16, 34),
+		gradEnd = Color3.fromRGB(16, 10, 22),
+		eqEven = Color3.fromRGB(232, 121, 249),
+		eqOdd = Color3.fromRGB(251, 113, 133),
+	},
+	{
+		name = "Crimson Dark",
+		accent = Color3.fromRGB(225, 29, 72),
+		accentSoft = Color3.fromRGB(84, 26, 40),
+		stroke = Color3.fromRGB(180, 48, 76),
+		gradStart = Color3.fromRGB(30, 15, 20),
+		gradEnd = Color3.fromRGB(16, 10, 14),
+		eqEven = Color3.fromRGB(244, 63, 94),
+		eqOdd = Color3.fromRGB(251, 146, 60),
+	},
+}
+
+local FONT_PRESETS: {FontPreset} = {
+	{ name = "Gotham", font = Enum.Font.GothamMedium, boldFont = Enum.Font.GothamBold },
+	{ name = "FredokaOne", font = Enum.Font.FredokaOne, boldFont = Enum.Font.FredokaOne },
+	{ name = "RobotoMono", font = Enum.Font.RobotoMono, boldFont = Enum.Font.RobotoMono },
+	{ name = "Arcade", font = Enum.Font.Arcade, boldFont = Enum.Font.Arcade },
+}
+
+local CONFIG = {
+	WorkspaceRoot = "IkyyStudioLite",
+	IsMinimized = false,
+	ActiveTab = "Music",
+	ThemeIndex = 1,
+	FontIndex = 1,
 }
 
 export type MusicTrack = {
 	name: string,
 	songId: string,
 	playbackSpeed: number,
-}
-
-export type UploadCandidate = {
-	relPath: string,
-	displayName: string,
-	ext: string,
-	assetType: string,
 }
 
 local DEFAULT_MUSIC_PLAYLIST: {MusicTrack} = {
@@ -82,660 +120,6 @@ local WINDOW_POS = UDim2.new(0.5, -270, 0.5, -160)
 local ICON_SIZE = UDim2.fromOffset(42, 42)
 local ICON_DEFAULT_POS = UDim2.new(0.5, -21, 0.08, 0)
 local currentIconPos = ICON_DEFAULT_POS
-
-local function trim(s: string?): string
-	if type(s) ~= "string" then return "" end
-	return s:match("^%s*(.-)%s*$") or ""
-end
-
-local function normalizeCookie(rawCookie: string): string
-	local c = trim(rawCookie)
-	if c == "" then return "" end
-	c = c:gsub("^%.ROBLOSECURITY=", "")
-	c = c:gsub("[\r\n]+", "")
-	c = trim(c)
-	if c ~= "" and c:sub(-1) ~= ";" then
-		c = c .. ";"
-	end
-	return c
-end
-
-local function sanitizeFileName(name: string): string
-	local cleaned = trim(name):gsub('[\\/:*?"<>|]+', "_"):gsub("%s+", " ")
-	cleaned = trim(cleaned)
-	if cleaned == "" then
-		return "UnnamedAsset"
-	end
-	return cleaned:sub(1, 80)
-end
-
-local function stripExtension(fileName: string): string
-	local base = fileName:match("([^/]+)$") or fileName
-	local withoutExt = base:match("^(.+)%.[^%.]+$")
-	return withoutExt or base
-end
-
-local function inferRobloxAssetType(ext: string): string
-	local e = ext:lower()
-	if e == ".mp3" or e == ".ogg" or e == ".wav" or e == ".flac" then
-		return "Audio"
-	elseif e == ".png" or e == ".jpg" or e == ".jpeg" or e == ".bmp" then
-		return "Decal"
-	elseif e == ".rbxm" or e == ".rbxmx" then
-		return "Model"
-	end
-	return "Model"
-end
-
-local function inferMimeType(ext: string): string
-	local e = ext:lower()
-	if e == ".mp3" then
-		return "audio/mpeg"
-	elseif e == ".ogg" then
-		return "audio/ogg"
-	elseif e == ".wav" then
-		return "audio/wav"
-	elseif e == ".png" then
-		return "image/png"
-	elseif e == ".jpg" or e == ".jpeg" then
-		return "image/jpeg"
-	end
-	return "application/octet-stream"
-end
-
-local function notify(title: string, text: string)
-	pcall(function()
-		StarterGui:SetCore("SendNotification", {
-			Title = title,
-			Text = text,
-			Duration = 3,
-		})
-	end)
-end
-
-local function copyToClipboard(text: string): boolean
-	local env = {}
-	pcall(function()
-		if type(getgenv) == "function" and type(getgenv()) == "table" then
-			for k, v in pairs(getgenv()) do env[k] = v end
-		end
-	end)
-	pcall(function()
-		for k, v in pairs(getfenv(0)) do
-			if env[k] == nil then env[k] = v end
-		end
-	end)
-	local clipFn = env.setclipboard or env.toclipboard or (type(env.syn) == "table" and env.syn.write_clipboard)
-	if type(clipFn) == "function" then
-		local ok = pcall(clipFn, text)
-		if ok then return true end
-	end
-	return false
-end
-
--- ==========================================
--- DELTA EXECUTOR ENVIRONMENT BRIDGE
--- ==========================================
-local function getEnvTable(): {[string]: any}
-	local env: {[string]: any} = {}
-	pcall(function()
-		if type(getgenv) == "function" then
-			local g = getgenv()
-			if type(g) == "table" then
-				for k, v in pairs(g) do
-					env[k] = v
-				end
-			end
-		end
-	end)
-	pcall(function()
-		local f = getfenv(0)
-		if type(f) == "table" then
-			for k, v in pairs(f) do
-				if env[k] == nil then
-					env[k] = v
-				end
-			end
-		end
-	end)
-	return env
-end
-
-local ENV = getEnvTable()
-
-local function getDeltaHttpFunc()
-	local candidates = {
-		ENV.request,
-		ENV.http_request,
-		type(ENV.syn) == "table" and ENV.syn.request or nil,
-		type(ENV.http) == "table" and ENV.http.request or nil,
-		type(ENV.fluxus) == "table" and ENV.fluxus.request or nil,
-		type(ENV.delta) == "table" and ENV.delta.request or nil,
-	}
-	for _, fn in ipairs(candidates) do
-		if type(fn) == "function" then
-			return fn
-		end
-	end
-	return nil
-end
-
-local fnWriteFile = type(ENV.writefile) == "function" and ENV.writefile or nil
-local fnReadFile = type(ENV.readfile) == "function" and ENV.readfile or nil
-local fnIsFile = type(ENV.isfile) == "function" and ENV.isfile or nil
-local fnIsFolder = type(ENV.isfolder) == "function" and ENV.isfolder or nil
-local fnMakeFolder = type(ENV.makefolder) == "function" and ENV.makefolder or nil
-local fnListFiles = type(ENV.listfiles) == "function" and ENV.listfiles or nil
-
-local function ensureFolders()
-	if not fnMakeFolder then return end
-	local folders = {
-		CONFIG.WorkspaceRoot,
-		CONFIG.WorkspaceRoot .. "/TXT",
-		CONFIG.WorkspaceRoot .. "/SPOOF",
-		CONFIG.WorkspaceRoot .. "/SPOOF/info",
-		CONFIG.WorkspaceRoot .. "/SPOOF/music",
-		CONFIG.WorkspaceRoot .. "/SPOOF/animasi",
-		CONFIG.WorkspaceRoot .. "/Logs",
-	}
-	for _, folder in ipairs(folders) do
-		local exists = false
-		if fnIsFolder then
-			local okChk, resChk = pcall(fnIsFolder, folder)
-			exists = okChk and (resChk == true)
-		end
-		if not exists then
-			pcall(fnMakeFolder, folder)
-		end
-	end
-end
-
-local function normalizeWorkspaceRelPath(rawPath: string): string
-	local p = rawPath:gsub("\\", "/"):gsub("^%./", "")
-	local rootPrefix = CONFIG.WorkspaceRoot .. "/"
-	if p:sub(1, #rootPrefix) == rootPrefix then
-		p = p:sub(#rootPrefix + 1)
-	end
-	return p:gsub("^/+", "")
-end
-
-local function saveTextFile(relPath: string, content: string): boolean
-	local cleanRel = normalizeWorkspaceRelPath(relPath)
-	local fullPath = CONFIG.WorkspaceRoot .. "/" .. cleanRel
-	MEMORY_FILES[cleanRel] = content
-	MEMORY_FILES[fullPath] = content
-
-	if not fnWriteFile then
-		return true
-	end
-
-	ensureFolders()
-	local ok = pcall(fnWriteFile, fullPath, content)
-	return ok
-end
-
-local function loadTextFile(relPath: string): string?
-	local cleanRel = normalizeWorkspaceRelPath(relPath)
-	local candidates = {
-		CONFIG.WorkspaceRoot .. "/" .. cleanRel,
-		cleanRel,
-	}
-
-	if fnReadFile then
-		for _, fullPath in ipairs(candidates) do
-			local canRead = true
-			if fnIsFile then
-				local okChk, exists = pcall(fnIsFile, fullPath)
-				canRead = okChk and (exists == true)
-			end
-			if canRead then
-				local okRead, res = pcall(fnReadFile, fullPath)
-				if okRead and type(res) == "string" then
-					return res
-				end
-			end
-		end
-	end
-
-	for _, key in ipairs(candidates) do
-		if type(MEMORY_FILES[key]) == "string" then
-			return MEMORY_FILES[key]
-		end
-	end
-	if type(MEMORY_FILES[cleanRel]) == "string" then
-		return MEMORY_FILES[cleanRel]
-	end
-	return nil
-end
-
-local function scanFilesByPrefix(prefixes: {string}, extFilter: string?): {string}
-	ensureFolders()
-	local seen: {[string]: boolean} = {}
-	local results: {string} = {}
-
-	local function matchesAnyPrefix(normPath: string): boolean
-		for _, pref in ipairs(prefixes) do
-			if normPath:sub(1, #pref) == pref and not normPath:match("/$") then
-				if not extFilter or normPath:lower():sub(-#extFilter) == extFilter:lower() then
-					return true
-				end
-			end
-		end
-		return false
-	end
-
-	local function addCandidate(raw: string)
-		local norm = normalizeWorkspaceRelPath(raw)
-		if matchesAnyPrefix(norm) and not seen[norm] then
-			seen[norm] = true
-			table.insert(results, norm)
-		end
-	end
-
-	if fnListFiles then
-		local scanDirs: {string} = {}
-		local dirSeen: {[string]: boolean} = {}
-		for _, pref in ipairs(prefixes) do
-			local baseDir = CONFIG.WorkspaceRoot .. "/" .. pref:gsub("/+$", "")
-			if not dirSeen[baseDir] then
-				dirSeen[baseDir] = true
-				table.insert(scanDirs, baseDir)
-			end
-		end
-		table.insert(scanDirs, CONFIG.WorkspaceRoot .. "/SPOOF/music")
-		table.insert(scanDirs, CONFIG.WorkspaceRoot .. "/SPOOF/animasi")
-		table.insert(scanDirs, CONFIG.WorkspaceRoot .. "/SPOOF/info")
-
-		for _, dir in ipairs(scanDirs) do
-			local okList, listRes = pcall(fnListFiles, dir)
-			if okList and type(listRes) == "table" then
-				for _, entry in ipairs(listRes) do
-					if type(entry) == "string" then
-						local isDir = false
-						if fnIsFolder then
-							local okD, resD = pcall(fnIsFolder, entry)
-							isDir = okD and (resD == true)
-						end
-						if not isDir then
-							addCandidate(entry)
-						end
-					end
-				end
-			end
-		end
-	end
-
-	for key, _ in pairs(MEMORY_FILES) do
-		addCandidate(key)
-	end
-
-	table.sort(results)
-	return results
-end
-
--- ==========================================
--- PARSER FILE TXT (AUDIO, RBXM, & ID LIST)
--- ==========================================
-local function parseTxtEntries(content: string, forceKind: "auto" | "audio" | "rbxm"): {SpoofEntry}
-	local entries: {SpoofEntry} = {}
-	local seenKey: {[string]: boolean} = {}
-
-	local function pushEntry(e: SpoofEntry)
-		if e.id == "" or not e.id:match("^%d+$") or #e.id < 4 then return end
-		local key = e.kind .. ":" .. e.id .. ":" .. e.name
-		if not seenKey[key] then
-			seenKey[key] = true
-			table.insert(entries, e)
-		end
-	end
-
-	if forceKind ~= "audio" then
-		for section, blockBody in content:gmatch('%["([Dd]ances|[Ee]motes)"%]%s*=%s*{(.-)}') do
-			local defaultStatus = (section:lower():sub(1, 5) == "dance") and "Dance" or "Emote"
-			for tupleBody in blockBody:gmatch("{(.-)}") do
-				local itemName = tupleBody:match('^%s*"(.-)"%s*,') or tupleBody:match("^%s*'(.-)'%s*,")
-				local idStr = tupleBody:match(",%s*(%d+)")
-				local explicitStatus = tupleBody:match(',%s*"([^"]+)"%s*$') or tupleBody:match(",%s*'([^']+)'%s*$")
-				if itemName and idStr then
-					local st = defaultStatus
-					if explicitStatus then
-						if explicitStatus:lower():find("dance") then
-							st = "Dance"
-						elseif explicitStatus:lower():find("emote") then
-							st = "Emote"
-						else
-							st = explicitStatus
-						end
-					end
-					pushEntry({
-						kind = "rbxm",
-						name = trim(itemName),
-						id = idStr,
-						statusType = st,
-					})
-				end
-			end
-		end
-	end
-
-	if forceKind ~= "rbxm" then
-		for block in content:gmatch("{(.-)}%s*,?") do
-			local songName = block:match('%["SongName"%]%s*=%s*"(.-)"') or block:match("%[%\"SongName\"%]%s*=%s*'(.-)'")
-			local playbackStr = block:match('%["PlaybackSpeed"%]%s*=%s*([%d%.]+)')
-			local imageId = block:match('%["ImageId"%]%s*=%s*"(.-)"')
-
-			local soundIdsBlock = block:match('%["SoundIds"%]%s*=%s*{(.-)}')
-			local foundAnySound = false
-			if soundIdsBlock then
-				for sid in soundIdsBlock:gmatch("(%d+)") do
-					if #sid >= 4 then
-						foundAnySound = true
-						pushEntry({
-							kind = "audio",
-							name = trim(songName or ("Song_" .. sid)),
-							id = sid,
-							playbackSpeed = tonumber(playbackStr) or 1.0,
-							imageId = imageId,
-						})
-					end
-				end
-			end
-
-			if not foundAnySound and songName then
-				local fallbackId = block:match('rbxassetid://(%d+)')
-				if fallbackId and #fallbackId >= 4 then
-					pushEntry({
-						kind = "audio",
-						name = trim(songName),
-						id = fallbackId,
-						playbackSpeed = tonumber(playbackStr) or 1.0,
-						imageId = imageId,
-					})
-				end
-			end
-		end
-
-		local curName: string? = nil
-		local curId: string? = nil
-		local curPlayback: number? = nil
-
-		local function flushTextRecord()
-			if curId and curId ~= "" then
-				pushEntry({
-					kind = "audio",
-					name = trim(curName or ("Song_" .. curId)),
-					id = curId,
-					playbackSpeed = curPlayback or 1.0,
-				})
-			end
-			curName = nil
-			curId = nil
-			curPlayback = nil
-		end
-
-		for rawLine in (content .. "\n"):gmatch("(.-)\r?\n") do
-			local line = trim(rawLine)
-			if line == "" then
-				flushTextRecord()
-			else
-				local nVal = line:match("^[Nn][Aa][Mm][Aa]%s*:%s*(.+)$") or line:match("^[Ss][Oo][Nn][Gg]%s*[Nn][Aa][Mm][Ee]%s*:%s*(.+)$")
-				local iVal = line:match("^[Ss][Oo][Nn][Gg]%s*[Ii][Dd]%s*:%s*(%d+)") or line:match("^[Ii][Dd]%s*:%s*(%d+)")
-				local pVal = line:match("^[Pp][Ll][Aa][Yy][Bb][Aa][Cc][Kk][Ss][Pp][Ee][Ee][Dd]%s*:%s*([%d%.]+)") or line:match("^[Pp][Ll][Aa][Yy][Bb][Aa][Cc][Kk]%s*:%s*([%d%.]+)")
-
-				if nVal then
-					if curId then flushTextRecord() end
-					curName = trim(nVal)
-				elseif iVal then
-					if curId then flushTextRecord() end
-					curId = iVal
-				elseif pVal then
-					curPlayback = tonumber(pVal)
-				end
-			end
-		end
-		flushTextRecord()
-	end
-
-	return entries
-end
-
-local function parseIds(raw: string): {string}
-	local seen: {[string]: boolean} = {}
-	local out: {string} = {}
-	if type(raw) ~= "string" then return out end
-	for digits in raw:gmatch("%d+") do
-		if #digits >= 4 and not seen[digits] then
-			seen[digits] = true
-			table.insert(out, digits)
-		end
-	end
-	return out
-end
-
-local function formatStackedJson(rows: {{[string]: any}}): string
-	if #rows == 0 then
-		return "[]"
-	end
-	local blocks: {string} = {}
-	for _, row in ipairs(rows) do
-		local ok, singleEncoded = pcall(function()
-			return HttpService:JSONEncode(row)
-		end)
-		if ok and type(singleEncoded) == "string" then
-			local pretty = singleEncoded
-				:gsub("^%{", "{\n  ")
-				:gsub('%,"', ',\n  "')
-				:gsub("%}$", "\n}")
-			table.insert(blocks, pretty)
-		end
-	end
-	return "[\n" .. table.concat(blocks, ",\n") .. "\n]"
-end
-
-local savedCookie = loadTextFile("cookie.txt")
-local savedApiKey = loadTextFile("apikey.txt")
-local savedPermApiKey = loadTextFile("perm_apikey.txt")
-local savedUploadApiKey = loadTextFile("upload_apikey.txt")
-if savedCookie and trim(savedCookie) ~= "" then CONFIG.Cookie = normalizeCookie(savedCookie) end
-if savedApiKey and trim(savedApiKey) ~= "" then CONFIG.ApiKey = trim(savedApiKey) end
-if savedPermApiKey and trim(savedPermApiKey) ~= "" then CONFIG.PermApiKey = trim(savedPermApiKey) end
-if savedUploadApiKey and trim(savedUploadApiKey) ~= "" then CONFIG.UploadApiKey = trim(savedUploadApiKey) end
-
-local function apiRequest(options: {
-	Url: string,
-	Method: string?,
-	Headers: {[string]: string}?,
-	Body: string?,
-	Retries: number?,
-})
-	local reqFn = getDeltaHttpFunc()
-	if not reqFn then
-		return nil, false, "HTTP function tidak tersedia di executor"
-	end
-
-	local maxAttempts = math.max(1, options.Retries or 1)
-	local baseHeaders: {[string]: string} = {
-		["User-Agent"] = CONFIG.UserAgent,
-	}
-	if options.Headers then
-		for k, v in pairs(options.Headers) do
-			baseHeaders[k] = v
-		end
-	end
-
-	local lastRes = nil
-	local lastOk = false
-	local lastErr = "Tidak ada respons"
-
-	for attempt = 1, maxAttempts do
-		local ok, res = pcall(reqFn, {
-			Url = options.Url,
-			Method = options.Method or "GET",
-			Headers = baseHeaders,
-			Body = options.Body,
-		})
-		if ok and type(res) == "table" then
-			lastRes = res
-			local code = tonumber(res.StatusCode or res.Status or res.status_code) or 0
-			lastOk = (code >= 200 and code < 300)
-			if lastOk then
-				return res, true, "HTTP " .. tostring(code)
-			end
-			lastErr = "HTTP " .. tostring(code)
-			if code == 400 or code == 401 or code == 403 or code == 404 then
-				return res, false, lastErr
-			end
-		else
-			lastErr = tostring(res)
-		end
-		if attempt < maxAttempts then
-			task.wait(0.6)
-		end
-	end
-
-	return lastRes, lastOk, lastErr
-end
-
-local function buildMultipartAssetBody(
-	boundary: string,
-	payloadJson: string,
-	fileName: string,
-	mimeType: string,
-	fileBytes: string
-): string
-	local crlf = string.char(13, 10)
-	local parts = {
-		"--" .. boundary .. crlf,
-		'Content-Disposition: form-data; name="request"' .. crlf,
-		"Content-Type: application/json; charset=UTF-8" .. crlf .. crlf,
-		payloadJson .. crlf,
-		"--" .. boundary .. crlf,
-		string.format('Content-Disposition: form-data; name="fileContent"; filename="%s"', fileName) .. crlf,
-		"Content-Type: " .. mimeType .. crlf .. crlf,
-		fileBytes .. crlf,
-		"--" .. boundary .. "--" .. crlf,
-	}
-	return table.concat(parts)
-end
-
-local function getHeaderCaseInsensitive(headers: any, targetKey: string): string?
-	if type(headers) ~= "table" then return nil end
-	local lowerTarget = targetKey:lower()
-	for k, v in pairs(headers) do
-		if type(k) == "string" and k:lower() == lowerTarget then
-			return tostring(v)
-		end
-	end
-	return nil
-end
-
-local function slugifyGameName(name: string): string
-	local slug = trim(name):gsub("[^%w%s%-]", ""):gsub("%s+", "-")
-	slug = slug:gsub("%-+", "-"):gsub("^%-+", ""):gsub("%-+$", "")
-	return slug ~= "" and slug or "Game"
-end
-
--- ==========================================
--- HELPER INFO LENGKAP UNIVERSE
--- ==========================================
-local function fetchUniverseInfo(universeId: string, cookieVal: string?): string
-	local cleanUniv = trim(universeId):match("%d+") or ""
-	if cleanUniv == "" then
-		return "nama : -\ndescription : -\nstatus publik/private : -\ntautannya : -"
-	end
-
-	local nameVal: string? = nil
-	local descVal: string? = nil
-	local isPublicVal: boolean? = nil
-	local rootPlaceId: string? = nil
-
-	local devHeaders: {[string]: string} = {}
-	if cookieVal and trim(cookieVal) ~= "" then
-		devHeaders["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal)
-	end
-
-	local devRes, devOk = apiRequest({
-		Url = "https://develop.roblox.com/v1/universes/" .. cleanUniv,
-		Method = "GET",
-		Headers = devHeaders,
-		Retries = 1,
-	})
-
-	if devOk and devRes and devRes.Body then
-		local okDec, decoded = pcall(function()
-			return HttpService:JSONDecode(tostring(devRes.Body))
-		end)
-		if okDec and type(decoded) == "table" then
-			if type(decoded.name) == "string" and trim(decoded.name) ~= "" then
-				nameVal = trim(decoded.name)
-			end
-			if type(decoded.description) == "string" then
-				descVal = decoded.description
-			end
-			if type(decoded.isActive) == "boolean" then
-				isPublicVal = decoded.isActive
-			elseif type(decoded.privacyType) == "string" then
-				local pLow = decoded.privacyType:lower()
-				if pLow:find("public") or pLow:find("open") then
-					isPublicVal = true
-				elseif pLow:find("private") or pLow:find("closed") then
-					isPublicVal = false
-				end
-			end
-			if decoded.rootPlaceId ~= nil and tostring(decoded.rootPlaceId):match("%d+") then
-				rootPlaceId = tostring(decoded.rootPlaceId):match("%d+")
-			end
-		end
-	end
-
-	local gameRes, gameOk = apiRequest({
-		Url = "https://games.roblox.com/v1/games?universeIds=" .. cleanUniv,
-		Method = "GET",
-		Retries = 1,
-	})
-
-	if gameOk and gameRes and gameRes.Body then
-		local okDec, decoded = pcall(function()
-			return HttpService:JSONDecode(tostring(gameRes.Body))
-		end)
-		if okDec and type(decoded) == "table" and type(decoded.data) == "table" and type(decoded.data[1]) == "table" then
-			local g = decoded.data[1]
-			if not nameVal and type(g.name) == "string" and trim(g.name) ~= "" then
-				nameVal = trim(g.name)
-			end
-			if not descVal and type(g.description) == "string" then
-				descVal = g.description
-			end
-			if g.rootPlaceId ~= nil and tostring(g.rootPlaceId):match("%d+") then
-				rootPlaceId = tostring(g.rootPlaceId):match("%d+")
-			end
-			if isPublicVal == nil then
-				isPublicVal = true
-			end
-		end
-	end
-
-	local finalName = nameVal or ("Universe #" .. cleanUniv)
-	local finalDesc = (descVal and trim(descVal) ~= "") and trim(descVal) or "(kosong)"
-	local statusText = "Tidak diketahui"
-	if isPublicVal == true then
-		statusText = "Publik (Public)"
-	elseif isPublicVal == false then
-		statusText = "Private"
-	end
-
-	local linkUrl = "https://www.roblox.com/games/" .. cleanUniv
-	if rootPlaceId and rootPlaceId ~= "" then
-		linkUrl = "https://www.roblox.com/games/" .. rootPlaceId .. "/" .. slugifyGameName(finalName)
-	end
-
-	return table.concat({
-		"nama : " .. finalName,
-		"description : " .. finalDesc,
-		"status publik/private : " .. statusText,
-		"tautannya : " .. linkUrl,
-	}, "\n")
-end
 
 local function getUserAvatarAsync(userId: number): string
 	local ok, content = pcall(function()
@@ -824,7 +208,7 @@ LogoStroke.Thickness = 1
 local LogoIcon = Instance.new("TextLabel")
 LogoIcon.Size = UDim2.fromScale(1, 1)
 LogoIcon.BackgroundTransparency = 1
-LogoIcon.Text = "⇄"
+LogoIcon.Text = "🎵"
 LogoIcon.TextColor3 = Color3.fromRGB(215, 210, 255)
 LogoIcon.TextSize = 14
 LogoIcon.Font = Enum.Font.GothamBold
@@ -856,7 +240,7 @@ local MetaLabel = Instance.new("TextLabel")
 MetaLabel.Size = UDim2.new(0, 240, 0, 11)
 MetaLabel.Position = UDim2.new(0, 48, 0, 31)
 MetaLabel.BackgroundTransparency = 1
-MetaLabel.Text = "by Ikyy • v1.3.1 • @" .. LocalPlayer.Name
+MetaLabel.Text = "by Ikyy • v1.4.0 • @" .. LocalPlayer.Name
 MetaLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
 MetaLabel.TextSize = 8
 MetaLabel.Font = Enum.Font.GothamMedium
@@ -1003,6 +387,7 @@ NavLayout.Parent = NavScroll
 
 local tabPages: {[string]: Frame} = {}
 local tabButtons: {[string]: TextButton} = {}
+local applyThemeAndFont: () -> () = function() end
 
 local function createNavButton(name: string, label: string, order: number)
 	local btn = Instance.new("TextButton")
@@ -1037,957 +422,21 @@ local ContStroke = Instance.new("UIStroke", ContentArea)
 ContStroke.Color = Color3.fromRGB(52, 48, 82)
 ContStroke.Thickness = 1
 
-local onUploadTabOpened: (() -> ())? = nil
-
 local function switchTab(tabName: string)
 	CONFIG.ActiveTab = tabName
 	for name, page in pairs(tabPages) do
 		page.Visible = (name == tabName)
 	end
-	for name, btn in pairs(tabButtons) do
-		local active = (name == tabName)
-		btn.BackgroundColor3 = active and Color3.fromRGB(45, 42, 68) or Color3.fromRGB(28, 27, 42)
-		btn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(185, 182, 210)
-	end
-	if tabName == "Upload" and onUploadTabOpened then
-		onUploadTabOpened()
-	end
-end
-
--- Helper Komponen Output Hasil Standar (Progress Bar + Console)
-local function createOutcomePanel(parent: GuiObject, yPos: number, boxHeight: number, editableConsole: boolean)
-	local bar = Instance.new("Frame")
-	bar.Size = UDim2.new(1, -24, 0, 4)
-	bar.Position = UDim2.new(0, 12, 0, yPos)
-	bar.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
-	bar.BorderSizePixel = 0
-	bar.Parent = parent
-	Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-
-	local fill = Instance.new("Frame")
-	fill.Size = UDim2.new(0, 0, 1, 0)
-	fill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
-	fill.BorderSizePixel = 0
-	fill.Parent = bar
-	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
-	local consoleScroll = Instance.new("ScrollingFrame")
-	consoleScroll.Size = UDim2.new(1, -24, 0, boxHeight)
-	consoleScroll.Position = UDim2.new(0, 12, 0, yPos + 6)
-	consoleScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-	consoleScroll.BorderSizePixel = 0
-	consoleScroll.ScrollBarThickness = 3
-	consoleScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-	consoleScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	consoleScroll.Parent = parent
-	Instance.new("UICorner", consoleScroll).CornerRadius = UDim.new(0, 6)
-	local csStroke = Instance.new("UIStroke", consoleScroll)
-	csStroke.Color = Color3.fromRGB(48, 44, 74)
-	csStroke.Thickness = 1
-
-	local consoleBox = Instance.new("TextBox")
-	consoleBox.Size = UDim2.new(1, -12, 0, boxHeight)
-	consoleBox.AutomaticSize = Enum.AutomaticSize.Y
-	consoleBox.Position = UDim2.new(0, 6, 0, 4)
-	consoleBox.BackgroundTransparency = 1
-	consoleBox.Text = ""
-	consoleBox.PlaceholderText = "Hasil akan muncul di sini..."
-	consoleBox.PlaceholderColor3 = Color3.fromRGB(95, 92, 118)
-	consoleBox.TextColor3 = Color3.fromRGB(210, 240, 220)
-	consoleBox.TextSize = 9
-	consoleBox.Font = Enum.Font.Code
-	consoleBox.TextXAlignment = Enum.TextXAlignment.Left
-	consoleBox.TextYAlignment = Enum.TextYAlignment.Top
-	consoleBox.ClearTextOnFocus = false
-	consoleBox.TextEditable = editableConsole
-	consoleBox.MultiLine = true
-	consoleBox.TextWrapped = true
-	consoleBox.Parent = consoleScroll
-
-	return function(state: "idle" | "working" | "ok" | "err", ratio: number, outputText: string?)
-		local clamped = math.clamp(ratio, 0, 1)
-		if state == "idle" then
-			fill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
-		elseif state == "working" then
-			fill.BackgroundColor3 = Color3.fromRGB(96, 165, 250)
-		elseif state == "ok" then
-			fill.BackgroundColor3 = Color3.fromRGB(56, 239, 125)
-		else
-			fill.BackgroundColor3 = Color3.fromRGB(255, 86, 102)
-		end
-
-		TweenService:Create(fill, TweenInfo.new(0.15), {
-			Size = UDim2.new(clamped, 0, 1, 0),
-		}):Play()
-
-		if outputText ~= nil then
-			consoleBox.Text = outputText
-			consoleBox.TextColor3 = (state == "err") and Color3.fromRGB(255, 145, 155) or Color3.fromRGB(205, 242, 218)
-		end
-	end, consoleBox
+	applyThemeAndFont()
 end
 
 -- ==========================================
--- HALAMAN 1: SPOOF
--- ==========================================
-local SpoofPage = Instance.new("Frame")
-SpoofPage.Size = UDim2.fromScale(1, 1)
-SpoofPage.BackgroundTransparency = 1
-SpoofPage.Visible = true
-SpoofPage.Parent = ContentArea
-tabPages["Spoof"] = SpoofPage
-
-local SpoofTitle = Instance.new("TextLabel")
-SpoofTitle.Size = UDim2.new(0.45, -12, 0, 15)
-SpoofTitle.Position = UDim2.new(0, 12, 0, 3)
-SpoofTitle.BackgroundTransparency = 1
-SpoofTitle.Text = "Spoof Asset"
-SpoofTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-SpoofTitle.TextSize = 12
-SpoofTitle.Font = Enum.Font.GothamBold
-SpoofTitle.TextXAlignment = Enum.TextXAlignment.Left
-SpoofTitle.Parent = SpoofPage
-
-local SourceIdBtn = Instance.new("TextButton")
-SourceIdBtn.Size = UDim2.new(0.24, -4, 0, 16)
-SourceIdBtn.Position = UDim2.new(0.46, 0, 0, 3)
-SourceIdBtn.BackgroundColor3 = Color3.fromRGB(48, 45, 74)
-SourceIdBtn.Text = "Input ID"
-SourceIdBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SourceIdBtn.TextSize = 8
-SourceIdBtn.Font = Enum.Font.GothamBold
-SourceIdBtn.Parent = SpoofPage
-Instance.new("UICorner", SourceIdBtn).CornerRadius = UDim.new(0, 5)
-
-local SourceTxtBtn = Instance.new("TextButton")
-SourceTxtBtn.Size = UDim2.new(0.29, -12, 0, 16)
-SourceTxtBtn.Position = UDim2.new(0.71, 0, 0, 3)
-SourceTxtBtn.BackgroundColor3 = Color3.fromRGB(26, 25, 39)
-SourceTxtBtn.Text = "File TXT"
-SourceTxtBtn.TextColor3 = Color3.fromRGB(175, 172, 200)
-SourceTxtBtn.TextSize = 8
-SourceTxtBtn.Font = Enum.Font.GothamBold
-SourceTxtBtn.Parent = SpoofPage
-Instance.new("UICorner", SourceTxtBtn).CornerRadius = UDim.new(0, 5)
-
-local AssetIdBox = Instance.new("TextBox")
-AssetIdBox.Size = UDim2.new(1, -24, 0, 38)
-AssetIdBox.Position = UDim2.new(0, 12, 0, 21)
-AssetIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-AssetIdBox.Text = ""
-AssetIdBox.PlaceholderText = "Input Asset ID (pisah spasi, koma, atau baris baru)"
-AssetIdBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-AssetIdBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-AssetIdBox.TextSize = 10
-AssetIdBox.Font = Enum.Font.Gotham
-AssetIdBox.TextXAlignment = Enum.TextXAlignment.Left
-AssetIdBox.TextYAlignment = Enum.TextYAlignment.Top
-AssetIdBox.ClearTextOnFocus = false
-AssetIdBox.MultiLine = true
-AssetIdBox.TextWrapped = true
-AssetIdBox.Visible = true
-AssetIdBox.Parent = SpoofPage
-Instance.new("UICorner", AssetIdBox).CornerRadius = UDim.new(0, 7)
-local AssetStroke = Instance.new("UIStroke", AssetIdBox)
-AssetStroke.Color = Color3.fromRGB(65, 60, 102)
-AssetStroke.Thickness = 1
-
-local TxtSelectorPanel = Instance.new("Frame")
-TxtSelectorPanel.Size = UDim2.new(1, -24, 0, 38)
-TxtSelectorPanel.Position = UDim2.new(0, 12, 0, 21)
-TxtSelectorPanel.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-TxtSelectorPanel.Visible = false
-TxtSelectorPanel.Parent = SpoofPage
-Instance.new("UICorner", TxtSelectorPanel).CornerRadius = UDim.new(0, 7)
-local TxtPanelStroke = Instance.new("UIStroke", TxtSelectorPanel)
-TxtPanelStroke.Color = Color3.fromRGB(65, 60, 102)
-TxtPanelStroke.Thickness = 1
-
-local ScanTxtBtn = Instance.new("TextButton")
-ScanTxtBtn.Size = UDim2.new(0, 62, 1, -6)
-ScanTxtBtn.Position = UDim2.new(0, 3, 0, 3)
-ScanTxtBtn.BackgroundColor3 = Color3.fromRGB(64, 118, 240)
-ScanTxtBtn.Text = "Scan TXT"
-ScanTxtBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ScanTxtBtn.TextSize = 8
-ScanTxtBtn.Font = Enum.Font.GothamBold
-ScanTxtBtn.Parent = TxtSelectorPanel
-Instance.new("UICorner", ScanTxtBtn).CornerRadius = UDim.new(0, 5)
-
-local TxtFileList = Instance.new("ScrollingFrame")
-TxtFileList.Size = UDim2.new(1, -70, 1, -4)
-TxtFileList.Position = UDim2.new(0, 68, 0, 2)
-TxtFileList.BackgroundTransparency = 1
-TxtFileList.BorderSizePixel = 0
-TxtFileList.ScrollBarThickness = 2
-TxtFileList.CanvasSize = UDim2.new(0, 0, 0, 0)
-TxtFileList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-TxtFileList.Parent = TxtSelectorPanel
-
-local TxtListLayout = Instance.new("UIListLayout")
-TxtListLayout.Padding = UDim.new(0, 2)
-TxtListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-TxtListLayout.Parent = TxtFileList
-
-local TxtEmptyLabel = Instance.new("TextLabel")
-TxtEmptyLabel.Size = UDim2.new(1, -4, 0, 18)
-TxtEmptyLabel.BackgroundTransparency = 1
-TxtEmptyLabel.Text = "Klik Scan TXT untuk pilih file .txt..."
-TxtEmptyLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
-TxtEmptyLabel.TextSize = 8
-TxtEmptyLabel.Font = Enum.Font.Gotham
-TxtEmptyLabel.TextXAlignment = Enum.TextXAlignment.Left
-TxtEmptyLabel.Parent = TxtFileList
-
-local selectedSpoofTxtPath: string? = nil
-
-local function renderSpoofTxtList(files: {string})
-	for _, child in ipairs(TxtFileList:GetChildren()) do
-		if child:IsA("Frame") or (child:IsA("TextLabel") and child ~= TxtEmptyLabel) then
-			child:Destroy()
-		end
-	end
-
-	if #files == 0 then
-		TxtEmptyLabel.Text = "Tidak ada file .txt di TXT/ atau SPOOF/."
-		TxtEmptyLabel.Visible = true
-		return
-	end
-
-	TxtEmptyLabel.Visible = false
-	for idx, relFile in ipairs(files) do
-		local isSel = (selectedSpoofTxtPath == relFile)
-		local row = Instance.new("Frame")
-		row.Size = UDim2.new(1, -2, 0, 17)
-		row.BackgroundColor3 = isSel and Color3.fromRGB(45, 42, 72) or Color3.fromRGB(22, 21, 34)
-		row.BorderSizePixel = 0
-		row.LayoutOrder = idx
-		row.Parent = TxtFileList
-		Instance.new("UICorner", row).CornerRadius = UDim.new(0, 4)
-
-		local lbl = Instance.new("TextLabel")
-		lbl.Size = UDim2.new(1, -44, 1, 0)
-		lbl.Position = UDim2.new(0, 4, 0, 0)
-		lbl.BackgroundTransparency = 1
-		lbl.Text = relFile
-		lbl.TextColor3 = Color3.fromRGB(225, 222, 245)
-		lbl.TextSize = 8
-		lbl.Font = Enum.Font.Code
-		lbl.TextXAlignment = Enum.TextXAlignment.Left
-		lbl.TextTruncate = Enum.TextTruncate.AtEnd
-		lbl.Parent = row
-
-		local selBtn = Instance.new("TextButton")
-		selBtn.Size = UDim2.new(0, 38, 1, -3)
-		selBtn.Position = UDim2.new(1, -40, 0, 1.5)
-		selBtn.BackgroundColor3 = isSel and Color3.fromRGB(56, 185, 115) or Color3.fromRGB(108, 86, 245)
-		selBtn.Text = isSel and "Selected" or "Select"
-		selBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-		selBtn.TextSize = 7
-		selBtn.Font = Enum.Font.GothamBold
-		selBtn.Parent = row
-		Instance.new("UICorner", selBtn).CornerRadius = UDim.new(0, 3)
-
-		selBtn.MouseButton1Click:Connect(function()
-			selectedSpoofTxtPath = relFile
-			renderSpoofTxtList(files)
-		end)
-	end
-end
-
-local function setSpoofSourceMode(mode: "ID" | "TXT")
-	CONFIG.SpoofSourceMode = mode
-	local isTxt = (mode == "TXT")
-	AssetIdBox.Visible = not isTxt
-	TxtSelectorPanel.Visible = isTxt
-	SourceIdBtn.BackgroundColor3 = (not isTxt) and Color3.fromRGB(48, 45, 74) or Color3.fromRGB(26, 25, 39)
-	SourceIdBtn.TextColor3 = (not isTxt) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(175, 172, 200)
-	SourceTxtBtn.BackgroundColor3 = isTxt and Color3.fromRGB(48, 45, 74) or Color3.fromRGB(26, 25, 39)
-	SourceTxtBtn.TextColor3 = isTxt and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(175, 172, 200)
-	if isTxt then
-		renderSpoofTxtList(scanFilesByPrefix({ "TXT/", "SPOOF/" }, ".txt"))
-	end
-end
-
-SourceIdBtn.MouseButton1Click:Connect(function() setSpoofSourceMode("ID") end)
-SourceTxtBtn.MouseButton1Click:Connect(function() setSpoofSourceMode("TXT") end)
-
-ScanTxtBtn.MouseButton1Click:Connect(function()
-	local txtFiles = scanFilesByPrefix({ "TXT/", "SPOOF/" }, ".txt")
-	renderSpoofTxtList(txtFiles)
-	notify("Scan TXT", tostring(#txtFiles) .. " file .txt ditemukan.")
-end)
-
-local FilterRow = Instance.new("Frame")
-FilterRow.Size = UDim2.new(1, -24, 0, 19)
-FilterRow.Position = UDim2.new(0, 12, 0, 62)
-FilterRow.BackgroundTransparency = 1
-FilterRow.Parent = SpoofPage
-
-local FilterLayout = Instance.new("UIListLayout")
-FilterLayout.FillDirection = Enum.FillDirection.Horizontal
-FilterLayout.Padding = UDim.new(0, 5)
-FilterLayout.Parent = FilterRow
-
-local filterButtons: {[string]: TextButton} = {}
-local filters = {"Auto", "Suara", "Stiker", "Model", "Anim"}
-
-local function setFilter(name: string)
-	CONFIG.SpoofFilter = name
-	for fName, btn in pairs(filterButtons) do
-		local selected = (fName == name)
-		btn.BackgroundColor3 = selected and Color3.fromRGB(48, 45, 74) or Color3.fromRGB(26, 25, 39)
-		btn.TextColor3 = selected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(165, 162, 190)
-	end
-end
-
-for _, fName in ipairs(filters) do
-	local fBtn = Instance.new("TextButton")
-	fBtn.Size = UDim2.new(0.2, -4, 1, 0)
-	fBtn.BackgroundColor3 = Color3.fromRGB(26, 25, 39)
-	fBtn.Text = fName
-	fBtn.TextColor3 = Color3.fromRGB(165, 162, 190)
-	fBtn.TextSize = 9
-	fBtn.Font = Enum.Font.GothamMedium
-	fBtn.AutoButtonColor = false
-	fBtn.Parent = FilterRow
-	Instance.new("UICorner", fBtn).CornerRadius = UDim.new(0, 6)
-	local fs = Instance.new("UIStroke", fBtn)
-	fs.Color = Color3.fromRGB(62, 58, 92)
-	fs.Thickness = 1
-	filterButtons[fName] = fBtn
-	fBtn.MouseButton1Click:Connect(function()
-		setFilter(fName)
-	end)
-end
-setFilter("Auto")
-
-local SpoofNowBtn = Instance.new("TextButton")
-SpoofNowBtn.Size = UDim2.new(0.62, -14, 0, 24)
-SpoofNowBtn.Position = UDim2.new(0, 12, 0, 84)
-SpoofNowBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-SpoofNowBtn.Text = "⇄  SPOOF SEKARANG"
-SpoofNowBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SpoofNowBtn.TextSize = 10
-SpoofNowBtn.Font = Enum.Font.GothamBold
-SpoofNowBtn.Parent = SpoofPage
-Instance.new("UICorner", SpoofNowBtn).CornerRadius = UDim.new(0, 7)
-
-local BersihkanBtn = Instance.new("TextButton")
-BersihkanBtn.Size = UDim2.new(0.38, -14, 0, 24)
-BersihkanBtn.Position = UDim2.new(0.62, 2, 0, 84)
-BersihkanBtn.BackgroundColor3 = Color3.fromRGB(26, 25, 39)
-BersihkanBtn.Text = "BERSIHKAN"
-BersihkanBtn.TextColor3 = Color3.fromRGB(210, 208, 232)
-BersihkanBtn.TextSize = 9
-BersihkanBtn.Font = Enum.Font.GothamBold
-BersihkanBtn.Parent = SpoofPage
-Instance.new("UICorner", BersihkanBtn).CornerRadius = UDim.new(0, 7)
-local BersStroke = Instance.new("UIStroke", BersihkanBtn)
-BersStroke.Color = Color3.fromRGB(68, 64, 100)
-BersStroke.Thickness = 1
-
-local spoofBar = Instance.new("Frame")
-spoofBar.Size = UDim2.new(1, -24, 0, 4)
-spoofBar.Position = UDim2.new(0, 12, 0, 111)
-spoofBar.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
-spoofBar.BorderSizePixel = 0
-spoofBar.Parent = SpoofPage
-Instance.new("UICorner", spoofBar).CornerRadius = UDim.new(1, 0)
-
-local spoofFill = Instance.new("Frame")
-spoofFill.Size = UDim2.new(0, 0, 1, 0)
-spoofFill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
-spoofFill.BorderSizePixel = 0
-spoofFill.Parent = spoofBar
-Instance.new("UICorner", spoofFill).CornerRadius = UDim.new(1, 0)
-
-local procScroll = Instance.new("ScrollingFrame")
-procScroll.Name = "ProcessConsole"
-procScroll.Size = UDim2.new(1, -24, 0, 44)
-procScroll.Position = UDim2.new(0, 12, 0, 118)
-procScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-procScroll.BorderSizePixel = 0
-procScroll.ScrollBarThickness = 2
-procScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-procScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-procScroll.Parent = SpoofPage
-Instance.new("UICorner", procScroll).CornerRadius = UDim.new(0, 6)
-local procStroke = Instance.new("UIStroke", procScroll)
-procStroke.Color = Color3.fromRGB(48, 44, 74)
-procStroke.Thickness = 1
-
-local procBox = Instance.new("TextBox")
-procBox.Size = UDim2.new(1, -10, 0, 40)
-procBox.AutomaticSize = Enum.AutomaticSize.Y
-procBox.Position = UDim2.new(0, 5, 0, 2)
-procBox.BackgroundTransparency = 1
-procBox.Text = ""
-procBox.PlaceholderText = "Console Proses..."
-procBox.PlaceholderColor3 = Color3.fromRGB(95, 92, 118)
-procBox.TextColor3 = Color3.fromRGB(185, 205, 255)
-procBox.TextSize = 8
-procBox.Font = Enum.Font.Code
-procBox.TextXAlignment = Enum.TextXAlignment.Left
-procBox.TextYAlignment = Enum.TextYAlignment.Top
-procBox.ClearTextOnFocus = false
-procBox.TextEditable = false
-procBox.MultiLine = true
-procBox.TextWrapped = true
-procBox.Parent = procScroll
-
-local jsonScroll = Instance.new("ScrollingFrame")
-jsonScroll.Name = "JsonResultConsole"
-jsonScroll.Size = UDim2.new(1, -24, 0, 82)
-jsonScroll.Position = UDim2.new(0, 12, 0, 165)
-jsonScroll.BackgroundColor3 = Color3.fromRGB(11, 10, 17)
-jsonScroll.BorderSizePixel = 0
-jsonScroll.ScrollBarThickness = 3
-jsonScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-jsonScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-jsonScroll.Parent = SpoofPage
-Instance.new("UICorner", jsonScroll).CornerRadius = UDim.new(0, 6)
-local jsonStroke = Instance.new("UIStroke", jsonScroll)
-jsonStroke.Color = Color3.fromRGB(64, 56, 102)
-jsonStroke.Thickness = 1
-
-local jsonResultBox = Instance.new("TextBox")
-jsonResultBox.Size = UDim2.new(1, -54, 0, 78)
-jsonResultBox.AutomaticSize = Enum.AutomaticSize.Y
-jsonResultBox.Position = UDim2.new(0, 6, 0, 4)
-jsonResultBox.BackgroundTransparency = 1
-jsonResultBox.Text = ""
-jsonResultBox.PlaceholderText = "Console JSON Hasil (bertumpuk, bisa diedit & dicopy)..."
-jsonResultBox.PlaceholderColor3 = Color3.fromRGB(95, 92, 118)
-jsonResultBox.TextColor3 = Color3.fromRGB(205, 242, 218)
-jsonResultBox.TextSize = 8
-jsonResultBox.Font = Enum.Font.Code
-jsonResultBox.TextXAlignment = Enum.TextXAlignment.Left
-jsonResultBox.TextYAlignment = Enum.TextYAlignment.Top
-jsonResultBox.ClearTextOnFocus = false
-jsonResultBox.TextEditable = true
-jsonResultBox.MultiLine = true
-jsonResultBox.TextWrapped = true
-jsonResultBox.Parent = jsonScroll
-
-local copyJsonBtn = Instance.new("TextButton")
-copyJsonBtn.Size = UDim2.fromOffset(44, 17)
-copyJsonBtn.Position = UDim2.new(1, -48, 0, 4)
-copyJsonBtn.BackgroundColor3 = Color3.fromRGB(38, 35, 60)
-copyJsonBtn.Text = "Copy"
-copyJsonBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-copyJsonBtn.TextSize = 8
-copyJsonBtn.Font = Enum.Font.GothamBold
-copyJsonBtn.ZIndex = 5
-copyJsonBtn.Parent = jsonScroll
-Instance.new("UICorner", copyJsonBtn).CornerRadius = UDim.new(0, 4)
-
-copyJsonBtn.MouseButton1Click:Connect(function()
-	local okCopy = copyToClipboard(jsonResultBox.Text)
-	copyJsonBtn.Text = okCopy and "Copied!" or "Selected"
-	notify("Console JSON", okCopy and "JSON disalin ke clipboard." or "Teks siap disalin manual.")
-	task.delay(1.2, function()
-		if copyJsonBtn and copyJsonBtn.Parent then
-			copyJsonBtn.Text = "Copy"
-		end
-	end)
-end)
-
-local function setSpoofBar(state: "idle" | "working" | "ok" | "err", ratio: number)
-	local clamped = math.clamp(ratio, 0, 1)
-	if state == "idle" then
-		spoofFill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
-	elseif state == "working" then
-		spoofFill.BackgroundColor3 = Color3.fromRGB(96, 165, 250)
-	elseif state == "ok" then
-		spoofFill.BackgroundColor3 = Color3.fromRGB(56, 239, 125)
-	else
-		spoofFill.BackgroundColor3 = Color3.fromRGB(255, 86, 102)
-	end
-	TweenService:Create(spoofFill, TweenInfo.new(0.15), {
-		Size = UDim2.new(clamped, 0, 1, 0),
-	}):Play()
-end
-
-local function setProcessLog(state: "idle" | "working" | "ok" | "err", text: string)
-	procBox.Text = text
-	procBox.TextColor3 = (state == "err") and Color3.fromRGB(255, 145, 155) or Color3.fromRGB(185, 205, 255)
-end
-
-local function setJsonResultText(isErr: boolean, text: string)
-	jsonResultBox.Text = text
-	jsonResultBox.TextColor3 = isErr and Color3.fromRGB(255, 165, 175) or Color3.fromRGB(205, 242, 218)
-end
-
-BersihkanBtn.MouseButton1Click:Connect(function()
-	AssetIdBox.Text = ""
-	selectedSpoofTxtPath = nil
-	setSpoofBar("idle", 0)
-	setProcessLog("idle", "")
-	setJsonResultText(false, "")
-end)
-
--- ==========================================
--- HALAMAN 2: UPLOAD ALL ASSET (API KEY ROBLOX + SELECT ALL / SATU-SATU + SAVE TXT)
--- ==========================================
-local UploadPage = Instance.new("Frame")
-UploadPage.Size = UDim2.fromScale(1, 1)
-UploadPage.BackgroundTransparency = 1
-UploadPage.Visible = false
-UploadPage.Parent = ContentArea
-tabPages["Upload"] = UploadPage
-
-local UploadTitle = Instance.new("TextLabel")
-UploadTitle.Size = UDim2.new(0.55, -12, 0, 15)
-UploadTitle.Position = UDim2.new(0, 12, 0, 2)
-UploadTitle.BackgroundTransparency = 1
-UploadTitle.Text = "Upload All Asset (Open Cloud)"
-UploadTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-UploadTitle.TextSize = 11
-UploadTitle.Font = Enum.Font.GothamBold
-UploadTitle.TextXAlignment = Enum.TextXAlignment.Left
-UploadTitle.Parent = UploadPage
-
-local UploadApiKeyBox = Instance.new("TextBox")
-UploadApiKeyBox.Size = UDim2.new(1, -24, 0, 19)
-UploadApiKeyBox.Position = UDim2.new(0, 12, 0, 18)
-UploadApiKeyBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-UploadApiKeyBox.Text = CONFIG.UploadApiKey
-UploadApiKeyBox.PlaceholderText = "Roblox API Key (x-api-key) — kosong = pakai API Key Setting"
-UploadApiKeyBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-UploadApiKeyBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-UploadApiKeyBox.TextSize = 9
-UploadApiKeyBox.Font = Enum.Font.Gotham
-UploadApiKeyBox.ClearTextOnFocus = false
-UploadApiKeyBox.Parent = UploadPage
-Instance.new("UICorner", UploadApiKeyBox).CornerRadius = UDim.new(0, 6)
-
-local UploadActionBar = Instance.new("Frame")
-UploadActionBar.Size = UDim2.new(1, -24, 0, 18)
-UploadActionBar.Position = UDim2.new(0, 12, 0, 39)
-UploadActionBar.BackgroundTransparency = 1
-UploadActionBar.Parent = UploadPage
-
-local ScanUploadBtn = Instance.new("TextButton")
-ScanUploadBtn.Size = UDim2.new(0.24, -3, 1, 0)
-ScanUploadBtn.Position = UDim2.new(0, 0, 0, 0)
-ScanUploadBtn.BackgroundColor3 = Color3.fromRGB(64, 118, 240)
-ScanUploadBtn.Text = "Scan File"
-ScanUploadBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ScanUploadBtn.TextSize = 8
-ScanUploadBtn.Font = Enum.Font.GothamBold
-ScanUploadBtn.Parent = UploadActionBar
-Instance.new("UICorner", ScanUploadBtn).CornerRadius = UDim.new(0, 5)
-
-local SelectAllUploadBtn = Instance.new("TextButton")
-SelectAllUploadBtn.Size = UDim2.new(0.26, -3, 1, 0)
-SelectAllUploadBtn.Position = UDim2.new(0.24, 2, 0, 0)
-SelectAllUploadBtn.BackgroundColor3 = Color3.fromRGB(48, 45, 74)
-SelectAllUploadBtn.Text = "Select All"
-SelectAllUploadBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SelectAllUploadBtn.TextSize = 8
-SelectAllUploadBtn.Font = Enum.Font.GothamBold
-SelectAllUploadBtn.Parent = UploadActionBar
-Instance.new("UICorner", SelectAllUploadBtn).CornerRadius = UDim.new(0, 5)
-
-local ClearSelUploadBtn = Instance.new("TextButton")
-ClearSelUploadBtn.Size = UDim2.new(0.22, -3, 1, 0)
-ClearSelUploadBtn.Position = UDim2.new(0.50, 2, 0, 0)
-ClearSelUploadBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
-ClearSelUploadBtn.Text = "Unselect"
-ClearSelUploadBtn.TextColor3 = Color3.fromRGB(200, 198, 224)
-ClearSelUploadBtn.TextSize = 8
-ClearSelUploadBtn.Font = Enum.Font.GothamBold
-ClearSelUploadBtn.Parent = UploadActionBar
-Instance.new("UICorner", ClearSelUploadBtn).CornerRadius = UDim.new(0, 5)
-
-local UploadSelectedBtn = Instance.new("TextButton")
-UploadSelectedBtn.Size = UDim2.new(0.28, 0, 1, 0)
-UploadSelectedBtn.Position = UDim2.new(0.72, 2, 0, 0)
-UploadSelectedBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-UploadSelectedBtn.Text = "⬆ UPLOAD"
-UploadSelectedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-UploadSelectedBtn.TextSize = 8
-UploadSelectedBtn.Font = Enum.Font.GothamBold
-UploadSelectedBtn.Parent = UploadActionBar
-Instance.new("UICorner", UploadSelectedBtn).CornerRadius = UDim.new(0, 5)
-
-local UploadListScroll = Instance.new("ScrollingFrame")
-UploadListScroll.Size = UDim2.new(1, -24, 0, 92)
-UploadListScroll.Position = UDim2.new(0, 12, 0, 59)
-UploadListScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-UploadListScroll.BorderSizePixel = 0
-UploadListScroll.ScrollBarThickness = 3
-UploadListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-UploadListScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-UploadListScroll.Parent = UploadPage
-Instance.new("UICorner", UploadListScroll).CornerRadius = UDim.new(0, 6)
-local ulStroke = Instance.new("UIStroke", UploadListScroll)
-ulStroke.Color = Color3.fromRGB(48, 44, 74)
-ulStroke.Thickness = 1
-
-local ulLayout = Instance.new("UIListLayout")
-ulLayout.Padding = UDim.new(0, 2)
-ulLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ulLayout.Parent = UploadListScroll
-
-local ulPad = Instance.new("UIPadding")
-ulPad.PaddingTop = UDim.new(0, 3)
-ulPad.PaddingBottom = UDim.new(0, 3)
-ulPad.PaddingLeft = UDim.new(0, 3)
-ulPad.PaddingRight = UDim.new(0, 3)
-ulPad.Parent = UploadListScroll
-
-local UploadEmptyLabel = Instance.new("TextLabel")
-UploadEmptyLabel.Size = UDim2.new(1, -6, 0, 20)
-UploadEmptyLabel.BackgroundTransparency = 1
-UploadEmptyLabel.Text = "Klik Scan File untuk memuat aset dari SPOOF/..."
-UploadEmptyLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
-UploadEmptyLabel.TextSize = 8
-UploadEmptyLabel.Font = Enum.Font.Gotham
-UploadEmptyLabel.TextXAlignment = Enum.TextXAlignment.Left
-UploadEmptyLabel.Parent = UploadListScroll
-
-local updateUploadOutcome = createOutcomePanel(UploadPage, 154, 102, true)
-
-local uploadCandidates: {UploadCandidate} = {}
-local uploadSelectedMap: {[string]: boolean} = {}
-
-local function refreshUploadListUI()
-	for _, child in ipairs(UploadListScroll:GetChildren()) do
-		if child:IsA("Frame") or (child:IsA("TextLabel") and child ~= UploadEmptyLabel) then
-			child:Destroy()
-		end
-	end
-
-	if #uploadCandidates == 0 then
-		UploadEmptyLabel.Text = "Tidak ada file aset di SPOOF/ atau TXT/."
-		UploadEmptyLabel.Visible = true
-		return
-	end
-
-	UploadEmptyLabel.Visible = false
-	for idx, item in ipairs(uploadCandidates) do
-		local isChecked = uploadSelectedMap[item.relPath] == true
-		local row = Instance.new("Frame")
-		row.Size = UDim2.new(1, -4, 0, 18)
-		row.BackgroundColor3 = isChecked and Color3.fromRGB(42, 38, 68) or Color3.fromRGB(20, 19, 32)
-		row.BorderSizePixel = 0
-		row.LayoutOrder = idx
-		row.Parent = UploadListScroll
-		Instance.new("UICorner", row).CornerRadius = UDim.new(0, 4)
-
-		local checkBtn = Instance.new("TextButton")
-		checkBtn.Size = UDim2.fromOffset(16, 14)
-		checkBtn.Position = UDim2.new(0, 2, 0.5, -7)
-		checkBtn.BackgroundColor3 = isChecked and Color3.fromRGB(56, 205, 125) or Color3.fromRGB(34, 32, 50)
-		checkBtn.Text = isChecked and "✓" or ""
-		checkBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-		checkBtn.TextSize = 9
-		checkBtn.Font = Enum.Font.GothamBold
-		checkBtn.Parent = row
-		Instance.new("UICorner", checkBtn).CornerRadius = UDim.new(0, 3)
-
-		local nameLbl = Instance.new("TextLabel")
-		nameLbl.Size = UDim2.new(1, -66, 1, 0)
-		nameLbl.Position = UDim2.new(0, 21, 0, 0)
-		nameLbl.BackgroundTransparency = 1
-		nameLbl.Text = string.format("%s [%s]", item.displayName, item.assetType)
-		nameLbl.TextColor3 = isChecked and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 188, 215)
-		nameLbl.TextSize = 8
-		nameLbl.Font = isChecked and Enum.Font.GothamBold or Enum.Font.Gotham
-		nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-		nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
-		nameLbl.Parent = row
-
-		local toggleRowBtn = Instance.new("TextButton")
-		toggleRowBtn.Size = UDim2.new(1, -66, 1, 0)
-		toggleRowBtn.Position = UDim2.new(0, 21, 0, 0)
-		toggleRowBtn.BackgroundTransparency = 1
-		toggleRowBtn.Text = ""
-		toggleRowBtn.Parent = row
-
-		local pickBadge = Instance.new("TextButton")
-		pickBadge.Size = UDim2.new(0, 42, 0, 14)
-		pickBadge.Position = UDim2.new(1, -44, 0.5, -7)
-		pickBadge.BackgroundColor3 = isChecked and Color3.fromRGB(108, 86, 245) or Color3.fromRGB(30, 28, 46)
-		pickBadge.Text = isChecked and "Selected" or "Select"
-		pickBadge.TextColor3 = Color3.fromRGB(255, 255, 255)
-		pickBadge.TextSize = 7
-		pickBadge.Font = Enum.Font.GothamBold
-		pickBadge.Parent = row
-		Instance.new("UICorner", pickBadge).CornerRadius = UDim.new(0, 3)
-
-		local function toggleSingle()
-			uploadSelectedMap[item.relPath] = not (uploadSelectedMap[item.relPath] == true)
-			refreshUploadListUI()
-		end
-
-		checkBtn.MouseButton1Click:Connect(toggleSingle)
-		toggleRowBtn.MouseButton1Click:Connect(toggleSingle)
-		pickBadge.MouseButton1Click:Connect(toggleSingle)
-	end
-end
-
-local function scanUploadCandidates(showToast: boolean)
-	local rawPaths = scanFilesByPrefix({ "SPOOF/", "TXT/" }, nil)
-	local nextList: {UploadCandidate} = {}
-	for _, rel in ipairs(rawPaths) do
-		local low = rel:lower()
-		local isInfoFile = low:sub(1, 12) == "spoof/info/" or low:match("session%.txt$") ~= nil
-		local ext = rel:match("(%.[^%.]+)$") or ""
-		if not isInfoFile and ext ~= "" and ext:lower() ~= ".txt" then
-			table.insert(nextList, {
-				relPath = rel,
-				displayName = stripExtension(rel),
-				ext = ext:lower(),
-				assetType = inferRobloxAssetType(ext),
-			})
-		end
-	end
-
-	uploadCandidates = nextList
-	local nextMap: {[string]: boolean} = {}
-	for _, c in ipairs(uploadCandidates) do
-		if uploadSelectedMap[c.relPath] == true then
-			nextMap[c.relPath] = true
-		end
-	end
-	uploadSelectedMap = nextMap
-	refreshUploadListUI()
-
-	if showToast then
-		notify("Upload Scan", tostring(#uploadCandidates) .. " file aset ditemukan.")
-	end
-end
-
-onUploadTabOpened = function()
-	if #uploadCandidates == 0 then
-		scanUploadCandidates(false)
-	end
-end
-
-UploadApiKeyBox:GetPropertyChangedSignal("Text"):Connect(function()
-	CONFIG.UploadApiKey = trim(UploadApiKeyBox.Text)
-end)
-
-ScanUploadBtn.MouseButton1Click:Connect(function()
-	scanUploadCandidates(true)
-end)
-
-SelectAllUploadBtn.MouseButton1Click:Connect(function()
-	for _, c in ipairs(uploadCandidates) do
-		uploadSelectedMap[c.relPath] = true
-	end
-	refreshUploadListUI()
-	notify("Upload", "Semua (" .. tostring(#uploadCandidates) .. ") file dipilih.")
-end)
-
-ClearSelUploadBtn.MouseButton1Click:Connect(function()
-	table.clear(uploadSelectedMap)
-	refreshUploadListUI()
-	notify("Upload", "Pilihan dibersihkan.")
-end)
-
--- ==========================================
--- HALAMAN 3: PLACE MAKER & ASSET PERMISSIONS
--- ==========================================
-local ToolsPage = Instance.new("Frame")
-ToolsPage.Size = UDim2.fromScale(1, 1)
-ToolsPage.BackgroundTransparency = 1
-ToolsPage.Visible = false
-ToolsPage.Parent = ContentArea
-tabPages["Tools"] = ToolsPage
-
-local ToolsTitle = Instance.new("TextLabel")
-ToolsTitle.Size = UDim2.new(1, -24, 0, 14)
-ToolsTitle.Position = UDim2.new(0, 12, 0, 2)
-ToolsTitle.BackgroundTransparency = 1
-ToolsTitle.Text = "Place Maker & Permissions"
-ToolsTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-ToolsTitle.TextSize = 11
-ToolsTitle.Font = Enum.Font.GothamBold
-ToolsTitle.TextXAlignment = Enum.TextXAlignment.Left
-ToolsTitle.Parent = ToolsPage
-
-local TemplateIdBox = Instance.new("TextBox")
-TemplateIdBox.Size = UDim2.new(0.36, -12, 0, 20)
-TemplateIdBox.Position = UDim2.new(0, 12, 0, 18)
-TemplateIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-TemplateIdBox.Text = "95206881"
-TemplateIdBox.PlaceholderText = "Template ID"
-TemplateIdBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-TemplateIdBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-TemplateIdBox.TextSize = 9
-TemplateIdBox.Font = Enum.Font.Gotham
-TemplateIdBox.ClearTextOnFocus = false
-TemplateIdBox.Parent = ToolsPage
-Instance.new("UICorner", TemplateIdBox).CornerRadius = UDim.new(0, 6)
-
-local GroupIdBox = Instance.new("TextBox")
-GroupIdBox.Size = UDim2.new(0.32, -8, 0, 20)
-GroupIdBox.Position = UDim2.new(0.36, 2, 0, 18)
-GroupIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-GroupIdBox.Text = ""
-GroupIdBox.PlaceholderText = "Group ID (opsional)"
-GroupIdBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-GroupIdBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-GroupIdBox.TextSize = 9
-GroupIdBox.Font = Enum.Font.Gotham
-GroupIdBox.ClearTextOnFocus = false
-GroupIdBox.Parent = ToolsPage
-Instance.new("UICorner", GroupIdBox).CornerRadius = UDim.new(0, 6)
-
-local PlaceCountBox = Instance.new("TextBox")
-PlaceCountBox.Size = UDim2.new(0.32, -10, 0, 20)
-PlaceCountBox.Position = UDim2.new(0.68, 0, 0, 18)
-PlaceCountBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-PlaceCountBox.Text = "1"
-PlaceCountBox.PlaceholderText = "Jumlah"
-PlaceCountBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-PlaceCountBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-PlaceCountBox.TextSize = 9
-PlaceCountBox.Font = Enum.Font.Gotham
-PlaceCountBox.ClearTextOnFocus = false
-PlaceCountBox.Parent = ToolsPage
-Instance.new("UICorner", PlaceCountBox).CornerRadius = UDim.new(0, 6)
-
-local CreatePlaceBtn = Instance.new("TextButton")
-CreatePlaceBtn.Size = UDim2.new(1, -24, 0, 21)
-CreatePlaceBtn.Position = UDim2.new(0, 12, 0, 41)
-CreatePlaceBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-CreatePlaceBtn.Text = "🏗  BUAT PLACE"
-CreatePlaceBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CreatePlaceBtn.TextSize = 9
-CreatePlaceBtn.Font = Enum.Font.GothamBold
-CreatePlaceBtn.Parent = ToolsPage
-Instance.new("UICorner", CreatePlaceBtn).CornerRadius = UDim.new(0, 6)
-
-local TargetUniverseBox = Instance.new("TextBox")
-TargetUniverseBox.Size = UDim2.new(0.45, -14, 0, 20)
-TargetUniverseBox.Position = UDim2.new(0, 12, 0, 66)
-TargetUniverseBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-TargetUniverseBox.Text = CONFIG.DefaultUniverseId
-TargetUniverseBox.PlaceholderText = "Target Universe ID"
-TargetUniverseBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-TargetUniverseBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-TargetUniverseBox.TextSize = 9
-TargetUniverseBox.Font = Enum.Font.Gotham
-TargetUniverseBox.ClearTextOnFocus = false
-TargetUniverseBox.Parent = ToolsPage
-Instance.new("UICorner", TargetUniverseBox).CornerRadius = UDim.new(0, 6)
-
--- Input API Key khusus izin permission asset
-local PermApiKeyBox = Instance.new("TextBox")
-PermApiKeyBox.Size = UDim2.new(0.55, -12, 0, 20)
-PermApiKeyBox.Position = UDim2.new(0.45, 2, 0, 66)
-PermApiKeyBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-PermApiKeyBox.Text = CONFIG.PermApiKey
-PermApiKeyBox.PlaceholderText = "API Key Permission (kosong = pakai Setting)"
-PermApiKeyBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-PermApiKeyBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-PermApiKeyBox.TextSize = 9
-PermApiKeyBox.Font = Enum.Font.Gotham
-PermApiKeyBox.ClearTextOnFocus = false
-PermApiKeyBox.Parent = ToolsPage
-Instance.new("UICorner", PermApiKeyBox).CornerRadius = UDim.new(0, 6)
-
-local PermIdsBox = Instance.new("TextBox")
-PermIdsBox.Size = UDim2.new(0.76, -14, 0, 26)
-PermIdsBox.Position = UDim2.new(0, 12, 0, 89)
-PermIdsBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-PermIdsBox.Text = ""
-PermIdsBox.PlaceholderText = "Asset IDs (id,id,id / spasi / baris) atau path file .txt"
-PermIdsBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-PermIdsBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-PermIdsBox.TextSize = 9
-PermIdsBox.Font = Enum.Font.Gotham
-PermIdsBox.ClearTextOnFocus = false
-PermIdsBox.MultiLine = true
-PermIdsBox.TextWrapped = true
-PermIdsBox.TextXAlignment = Enum.TextXAlignment.Left
-PermIdsBox.TextYAlignment = Enum.TextYAlignment.Top
-PermIdsBox.Parent = ToolsPage
-Instance.new("UICorner", PermIdsBox).CornerRadius = UDim.new(0, 6)
-
-local LoadPermTxtBtn = Instance.new("TextButton")
-LoadPermTxtBtn.Size = UDim2.new(0.24, -12, 0, 26)
-LoadPermTxtBtn.Position = UDim2.new(0.76, 0, 0, 89)
-LoadPermTxtBtn.BackgroundColor3 = Color3.fromRGB(64, 118, 240)
-LoadPermTxtBtn.Text = "📄 TXT ID"
-LoadPermTxtBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-LoadPermTxtBtn.TextSize = 8
-LoadPermTxtBtn.Font = Enum.Font.GothamBold
-LoadPermTxtBtn.Parent = ToolsPage
-Instance.new("UICorner", LoadPermTxtBtn).CornerRadius = UDim.new(0, 6)
-
-local GrantPermBtn = Instance.new("TextButton")
-GrantPermBtn.Size = UDim2.new(1, -24, 0, 22)
-GrantPermBtn.Position = UDim2.new(0, 12, 0, 118)
-GrantPermBtn.BackgroundColor3 = Color3.fromRGB(48, 45, 74)
-GrantPermBtn.Text = "🔑  GRANT PERMISSIONS"
-GrantPermBtn.TextColor3 = Color3.fromRGB(240, 240, 255)
-GrantPermBtn.TextSize = 9
-GrantPermBtn.Font = Enum.Font.GothamBold
-GrantPermBtn.Parent = ToolsPage
-Instance.new("UICorner", GrantPermBtn).CornerRadius = UDim.new(0, 6)
-
-local updateToolsOutcome = createOutcomePanel(ToolsPage, 144, 106, false)
-
-PermApiKeyBox:GetPropertyChangedSignal("Text"):Connect(function()
-	CONFIG.PermApiKey = trim(PermApiKeyBox.Text)
-end)
-
-LoadPermTxtBtn.MouseButton1Click:Connect(function()
-	local txtFiles = scanFilesByPrefix({ "TXT/", "SPOOF/" }, ".txt")
-	if #txtFiles == 0 then
-		updateToolsOutcome("err", 0, "Tidak ada file .txt di folder TXT/ atau SPOOF/.")
-		notify("TXT ID", "File .txt tidak ditemukan.")
-		return
-	end
-
-	local chosenRel: string? = nil
-	local typedRaw = trim(PermIdsBox.Text)
-	if typedRaw ~= "" then
-		local loadedDirect = loadTextFile(typedRaw)
-		if loadedDirect and trim(loadedDirect) ~= "" then
-			chosenRel = typedRaw
-		end
-	end
-
-	if not chosenRel then
-		for _, f in ipairs(txtFiles) do
-			local c = loadTextFile(f)
-			if c and #parseIds(c) > 0 then
-				chosenRel = f
-				break
-			end
-		end
-	end
-
-	if not chosenRel then
-		chosenRel = txtFiles[1]
-	end
-
-	local content = loadTextFile(chosenRel) or ""
-	local extracted = parseIds(content)
-	if #extracted > 0 then
-		PermIdsBox.Text = table.concat(extracted, ",")
-		updateToolsOutcome("ok", 1, string.format("Dimuat %d ID dari %s:\n%s", #extracted, chosenRel, table.concat(extracted, ",")))
-		notify("TXT ID", tostring(#extracted) .. " ID dimuat.")
-	else
-		updateToolsOutcome("err", 0, "Tidak ada ID valid di file " .. chosenRel)
-		notify("TXT ID", "ID kosong di file TXT.")
-	end
-end)
-
--- ==========================================
--- HALAMAN 4: MUSIC PLAYER (EQUALIZER + LOOP LOADING + VOLUME + << / ▶⏸ / >>)
+-- HALAMAN 1: MUSIC PLAYER (EQUALIZER + LOOP LOADING + VOLUME + << / ▶⏸ / >>)
 -- ==========================================
 local MusicPage = Instance.new("Frame")
 MusicPage.Size = UDim2.fromScale(1, 1)
 MusicPage.BackgroundTransparency = 1
-MusicPage.Visible = false
+MusicPage.Visible = true
 MusicPage.Parent = ContentArea
 tabPages["Music"] = MusicPage
 
@@ -2201,6 +650,9 @@ local function applyVolume(ratio: number)
 end
 
 local function renderMusicPlaylist()
+	local theme = GUI_THEMES[CONFIG.ThemeIndex]
+	local fontPreset = FONT_PRESETS[CONFIG.FontIndex]
+
 	for _, child in ipairs(PlaylistScroll:GetChildren()) do
 		if child:IsA("TextButton") then
 			child:Destroy()
@@ -2211,11 +663,11 @@ local function renderMusicPlaylist()
 		local active = (idx == currentTrackIndex)
 		local itemBtn = Instance.new("TextButton")
 		itemBtn.Size = UDim2.new(1, -4, 0, 22)
-		itemBtn.BackgroundColor3 = active and Color3.fromRGB(52, 46, 86) or Color3.fromRGB(22, 21, 34)
+		itemBtn.BackgroundColor3 = active and theme.accentSoft or Color3.fromRGB(22, 21, 34)
 		itemBtn.Text = string.format("  %d. %s  [%s]", idx, tr.name, tr.songId)
 		itemBtn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 188, 215)
 		itemBtn.TextSize = 9
-		itemBtn.Font = active and Enum.Font.GothamBold or Enum.Font.Gotham
+		itemBtn.Font = active and fontPreset.boldFont or fontPreset.font
 		itemBtn.TextXAlignment = Enum.TextXAlignment.Left
 		itemBtn.TextTruncate = Enum.TextTruncate.AtEnd
 		itemBtn.LayoutOrder = idx
@@ -2364,6 +816,7 @@ do
 	local elapsed = 0
 	RunService.RenderStepped:Connect(function(dt: number)
 		elapsed += dt
+		local theme = GUI_THEMES[CONFIG.ThemeIndex]
 		if isLoadingTrack then
 			local pos = (elapsed * 0.65) % 1
 			MusicLoadFill.Size = UDim2.new(0.28, 0, 1, 0)
@@ -2381,6 +834,7 @@ do
 		local activeBeat = isPlayingMusic and (not isLoadingTrack)
 		local volBoost = math.max(0.25, currentVolumeRatio * 1.4)
 		for i, bar in ipairs(eqBars) do
+			bar.BackgroundColor3 = (i % 2 == 0) and theme.eqEven or theme.eqOdd
 			local targetH = 5
 			if activeBeat then
 				local waveA = math.abs(math.sin(elapsed * 9.5 + i * 0.65))
@@ -2397,138 +851,7 @@ do
 end
 
 -- ==========================================
--- HALAMAN 5: SETTING
--- ==========================================
-local SettingPage = Instance.new("Frame")
-SettingPage.Size = UDim2.fromScale(1, 1)
-SettingPage.BackgroundTransparency = 1
-SettingPage.Visible = false
-SettingPage.Parent = ContentArea
-tabPages["Setting"] = SettingPage
-
-local SettingTitle = Instance.new("TextLabel")
-SettingTitle.Size = UDim2.new(1, -24, 0, 16)
-SettingTitle.Position = UDim2.new(0, 12, 0, 6)
-SettingTitle.BackgroundTransparency = 1
-SettingTitle.Text = "Pengaturan Kredensial"
-SettingTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-SettingTitle.TextSize = 13
-SettingTitle.Font = Enum.Font.GothamBold
-SettingTitle.TextXAlignment = Enum.TextXAlignment.Left
-SettingTitle.Parent = SettingPage
-
-local CookieBox = Instance.new("TextBox")
-CookieBox.Size = UDim2.new(1, -24, 0, 46)
-CookieBox.Position = UDim2.new(0, 12, 0, 26)
-CookieBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-CookieBox.Text = CONFIG.Cookie
-CookieBox.PlaceholderText = ".ROBLOSECURITY Cookie..."
-CookieBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-CookieBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-CookieBox.TextSize = 10
-CookieBox.Font = Enum.Font.Gotham
-CookieBox.ClearTextOnFocus = false
-CookieBox.MultiLine = true
-CookieBox.TextWrapped = true
-CookieBox.TextXAlignment = Enum.TextXAlignment.Left
-CookieBox.TextYAlignment = Enum.TextYAlignment.Top
-CookieBox.Parent = SettingPage
-Instance.new("UICorner", CookieBox).CornerRadius = UDim.new(0, 7)
-
-local ApiKeyBox = Instance.new("TextBox")
-ApiKeyBox.Size = UDim2.new(1, -24, 0, 46)
-ApiKeyBox.Position = UDim2.new(0, 12, 0, 78)
-ApiKeyBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-ApiKeyBox.Text = CONFIG.ApiKey
-ApiKeyBox.PlaceholderText = "Roblox Open Cloud API Key (x-api-key)..."
-ApiKeyBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-ApiKeyBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-ApiKeyBox.TextSize = 10
-ApiKeyBox.Font = Enum.Font.Gotham
-ApiKeyBox.ClearTextOnFocus = false
-ApiKeyBox.MultiLine = true
-ApiKeyBox.TextWrapped = true
-ApiKeyBox.TextXAlignment = Enum.TextXAlignment.Left
-ApiKeyBox.TextYAlignment = Enum.TextYAlignment.Top
-ApiKeyBox.Parent = SettingPage
-Instance.new("UICorner", ApiKeyBox).CornerRadius = UDim.new(0, 7)
-
-local SaveSettingBtn = Instance.new("TextButton")
-SaveSettingBtn.Size = UDim2.new(1, -24, 0, 30)
-SaveSettingBtn.Position = UDim2.new(0, 12, 0, 130)
-SaveSettingBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-SaveSettingBtn.Text = "💾  SIMPAN KREDENSIAL"
-SaveSettingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SaveSettingBtn.TextSize = 11
-SaveSettingBtn.Font = Enum.Font.GothamBold
-SaveSettingBtn.Parent = SettingPage
-Instance.new("UICorner", SaveSettingBtn).CornerRadius = UDim.new(0, 8)
-
-local updateSettingOutcome = createOutcomePanel(SettingPage, 166, 76, false)
-
-local function syncCredentialsFromInputs(): (string, string, string, string)
-	local boxCookie = normalizeCookie(CookieBox.Text)
-	local boxApiKey = trim(ApiKeyBox.Text)
-	local boxPermKey = trim(PermApiKeyBox.Text)
-	local boxUploadKey = trim(UploadApiKeyBox.Text)
-	if boxCookie ~= "" then
-		CONFIG.Cookie = boxCookie
-	end
-	if boxApiKey ~= "" then
-		CONFIG.ApiKey = boxApiKey
-	end
-	if boxPermKey ~= "" then
-		CONFIG.PermApiKey = boxPermKey
-	end
-	if boxUploadKey ~= "" then
-		CONFIG.UploadApiKey = boxUploadKey
-	end
-	local effectivePermKey = (CONFIG.PermApiKey ~= "") and CONFIG.PermApiKey or CONFIG.ApiKey
-	local effectiveUploadKey = (CONFIG.UploadApiKey ~= "") and CONFIG.UploadApiKey or CONFIG.ApiKey
-	return CONFIG.Cookie, CONFIG.ApiKey, effectivePermKey, effectiveUploadKey
-end
-
-CookieBox:GetPropertyChangedSignal("Text"):Connect(function()
-	CONFIG.Cookie = normalizeCookie(CookieBox.Text)
-end)
-
-ApiKeyBox:GetPropertyChangedSignal("Text"):Connect(function()
-	CONFIG.ApiKey = trim(ApiKeyBox.Text)
-end)
-
-SaveSettingBtn.MouseButton1Click:Connect(function()
-	local c = normalizeCookie(CookieBox.Text)
-	local k = trim(ApiKeyBox.Text)
-	local pk = trim(PermApiKeyBox.Text)
-	local uk = trim(UploadApiKeyBox.Text)
-	CONFIG.Cookie = c
-	CONFIG.ApiKey = k
-	if pk ~= "" then
-		CONFIG.PermApiKey = pk
-	end
-	if uk ~= "" then
-		CONFIG.UploadApiKey = uk
-	end
-	CookieBox.Text = c
-	ApiKeyBox.Text = k
-
-	local okC = saveTextFile("cookie.txt", c)
-	local okK = saveTextFile("apikey.txt", k)
-	local okPK = (pk == "") or saveTextFile("perm_apikey.txt", pk)
-	local okUK = (uk == "") or saveTextFile("upload_apikey.txt", uk)
-	local ok = (c == "" or okC) and (k == "" or okK) and okPK and okUK
-	local summary = string.format(
-		"Cookie: %s | API Key: %s | Upload Key: %s",
-		c ~= "" and ("Terisi (" .. tostring(#c) .. " karakter)") or "Kosong",
-		k ~= "" and ("Terisi (" .. tostring(#k) .. " karakter)") or "Kosong",
-		(CONFIG.UploadApiKey ~= "") and ("Terisi (" .. tostring(#CONFIG.UploadApiKey) .. " karakter)") or "Ikut API Key"
-	)
-	updateSettingOutcome(ok and "ok" or "err", ok and 1 or 0, summary)
-	notify("Setting", ok and "Tersimpan." or "Gagal menyimpan.")
-end)
-
--- ==========================================
--- HALAMAN 6: ABOUT CREATOR & TOOLS
+-- HALAMAN 2: ABOUT CREATOR & TOOLS
 -- ==========================================
 local AboutPage = Instance.new("Frame")
 AboutPage.Size = UDim2.fromScale(1, 1)
@@ -2563,22 +886,19 @@ AboutStroke.Color = Color3.fromRGB(64, 56, 102)
 AboutStroke.Thickness = 1
 
 local AboutText = Instance.new("TextLabel")
-AboutText.Size = UDim2.new(1, -16, 0, 190)
+AboutText.Size = UDim2.new(1, -16, 0, 160)
 AboutText.AutomaticSize = Enum.AutomaticSize.Y
 AboutText.Position = UDim2.new(0, 8, 0, 8)
 AboutText.BackgroundTransparency = 1
 AboutText.Text = table.concat({
 	"Creator       : Ikyy (@" .. LocalPlayer.Name .. " | ID: " .. tostring(LocalPlayer.UserId) .. ")",
 	"Tools         : Plugin Studio Lite (Delta Executor Edition)",
-	"Versi         : v1.3.1",
-	"Workspace     : " .. CONFIG.WorkspaceRoot .. "/ (TXT, SPOOF, Logs)",
+	"Versi         : v1.4.0",
 	"",
-	"Fitur Utama:",
-	"• Spoof Asset : Spoof ID satuan/massal & file .txt (Audio & RBXM) dengan JSON hasil.",
-	"• Upload All  : Upload aset via Roblox Open Cloud API Key, Select All / satu-satu, & simpan TXT.",
-	"• Place & Perm: Buat place, muat ID dari file TXT (id,id,id), grant permissions pakai API Key terpisah.",
+	"Fitur Aktif:",
 	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
-	"• Setting     : Kelola .ROBLOSECURITY cookie dan Open Cloud API Key.",
+	"• Settings    : Pengaturan warna tema GUI dan pilihan font secara langsung.",
+	"• About       : Informasi kreator dan versi tools.",
 }, "\n")
 AboutText.TextColor3 = Color3.fromRGB(215, 214, 238)
 AboutText.TextSize = 9
@@ -2588,602 +908,199 @@ AboutText.TextYAlignment = Enum.TextYAlignment.Top
 AboutText.TextWrapped = true
 AboutText.Parent = AboutCard
 
+-- ==========================================
+-- HALAMAN 3: SETTINGS (WARNA GUI & FONT)
+-- ==========================================
+local SettingsPage = Instance.new("Frame")
+SettingsPage.Size = UDim2.fromScale(1, 1)
+SettingsPage.BackgroundTransparency = 1
+SettingsPage.Visible = false
+SettingsPage.Parent = ContentArea
+tabPages["Settings"] = SettingsPage
+
+local SettingsTitle = Instance.new("TextLabel")
+SettingsTitle.Size = UDim2.new(1, -24, 0, 18)
+SettingsTitle.Position = UDim2.new(0, 12, 0, 6)
+SettingsTitle.BackgroundTransparency = 1
+SettingsTitle.Text = "Pengaturan Tampilan (Warna & Font)"
+SettingsTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+SettingsTitle.TextSize = 12
+SettingsTitle.Font = Enum.Font.GothamBold
+SettingsTitle.TextXAlignment = Enum.TextXAlignment.Left
+SettingsTitle.Parent = SettingsPage
+
+local SettingsScroll = Instance.new("ScrollingFrame")
+SettingsScroll.Size = UDim2.new(1, -24, 1, -30)
+SettingsScroll.Position = UDim2.new(0, 12, 0, 26)
+SettingsScroll.BackgroundTransparency = 1
+SettingsScroll.BorderSizePixel = 0
+SettingsScroll.ScrollBarThickness = 3
+SettingsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+SettingsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+SettingsScroll.Parent = SettingsPage
+
+local SettingsLayout = Instance.new("UIListLayout")
+SettingsLayout.Padding = UDim.new(0, 8)
+SettingsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+SettingsLayout.Parent = SettingsScroll
+
+-- Bagian 1: Warna GUI
+local ColorSectionLabel = Instance.new("TextLabel")
+ColorSectionLabel.Size = UDim2.new(1, 0, 0, 14)
+ColorSectionLabel.BackgroundTransparency = 1
+ColorSectionLabel.Text = "🎨 Warna Tema GUI"
+ColorSectionLabel.TextColor3 = Color3.fromRGB(205, 202, 230)
+ColorSectionLabel.TextSize = 10
+ColorSectionLabel.Font = Enum.Font.GothamBold
+ColorSectionLabel.TextXAlignment = Enum.TextXAlignment.Left
+ColorSectionLabel.LayoutOrder = 1
+ColorSectionLabel.Parent = SettingsScroll
+
+local ColorGrid = Instance.new("Frame")
+ColorGrid.Size = UDim2.new(1, 0, 0, 56)
+ColorGrid.BackgroundTransparency = 1
+ColorGrid.LayoutOrder = 2
+ColorGrid.Parent = SettingsScroll
+
+local ColorGridLayout = Instance.new("UIGridLayout")
+ColorGridLayout.CellSize = UDim2.new(0.5, -4, 0, 25)
+ColorGridLayout.CellPadding = UDim2.fromOffset(8, 6)
+ColorGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ColorGridLayout.Parent = ColorGrid
+
+local themeButtons: {TextButton} = {}
+for idx, theme in ipairs(GUI_THEMES) do
+	local tBtn = Instance.new("TextButton")
+	tBtn.Text = "● " .. theme.name
+	tBtn.TextColor3 = Color3.fromRGB(245, 245, 255)
+	tBtn.TextSize = 9
+	tBtn.BackgroundColor3 = Color3.fromRGB(24, 23, 36)
+	tBtn.LayoutOrder = idx
+	tBtn.Parent = ColorGrid
+	Instance.new("UICorner", tBtn).CornerRadius = UDim.new(0, 7)
+	local stroke = Instance.new("UIStroke", tBtn)
+	stroke.Color = theme.accent
+	stroke.Thickness = 1.2
+
+	tBtn.MouseButton1Click:Connect(function()
+		CONFIG.ThemeIndex = idx
+		applyThemeAndFont()
+	end)
+	table.insert(themeButtons, tBtn)
+end
+
+-- Bagian 2: Pilihan Font
+local FontSectionLabel = Instance.new("TextLabel")
+FontSectionLabel.Size = UDim2.new(1, 0, 0, 14)
+FontSectionLabel.BackgroundTransparency = 1
+FontSectionLabel.Text = "🔤 Jenis Font UI"
+FontSectionLabel.TextColor3 = Color3.fromRGB(205, 202, 230)
+FontSectionLabel.TextSize = 10
+FontSectionLabel.Font = Enum.Font.GothamBold
+FontSectionLabel.TextXAlignment = Enum.TextXAlignment.Left
+FontSectionLabel.LayoutOrder = 3
+FontSectionLabel.Parent = SettingsScroll
+
+local FontGrid = Instance.new("Frame")
+FontGrid.Size = UDim2.new(1, 0, 0, 56)
+FontGrid.BackgroundTransparency = 1
+FontGrid.LayoutOrder = 4
+FontGrid.Parent = SettingsScroll
+
+local FontGridLayout = Instance.new("UIGridLayout")
+FontGridLayout.CellSize = UDim2.new(0.5, -4, 0, 25)
+FontGridLayout.CellPadding = UDim2.fromOffset(8, 6)
+FontGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+FontGridLayout.Parent = FontGrid
+
+local fontButtons: {TextButton} = {}
+for idx, fp in ipairs(FONT_PRESETS) do
+	local fBtn = Instance.new("TextButton")
+	fBtn.Text = fp.name
+	fBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
+	fBtn.TextSize = 10
+	fBtn.BackgroundColor3 = Color3.fromRGB(24, 23, 36)
+	fBtn.LayoutOrder = idx
+	fBtn.Parent = FontGrid
+	Instance.new("UICorner", fBtn).CornerRadius = UDim.new(0, 7)
+
+	fBtn.MouseButton1Click:Connect(function()
+		CONFIG.FontIndex = idx
+		applyThemeAndFont()
+	end)
+	table.insert(fontButtons, fBtn)
+end
+
+local SettingsPreviewLabel = Instance.new("TextLabel")
+SettingsPreviewLabel.Size = UDim2.new(1, 0, 0, 22)
+SettingsPreviewLabel.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+SettingsPreviewLabel.Text = "Preview: Plugin Studio Lite • Beat & Vibe"
+SettingsPreviewLabel.TextColor3 = Color3.fromRGB(220, 218, 245)
+SettingsPreviewLabel.TextSize = 9
+SettingsPreviewLabel.LayoutOrder = 5
+SettingsPreviewLabel.Parent = SettingsScroll
+Instance.new("UICorner", SettingsPreviewLabel).CornerRadius = UDim.new(0, 6)
+
+applyThemeAndFont = function()
+	local theme = GUI_THEMES[CONFIG.ThemeIndex]
+	local fontPreset = FONT_PRESETS[CONFIG.FontIndex]
+
+	-- Update warna GUI
+	FloatStroke.Color = theme.accent
+	MainStroke.Color = theme.stroke
+	LogoStroke.Color = theme.stroke
+	MainGradient.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, theme.gradStart),
+		ColorSequenceKeypoint.new(1, theme.gradEnd),
+	})
+	EqStroke.Color = theme.stroke
+	VolSliderFill.BackgroundColor3 = theme.accent
+	PlayPauseBtn.BackgroundColor3 = theme.accent
+
+	for name, btn in pairs(tabButtons) do
+		local active = (name == CONFIG.ActiveTab)
+		btn.BackgroundColor3 = active and theme.accentSoft or Color3.fromRGB(28, 27, 42)
+		btn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(185, 182, 210)
+		btn.Font = active and fontPreset.boldFont or fontPreset.font
+	end
+
+	-- Update font elemen teks utama
+	SubTitleLabel.Font = fontPreset.boldFont
+	TitleLabel.Font = fontPreset.boldFont
+	MetaLabel.Font = fontPreset.font
+	MusicTrackLabel.Font = fontPreset.boldFont
+	MusicStatusLabel.Font = fontPreset.font
+	VolLabel.Font = fontPreset.boldFont
+	PrevTrackBtn.Font = fontPreset.boldFont
+	PlayPauseBtn.Font = fontPreset.boldFont
+	NextTrackBtn.Font = fontPreset.boldFont
+	AboutTitle.Font = fontPreset.boldFont
+	SettingsTitle.Font = fontPreset.boldFont
+	ColorSectionLabel.Font = fontPreset.boldFont
+	FontSectionLabel.Font = fontPreset.boldFont
+	SettingsPreviewLabel.Font = fontPreset.boldFont
+	SettingsPreviewLabel.Text = "Tema: " .. theme.name .. " • Font: " .. fontPreset.name
+
+	for idx, tBtn in ipairs(themeButtons) do
+		local selected = (idx == CONFIG.ThemeIndex)
+		tBtn.BackgroundColor3 = selected and theme.accentSoft or Color3.fromRGB(24, 23, 36)
+		tBtn.Font = selected and fontPreset.boldFont or fontPreset.font
+	end
+
+	for idx, fBtn in ipairs(fontButtons) do
+		local selected = (idx == CONFIG.FontIndex)
+		fBtn.BackgroundColor3 = selected and theme.accentSoft or Color3.fromRGB(24, 23, 36)
+		local fp = FONT_PRESETS[idx]
+		fBtn.Font = fp.font
+	end
+
+	renderMusicPlaylist()
+end
+
 -- Navigasi Sidebar
-createNavButton("Spoof", "⇄  Spoof", 1).MouseButton1Click:Connect(function() switchTab("Spoof") end)
-createNavButton("Upload", "⬆  Upload All", 2).MouseButton1Click:Connect(function() switchTab("Upload") end)
-createNavButton("Tools", "🛠  Place & Perm", 3).MouseButton1Click:Connect(function() switchTab("Tools") end)
-createNavButton("Music", "🎵  Music", 4).MouseButton1Click:Connect(function() switchTab("Music") end)
-createNavButton("Setting", "⚙  Setting", 5).MouseButton1Click:Connect(function() switchTab("Setting") end)
-createNavButton("About", "ℹ  About", 6).MouseButton1Click:Connect(function() switchTab("About") end)
-switchTab("Spoof")
+createNavButton("Music", "🎵  Music", 1).MouseButton1Click:Connect(function() switchTab("Music") end)
+createNavButton("Settings", "🎨  Settings", 2).MouseButton1Click:Connect(function() switchTab("Settings") end)
+createNavButton("About", "ℹ  About", 3).MouseButton1Click:Connect(function() switchTab("About") end)
 
--- ==========================================
--- LOGIKA EKSEKUSI: INPUT -> KIRIM PERMINTAAN -> HASIL
--- ==========================================
-local function extractFileNamesFromList(bodyText: string): {string}
-	local names: {string} = {}
-	local okJson, decoded = pcall(function()
-		return HttpService:JSONDecode(bodyText)
-	end)
-	if okJson and type(decoded) == "table" then
-		local listObj = decoded.files or decoded
-		if type(listObj) == "table" then
-			for _, item in ipairs(listObj) do
-				if type(item) == "string" then
-					table.insert(names, item)
-				elseif type(item) == "table" then
-					local fname = item.name or item.filename or item.file
-					if type(fname) == "string" then
-						table.insert(names, fname)
-					end
-				end
-			end
-		end
-	end
-	if #names == 0 then
-		for quoted in bodyText:gmatch('"([^"]+%.%w+)"') do
-			table.insert(names, quoted)
-		end
-	end
-	return names
-end
-
-local function fetchAndStoreSession(): (string, boolean, string)
-	local res, ok, info = apiRequest({
-		Url = CONFIG.BaseUrl .. "/tools/spoof-audio",
-		Method = "GET",
-		Headers = {
-			["Referer"] = CONFIG.BaseUrl .. "/",
-		},
-		Retries = 2,
-	})
-	if ok and res then
-		local sessMatch = tostring(res.Body or ""):match("YGF_%d+")
-		if sessMatch then
-			CONFIG.SessionId = sessMatch
-			saveTextFile("SPOOF/info/session.txt", CONFIG.SessionId)
-		end
-		return CONFIG.SessionId, true, info
-	end
-	return CONFIG.SessionId, false, info
-end
-
-local function spoofSingleEntry(entry: SpoofEntry, filterMode: string): (boolean, string, {[string]: any})
-	local assetId = entry.id
-	local isRbxmMode = (entry.kind == "rbxm") or (filterMode == "Model" or filterMode == "Anim")
-
-	local jsonRecord: {[string]: any} = (entry.kind == "rbxm")
-		and {
-			nama = entry.name,
-			id = assetId,
-			status = entry.statusType or "Dance",
-		}
-		or {
-			nama_song = entry.name,
-			id = assetId,
-			playbackspeed = entry.playbackSpeed or 1.0,
-		}
-
-	local _, cmdOk, cmdInfo = apiRequest({
-		Url = CONFIG.BaseUrl .. "/send-command",
-		Method = "POST",
-		Headers = {
-			["Content-Type"] = "application/json",
-			["Origin"] = CONFIG.BaseUrl,
-			["Referer"] = CONFIG.BaseUrl .. "/tools/spoof-audio",
-		},
-		Body = HttpService:JSONEncode({
-			id = tostring(assetId),
-			session = CONFIG.SessionId,
-		}),
-		Retries = 2,
-	})
-
-	if not cmdOk then
-		return false, assetId .. " -> Gagal kirim perintah (" .. cmdInfo .. ")", jsonRecord
-	end
-
-	local foundFile: string? = nil
-	for _ = 1, 20 do
-		local listRes, listOk = apiRequest({
-			Url = CONFIG.BaseUrl .. "/list-files",
-			Method = "GET",
-			Headers = {
-				["Referer"] = CONFIG.BaseUrl .. "/tools/spoof-audio",
-			},
-		})
-		if listOk and listRes then
-			local candidates = extractFileNamesFromList(tostring(listRes.Body or ""))
-			for _, sname in ipairs(candidates) do
-				if sname:find(assetId, 1, true) then
-					local lowerName = sname:lower()
-					if isRbxmMode and lowerName:sub(-5) == ".rbxm" then
-						foundFile = sname
-						break
-					elseif not isRbxmMode and lowerName:sub(-4) == ".mp3" then
-						foundFile = sname
-						break
-					elseif filterMode == "Auto" and entry.kind ~= "rbxm" then
-						foundFile = sname
-						break
-					end
-				end
-			end
-		end
-		if foundFile then break end
-		task.wait(1.5)
-	end
-
-	if not foundFile then
-		return false, assetId .. " -> File hasil belum muncul di /list-files", jsonRecord
-	end
-
-	local encodedName = HttpService:UrlEncode(foundFile)
-	for _ = 1, 10 do
-		local readyRes, readyOk = apiRequest({
-			Url = CONFIG.BaseUrl .. "/is-ready/" .. encodedName,
-			Method = "GET",
-		})
-		if readyOk and readyRes then
-			local okJson, decoded = pcall(function()
-				return HttpService:JSONDecode(tostring(readyRes.Body or "{}"))
-			end)
-			if okJson and type(decoded) == "table" and decoded.ready == true then
-				break
-			end
-		end
-		task.wait(1.5)
-	end
-
-	local dlRes, dlOk, dlInfo = apiRequest({
-		Url = CONFIG.BaseUrl .. "/files/" .. encodedName .. "?t=" .. tostring(os.time() * 1000),
-		Method = "GET",
-		Headers = {
-			["Referer"] = CONFIG.BaseUrl .. "/tools/spoof-audio",
-		},
-		Retries = 2,
-	})
-
-	if dlOk and dlRes and dlRes.Body and tostring(dlRes.Body) ~= "" then
-		local ext = (foundFile:match("%.[^%.]+$") or (isRbxmMode and ".rbxm" or ".mp3")):lower()
-		local subDir = (ext == ".rbxm") and "SPOOF/animasi/" or "SPOOF/music/"
-		local baseFileName = sanitizeFileName(entry.name)
-		local outRel = subDir .. baseFileName .. ext
-		local saved = saveTextFile(outRel, tostring(dlRes.Body))
-		if saved then
-			return true, entry.name .. " (" .. assetId .. ") -> " .. CONFIG.WorkspaceRoot .. "/" .. outRel, jsonRecord
-		end
-		return false, assetId .. " -> Gagal menyimpan file lokal", jsonRecord
-	end
-
-	return false, assetId .. " -> Gagal unduh (" .. dlInfo .. ")", jsonRecord
-end
-
--- Proses Spoof (ID Massal atau File TXT Massal)
-local isSpoofing = false
-SpoofNowBtn.MouseButton1Click:Connect(function()
-	if isSpoofing then return end
-
-	local entries: {SpoofEntry} = {}
-	if CONFIG.SpoofSourceMode == "TXT" then
-		if not selectedSpoofTxtPath or selectedSpoofTxtPath == "" then
-			setSpoofBar("err", 0)
-			setProcessLog("err", "Pilih file .txt terlebih dahulu (klik Scan TXT -> Select).")
-			notify("Spoof TXT", "Belum ada file TXT dipilih.")
-			return
-		end
-		local txtContent = loadTextFile(selectedSpoofTxtPath)
-		if not txtContent or trim(txtContent) == "" then
-			setSpoofBar("err", 0)
-			setProcessLog("err", "File TXT kosong atau tidak bisa dibaca: " .. selectedSpoofTxtPath)
-			notify("Spoof TXT", "File TXT kosong.")
-			return
-		end
-		local kindHint: "auto" | "audio" | "rbxm" = "auto"
-		if CONFIG.SpoofFilter == "Model" or CONFIG.SpoofFilter == "Anim" then
-			kindHint = "rbxm"
-		elseif CONFIG.SpoofFilter == "Suara" then
-			kindHint = "audio"
-		end
-		entries = parseTxtEntries(txtContent, kindHint)
-		if #entries == 0 then
-			setSpoofBar("err", 0)
-			setProcessLog("err", "Tidak ada data ID valid di dalam " .. selectedSpoofTxtPath)
-			notify("Spoof TXT", "Data tidak ditemukan.")
-			return
-		end
-	else
-		local ids = parseIds(AssetIdBox.Text)
-		if #ids == 0 then
-			setSpoofBar("err", 0)
-			setProcessLog("err", "Input Asset ID kosong atau tidak valid.")
-			notify("Spoof", "Input kosong.")
-			return
-		end
-		for _, idStr in ipairs(ids) do
-			local isRbxm = (CONFIG.SpoofFilter == "Model" or CONFIG.SpoofFilter == "Anim")
-			table.insert(entries, {
-				kind = isRbxm and "rbxm" or "audio",
-				name = "Asset_" .. idStr,
-				id = idStr,
-				playbackSpeed = 1.0,
-				statusType = "Dance",
-			})
-		end
-	end
-
-	isSpoofing = true
-	setSpoofBar("working", 0.1)
-	setProcessLog("working", "Memulai proses " .. tostring(#entries) .. " item...")
-	setJsonResultText(false, "")
-
-	task.spawn(function()
-		ensureFolders()
-		fetchAndStoreSession()
-
-		local berhasil, gagal = 0, 0
-		local processLines: {string} = {}
-		local jsonRows: {{[string]: any}} = {}
-
-		for i, item in ipairs(entries) do
-			table.insert(processLines, string.format("[%d/%d] Memproses %s (%s)...", i, #entries, item.name, item.id))
-			setSpoofBar("working", (i - 0.5) / #entries)
-			setProcessLog("working", table.concat(processLines, "\n"))
-
-			local okItem, stepMsg, rowJson = spoofSingleEntry(item, CONFIG.SpoofFilter)
-			processLines[#processLines] = stepMsg
-			if okItem then
-				berhasil += 1
-			else
-				gagal += 1
-			end
-
-			table.insert(jsonRows, rowJson)
-			setJsonResultText(gagal > 0, formatStackedJson(jsonRows))
-			setSpoofBar((gagal == 0) and "working" or "err", i / #entries)
-			setProcessLog((gagal == 0) and "working" or "err", table.concat(processLines, "\n"))
-
-			if i < #entries then
-				task.wait(0.35)
-			end
-		end
-
-		local finalJson = formatStackedJson(jsonRows)
-		saveTextFile("Logs/spoof_result_" .. tostring(os.time()) .. ".json", finalJson)
-		table.insert(processLines, string.format("Selesai: %d berhasil, %d gagal.", berhasil, gagal))
-
-		local allOk = (berhasil > 0 and gagal == 0)
-		setSpoofBar(allOk and "ok" or "err", 1)
-		setProcessLog(allOk and "ok" or "err", table.concat(processLines, "\n"))
-		setJsonResultText(not allOk, finalJson)
-		notify("Spoof", string.format("Selesai: %d berhasil, %d gagal.", berhasil, gagal))
-		isSpoofing = false
-	end)
-end)
-
--- Proses Upload All Asset (Open Cloud API Key + Select All / Satu-Satu + Save TXT)
-local isUploadingAll = false
-UploadSelectedBtn.MouseButton1Click:Connect(function()
-	if isUploadingAll then return end
-	local _, _, _, uploadKey = syncCredentialsFromInputs()
-	if uploadKey == "" then
-		updateUploadOutcome("err", 0, "Roblox API Key (x-api-key) belum diisi.")
-		notify("Upload All", "API Key kosong.")
-		return
-	end
-
-	local chosenItems: {UploadCandidate} = {}
-	for _, c in ipairs(uploadCandidates) do
-		if uploadSelectedMap[c.relPath] == true then
-			table.insert(chosenItems, c)
-		end
-	end
-
-	if #chosenItems == 0 then
-		updateUploadOutcome("err", 0, "Pilih minimal satu file aset (klik Select All atau pilih satu-satu).")
-		notify("Upload All", "Belum ada file dipilih.")
-		return
-	end
-
-	if trim(UploadApiKeyBox.Text) ~= "" then
-		saveTextFile("upload_apikey.txt", trim(UploadApiKeyBox.Text))
-	end
-
-	isUploadingAll = true
-	updateUploadOutcome("working", 0.08, "Mengunggah " .. tostring(#chosenItems) .. " aset ke Roblox Open Cloud...")
-
-	task.spawn(function()
-		local sukses, gagal = 0, 0
-		local formattedBlocks: {string} = {}
-		local ownerUserId = tonumber(tostring(LocalPlayer.UserId)) or LocalPlayer.UserId
-
-		for idx, item in ipairs(chosenItems) do
-			local fileContent = loadTextFile(item.relPath)
-			local assetIdOut = "-"
-			local statusOut = "Gagal"
-
-			if not fileContent or #fileContent == 0 then
-				gagal += 1
-				statusOut = "Gagal (File kosong atau tidak terbaca)"
-			else
-				local payloadJson = HttpService:JSONEncode({
-					assetType = item.assetType,
-					displayName = item.displayName:sub(1, 50),
-					description = "Uploaded via Plugin Studio Lite",
-					creationContext = {
-						creator = {
-							userId = tostring(ownerUserId),
-						},
-					},
-				})
-
-				local boundary = "----IkyyStudioLiteBoundary" .. tostring(os.time()) .. tostring(idx)
-				local safeFileName = sanitizeFileName(item.displayName) .. item.ext
-				local mimeType = inferMimeType(item.ext)
-				local multipartBody = buildMultipartAssetBody(boundary, payloadJson, safeFileName, mimeType, fileContent)
-
-				local res, ok, info = apiRequest({
-					Url = "https://apis.roblox.com/assets/v1/assets",
-					Method = "POST",
-					Headers = {
-						["x-api-key"] = uploadKey,
-						["Content-Type"] = "multipart/form-data; boundary=" .. boundary,
-					},
-					Body = multipartBody,
-					Retries = 2,
-				})
-
-				local bodyStr = res and tostring(res.Body or "") or ""
-				if ok and res then
-					local decodedId: string? = nil
-					local okDec, decoded = pcall(function()
-						return HttpService:JSONDecode(bodyStr)
-					end)
-					if okDec and type(decoded) == "table" then
-						if decoded.assetId ~= nil then
-							decodedId = tostring(decoded.assetId):match("%d+")
-						elseif type(decoded.operationId) == "string" and decoded.operationId ~= "" then
-							decodedId = decoded.operationId
-						end
-					end
-					if not decodedId then
-						decodedId = bodyStr:match('"assetId"%s*:%s*"?(%d+)"?') or bodyStr:match('"id"%s*:%s*"?(%d+)"?')
-					end
-					assetIdOut = decodedId or "-"
-					statusOut = "Berhasil (" .. info .. ")"
-					sukses += 1
-				else
-					gagal += 1
-					local shortErr = bodyStr:gsub("[\r\n]+", " "):sub(1, 140)
-					statusOut = "Gagal (" .. info .. (shortErr ~= "" and (": " .. shortErr) or "") .. ")"
-				end
-			end
-
-			table.insert(formattedBlocks, table.concat({
-				"name : " .. item.displayName,
-				"id : " .. assetIdOut,
-				"status : " .. statusOut,
-			}, "\n"))
-
-			updateUploadOutcome(
-				(gagal == 0) and "working" or "err",
-				idx / #chosenItems,
-				table.concat(formattedBlocks, "\n\n")
-			)
-
-			if idx < #chosenItems then
-				task.wait(0.5)
-			end
-		end
-
-		local resultTxtContent = table.concat(formattedBlocks, "\n\n")
-		local logRelPath = "Logs/upload_result_" .. tostring(os.time()) .. ".txt"
-		local savedOk = saveTextFile(logRelPath, resultTxtContent)
-		local footerNote = savedOk
-			and ("\n\nTersimpan ke: " .. CONFIG.WorkspaceRoot .. "/" .. logRelPath)
-			or "\n\nCatatan: Gagal menyimpan file .txt ke disk."
-
-		local allOk = (sukses > 0 and gagal == 0)
-		updateUploadOutcome(allOk and "ok" or "err", 1, resultTxtContent .. footerNote)
-		notify("Upload All", string.format("Selesai: %d berhasil, %d gagal.", sukses, gagal))
-		isUploadingAll = false
-	end)
-end)
-
--- Proses Place Maker
-local isCreatingPlace = false
-CreatePlaceBtn.MouseButton1Click:Connect(function()
-	if isCreatingPlace then return end
-	local cookieVal = syncCredentialsFromInputs()
-	if cookieVal == "" then
-		updateToolsOutcome("err", 0, "Cookie .ROBLOSECURITY belum diisi di Setting.")
-		notify("Place Maker", "Cookie kosong.")
-		return
-	end
-
-	local tplId = tonumber(trim(TemplateIdBox.Text):match("%d+")) or 95206881
-	local grpId = tonumber(trim(GroupIdBox.Text):match("%d+"))
-	local count = math.clamp(tonumber(trim(PlaceCountBox.Text):match("%d+")) or 1, 1, 50)
-
-	isCreatingPlace = true
-	updateToolsOutcome("working", 0.1, "Mengirim permintaan pembuatan " .. tostring(count) .. " place...")
-	task.spawn(function()
-		local csrf = ""
-		local sukses, gagal = 0, 0
-		local blocks: {string} = {}
-
-		for i = 1, count do
-			local bodyTbl: {[string]: any} = { templatePlaceId = tplId }
-			if grpId and grpId > 0 then
-				bodyTbl.groupId = grpId
-			end
-			local jsonBody = HttpService:JSONEncode(bodyTbl)
-
-			local function sendCreateRequest(token: string)
-				local hdrs: {[string]: string} = {
-					["Cookie"] = ".ROBLOSECURITY=" .. cookieVal,
-					["Content-Type"] = "application/json",
-					["Origin"] = "https://create.roblox.com",
-					["Referer"] = "https://create.roblox.com/",
-				}
-				if token ~= "" then
-					hdrs["X-CSRF-TOKEN"] = token
-				end
-				return apiRequest({
-					Url = "https://apis.roblox.com/universes/v1/universes/create",
-					Method = "POST",
-					Headers = hdrs,
-					Body = jsonBody,
-					Retries = 1,
-				})
-			end
-
-			local res, ok, info = sendCreateRequest(csrf)
-			if not ok and res and tonumber(res.StatusCode or res.Status or res.status_code) == 403 then
-				local newCsrf = getHeaderCaseInsensitive(res.Headers, "x-csrf-token")
-				if newCsrf and newCsrf ~= "" then
-					csrf = newCsrf
-					res, ok, info = sendCreateRequest(csrf)
-				end
-			end
-
-			local bodyStr = res and tostring(res.Body or "") or ""
-			if ok and res then
-				sukses += 1
-				saveTextFile("Logs/place_" .. tostring(os.time()) .. "_" .. tostring(i) .. ".json", bodyStr)
-
-				local createdUnivId: string? = nil
-				local okDec, decoded = pcall(function()
-					return HttpService:JSONDecode(bodyStr)
-				end)
-				if okDec and type(decoded) == "table" then
-					if decoded.universeId ~= nil then
-						createdUnivId = tostring(decoded.universeId):match("%d+")
-					elseif decoded.id ~= nil then
-						createdUnivId = tostring(decoded.id):match("%d+")
-					end
-				end
-				if not createdUnivId then
-					createdUnivId = bodyStr:match('"universeId"%s*:%s*(%d+)')
-				end
-
-				if createdUnivId and createdUnivId ~= "" then
-					TargetUniverseBox.Text = createdUnivId
-					local univInfo = fetchUniverseInfo(createdUnivId, cookieVal)
-					table.insert(blocks, string.format("#%d OK (Universe %s)\n%s", i, createdUnivId, univInfo))
-				else
-					table.insert(blocks, "#" .. tostring(i) .. " OK: " .. bodyStr)
-				end
-			else
-				gagal += 1
-				table.insert(blocks, "#" .. tostring(i) .. " Gagal (" .. info .. "): " .. bodyStr:sub(1, 140))
-			end
-
-			updateToolsOutcome((gagal == 0) and "working" or "err", i / count, table.concat(blocks, "\n\n"))
-			if i < count then
-				task.wait(1)
-			end
-		end
-
-		local allOk = (sukses > 0 and gagal == 0)
-		updateToolsOutcome(allOk and "ok" or "err", 1, table.concat(blocks, "\n\n"))
-		notify("Place Maker", string.format("Selesai: %d berhasil, %d gagal.", sukses, gagal))
-		isCreatingPlace = false
-	end)
-end)
-
--- Proses Asset Permissions (API Key Permission Terpisah + File TXT id,id,id + Info Universe)
-local isGrantingPerm = false
-GrantPermBtn.MouseButton1Click:Connect(function()
-	if isGrantingPerm then return end
-	local cookieVal, _, permKey = syncCredentialsFromInputs()
-	if permKey == "" then
-		updateToolsOutcome("err", 0, "API Key Permission (x-api-key) belum diisi.")
-		notify("Permissions", "API Key kosong.")
-		return
-	end
-
-	local univId = trim(TargetUniverseBox.Text):match("%d+")
-	local rawPermInput = trim(PermIdsBox.Text)
-	local ids = parseIds(rawPermInput)
-	if #ids == 0 and rawPermInput ~= "" then
-		local txtContent = loadTextFile(rawPermInput)
-		if txtContent and trim(txtContent) ~= "" then
-			ids = parseIds(txtContent)
-			if #ids > 0 then
-				PermIdsBox.Text = table.concat(ids, ",")
-			end
-		end
-	end
-
-	if not univId or #ids == 0 then
-		updateToolsOutcome("err", 0, "Target Universe ID atau daftar Asset ID masih kosong.")
-		notify("Permissions", "Input kosong.")
-		return
-	end
-
-	if trim(PermApiKeyBox.Text) ~= "" then
-		saveTextFile("perm_apikey.txt", trim(PermApiKeyBox.Text))
-	end
-
-	isGrantingPerm = true
-	updateToolsOutcome("working", 0.1, "Mengirim izin untuk " .. tostring(#ids) .. " aset ke Universe " .. univId .. "...")
-	task.spawn(function()
-		local batchSize = 50
-		local totalBatches = math.ceil(#ids / batchSize)
-		local suksesBatch, gagalBatch = 0, 0
-		local bIdx = 0
-		local lines: {string} = {}
-
-		for i = 1, #ids, batchSize do
-			bIdx += 1
-			local reqList = {}
-			for j = i, math.min(i + batchSize - 1, #ids) do
-				local numId = tonumber(ids[j])
-				if numId then
-					table.insert(reqList, { assetId = numId })
-				end
-			end
-
-			local res, ok, info = apiRequest({
-				Url = "https://apis.roblox.com/asset-permissions-api/v1/assets/permissions",
-				Method = "PATCH",
-				Headers = {
-					["x-api-key"] = permKey,
-					["Content-Type"] = "application/json",
-				},
-				Body = HttpService:JSONEncode({
-					subjectType = "Universe",
-					subjectId = tostring(univId),
-					action = "Use",
-					requests = reqList,
-				}),
-				Retries = 2,
-			})
-
-			local bodyStr = res and tostring(res.Body or "") or ""
-			if ok and res then
-				suksesBatch += 1
-				saveTextFile("Logs/perm_" .. tostring(os.time()) .. "_" .. tostring(bIdx) .. ".json", bodyStr)
-				table.insert(lines, "Batch " .. tostring(bIdx) .. "/" .. tostring(totalBatches) .. " OK (" .. tostring(#reqList) .. " ID)")
-			else
-				gagalBatch += 1
-				table.insert(lines, "Batch " .. tostring(bIdx) .. " Gagal (" .. info .. "): " .. bodyStr:sub(1, 140))
-			end
-
-			updateToolsOutcome((gagalBatch == 0) and "working" or "err", bIdx / totalBatches, table.concat(lines, "\n"))
-			if i + batchSize <= #ids then
-				task.wait(1)
-			end
-		end
-
-		local univInfoText = fetchUniverseInfo(univId, cookieVal)
-		table.insert(lines, "")
-		table.insert(lines, univInfoText)
-
-		local allOk = (suksesBatch > 0 and gagalBatch == 0)
-		updateToolsOutcome(allOk and "ok" or "err", 1, table.concat(lines, "\n"))
-		notify("Permissions", allOk and "Berhasil." or "Sebagian/semua gagal.")
-		isGrantingPerm = false
-	end)
-end)
+switchTab("Music")
+applyThemeAndFont()
