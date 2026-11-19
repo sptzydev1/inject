@@ -1,61 +1,195 @@
---!strict
--- Plugin Studio Lite Style GUI - Delta Executor Edition (In-Memory Session)
+-- Plugin Studio Lite Style GUI - Delta Executor Ready
 -- by Ikyy
 
 local Players = game:GetService("Players")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Debris = game:GetService("Debris")
 local StarterGui = game:GetService("StarterGui")
+local CoreGui = game:GetService("CoreGui")
 
-local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
-if PlayerGui:FindFirstChild("IkyyStudioLiteCaseUI") then
-	PlayerGui.IkyyStudioLiteCaseUI:Destroy()
+local function getExecFn(name)
+	local okEnv, env = pcall(function()
+		return getgenv and getgenv() or nil
+	end)
+	if okEnv and type(env) == "table" and type(env[name]) == "function" then
+		return env[name]
+	end
+	local okG, gVal = pcall(function()
+		return _G and _G[name] or nil
+	end)
+	if okG and type(gVal) == "function" then
+		return gVal
+	end
+	return nil
+end
+
+local function getGuiParent()
+	local huiFn = getExecFn("gethui")
+	if type(huiFn) == "function" then
+		local ok, hui = pcall(huiFn)
+		if ok and typeof(hui) == "Instance" then
+			return hui
+		end
+	end
+	local okCore = pcall(function()
+		local _ = CoreGui.Name
+	end)
+	if okCore then
+		return CoreGui
+	end
+	local pGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
+	return pGui
+end
+
+local guiParent = getGuiParent()
+if guiParent:FindFirstChild("IkyyStudioLiteCaseUI") then
+	guiParent.IkyyStudioLiteCaseUI:Destroy()
 end
 
 -- ==========================================
--- 1. IN-MEMORY SESSION (TANPA SAVE FILE)
+-- 1. AUTO CHECK USER & UNIVERSE + DELTA SAVE
 -- ==========================================
+local WORKSPACE_ROOT = "IkyyStudioLite"
+
+local function detectUniverseId()
+	local ok, gid = pcall(function()
+		return game.GameId
+	end)
+	if ok and type(gid) == "number" and gid > 0 then
+		return tostring(gid)
+	end
+	return "10516113765"
+end
+
+local function detectUserInfo()
+	local uid = 0
+	local uname = "UnknownUser"
+	local okId, idVal = pcall(function()
+		return LocalPlayer.UserId
+	end)
+	if okId and type(idVal) == "number" then
+		uid = idVal
+	end
+	local okName, nameVal = pcall(function()
+		return LocalPlayer.Name
+	end)
+	if okName and type(nameVal) == "string" and nameVal ~= "" then
+		uname = nameVal
+	end
+	return uid, uname
+end
+
+local initUserId, initUserName = detectUserInfo()
+local initUniverseId = detectUniverseId()
+
 local MemorySession = {
 	ActiveTab = "Spoof", -- "Spoof" | "Upload" | "Import" | "Setting" | "About"
 	SelectedFilter = "Auto", -- "Auto" | "Audio" | "Decal" | "Model" | "Anim"
 	CookieToken = "",
 	ApiKeyToken = "",
-	ActiveUniverseId = "10516113765",
+	UserId = initUserId,
+	UserName = initUserName,
+	ActiveUniverseId = initUniverseId,
 	PlaybackSpeed = 1.0,
 	AllowedUsers = {
-		[LocalPlayer.UserId] = true,
+		[initUserId] = true,
 		[9374524895] = true,
 	},
 	Logs = {},
 }
 
-local function pushLog(tag: string, msg: string)
-	table.insert(MemorySession.Logs, 1, string.format("[%s] %s", tag, msg))
+local function pushLog(tag, msg)
+	table.insert(MemorySession.Logs, 1, string.format("[%s] %s", tostring(tag), tostring(msg)))
 	if #MemorySession.Logs > 25 then
 		table.remove(MemorySession.Logs)
 	end
 end
 
-local function hasAccess(): boolean
-	return MemorySession.AllowedUsers[LocalPlayer.UserId] == true
+local function syncAutoIdentity(silent)
+	local uid, uname = detectUserInfo()
+	local univ = detectUniverseId()
+	MemorySession.UserId = uid
+	MemorySession.UserName = uname
+	MemorySession.ActiveUniverseId = univ
+	if uid > 0 then
+		MemorySession.AllowedUsers[uid] = true
+	end
+	if not silent then
+		pushLog("AUTO", string.format("User: %s (%d) | UniverseId: %s", uname, uid, univ))
+	end
 end
 
-local function safeCopy(text: string): boolean
-	local fn = (getgenv and getgenv().setclipboard) or setclipboard
-	if typeof(fn) == "function" then
-		pcall(fn, text)
+syncAutoIdentity(true)
+pushLog("DELTA", string.format("User %s (%d) • Univ %s siap", MemorySession.UserName, MemorySession.UserId, MemorySession.ActiveUniverseId))
+
+local function saveToDeltaFolder(subFolder, fileName, content)
+	local makeFolderFn = getExecFn("makefolder")
+	local writeFileFn = getExecFn("writefile")
+	local isFolderFn = getExecFn("isfolder")
+
+	if type(makeFolderFn) ~= "function" or type(writeFileFn) ~= "function" then
+		return nil
+	end
+
+	local rootOk = true
+	if type(isFolderFn) == "function" then
+		local okExists, exists = pcall(isFolderFn, WORKSPACE_ROOT)
+		if not (okExists and exists) then
+			rootOk = pcall(makeFolderFn, WORKSPACE_ROOT)
+		end
+	else
+		rootOk = pcall(makeFolderFn, WORKSPACE_ROOT)
+	end
+
+	local folderPath = WORKSPACE_ROOT .. "/" .. tostring(subFolder)
+	local subOk = true
+	if type(isFolderFn) == "function" then
+		local okSub, subExists = pcall(isFolderFn, folderPath)
+		if not (okSub and subExists) then
+			subOk = pcall(makeFolderFn, folderPath)
+		end
+	else
+		subOk = pcall(makeFolderFn, folderPath)
+	end
+
+	if not (rootOk and subOk) then
+		return nil
+	end
+
+	local cleanName = string.gsub(tostring(fileName), "[^%w%._%-]", "_")
+	local fullPath = folderPath .. "/" .. cleanName
+	local okWrite = pcall(writeFileFn, fullPath, tostring(content))
+	if okWrite then
+		return fullPath
+	end
+	return nil
+end
+
+local function hasAccess()
+	syncAutoIdentity(true)
+	return MemorySession.AllowedUsers[MemorySession.UserId] == true
+end
+
+local function safeCopy(text)
+	local copyFn = getExecFn("setclipboard") or getExecFn("toclipboard")
+	if type(copyFn) == "function" then
+		pcall(copyFn, tostring(text))
 		return true
 	end
 	return false
 end
 
-local function extractPairsOrIds(raw: string): {{name: string, id: number}}
+local function getHttpRequestFn()
+	return getExecFn("request") or getExecFn("http_request")
+end
+
+local function extractPairsOrIds(raw)
 	local items = {}
 	local foundPair = false
 
-	for sName, sId in string.gmatch(raw or "", "Song[Nn]ame:%s*(.-)%s*Song[Ii]d:%s*(%d+)") do
+	for sName, sId in string.gmatch(tostring(raw or ""), "Song[Nn]ame:%s*(.-)%s*Song[Ii]d:%s*(%d+)") do
 		local numId = tonumber(sId)
 		if numId then
 			foundPair = true
@@ -68,8 +202,8 @@ local function extractPairsOrIds(raw: string): {{name: string, id: number}}
 	end
 
 	if not foundPair then
-		local seen: {[number]: boolean} = {}
-		for token in string.gmatch(raw or "", "%d+") do
+		local seen = {}
+		for token in string.gmatch(tostring(raw or ""), "%d+") do
 			local numId = tonumber(token)
 			if numId and not seen[numId] then
 				seen[numId] = true
@@ -84,7 +218,7 @@ local function extractPairsOrIds(raw: string): {{name: string, id: number}}
 	return items
 end
 
-local function fetchAssetDetails(assetId: number)
+local function fetchAssetDetails(assetId)
 	local ok, info = pcall(function()
 		return MarketplaceService:GetProductInfoAsync(assetId)
 	end)
@@ -112,8 +246,8 @@ end
 -- 2. FUNGSI FITUR (SATUAN, MASSAL & ABOUT)
 -- ==========================================
 
--- [Spoof] Downloader Spoof (Satuan & Massal)
-local function executeSpoofFeature(rawInput: string, filterMode: string)
+local function executeSpoofFeature(rawInput, filterMode)
+	syncAutoIdentity(true)
 	local targets = extractPairsOrIds(rawInput)
 	if #targets == 0 then
 		pushLog("SPOOF", "Target ID atau format SongName/SongId tidak valid.")
@@ -151,28 +285,36 @@ local function executeSpoofFeature(rawInput: string, filterMode: string)
 		end
 
 		local line = string.format(
-			"%s | ID:%d | Kreator:%s (%s) | Dibuat:%s",
+			"%s | ID:%d | Kreator:%s (%s) | User:%s (%d) | Univ:%s",
 			finalName,
 			item.id,
 			details.Creator,
 			details.CreatorId,
-			details.Created
+			MemorySession.UserName,
+			MemorySession.UserId,
+			MemorySession.ActiveUniverseId
 		)
 		table.insert(reportLines, line)
 	end
 
+	local packed = table.concat(reportLines, "\n")
+	local savedPath = saveToDeltaFolder("spoof", string.format("spoof_%d.txt", math.floor(os.clock() * 100)), packed)
+
 	if #targets == 1 then
-		pushLog("SATUAN", reportLines[1])
+		pushLog("SATUAN", reportLines[1] .. (savedPath and (" -> " .. savedPath) or ""))
 	else
-		local copied = safeCopy(table.concat(reportLines, "\n"))
-		pushLog("MASSAL", string.format("Spoof %d aset selesai%s", #targets, copied and " (disalin ke clipboard)" or ""))
+		safeCopy(packed)
+		pushLog("MASSAL", string.format(
+			"Spoof %d aset selesai%s",
+			#targets,
+			savedPath and (" -> " .. savedPath) or " (disalin ke clipboard)"
+		))
 	end
 end
 
--- [Upload] Pengunggah Aset & Decal (Satuan & Massal)
-local function executeUploadFeature(rawInput: string, filterMode: string)
+local function executeUploadFeature(rawInput, filterMode)
 	if not hasAccess() then
-		pushLog("DENIED", "Akses upload ditolak untuk UserId " .. tostring(LocalPlayer.UserId))
+		pushLog("DENIED", "Akses upload ditolak untuk UserId " .. tostring(MemorySession.UserId))
 		return
 	end
 
@@ -188,22 +330,37 @@ local function executeUploadFeature(rawInput: string, filterMode: string)
 
 	for _, item in ipairs(targets) do
 		local details = fetchAssetDetails(item.id)
-		table.insert(summary, string.format("[%s] %s (%d) - API:%s", assetKind, details.Name, item.id, hasApi and "SET" or "MEM"))
+		table.insert(summary, string.format(
+			"[%s] %s (%d) - User:%d - Univ:%s - API:%s",
+			assetKind,
+			details.Name,
+			item.id,
+			MemorySession.UserId,
+			MemorySession.ActiveUniverseId,
+			hasApi and "SET" or "MEM"
+		))
 		task.wait(0.1)
 	end
 
+	local packed = table.concat(summary, "\n")
+	local savedPath = saveToDeltaFolder("upload", string.format("upload_%s_%d.txt", assetKind, math.floor(os.clock() * 100)), packed)
+
 	if #targets == 1 then
-		pushLog("UPLOAD", summary[1])
+		pushLog("UPLOAD", summary[1] .. (savedPath and (" -> " .. savedPath) or ""))
 	else
-		local copied = safeCopy(table.concat(summary, "\n"))
-		pushLog("MASSAL", string.format("Upload %s (%d item)%s", assetKind, #targets, copied and " • disalin" or ""))
+		safeCopy(packed)
+		pushLog("MASSAL", string.format(
+			"Upload %s (%d item)%s",
+			assetKind,
+			#targets,
+			savedPath and (" -> " .. savedPath) or " • disalin"
+		))
 	end
 end
 
--- [Import] Pembuat Place & Asset Permissions (Satuan & Massal)
-local function executeImportFeature(rawInput: string)
+local function executeImportFeature(rawInput)
 	if not hasAccess() then
-		pushLog("DENIED", "Akses import ditolak untuk UserId " .. tostring(LocalPlayer.UserId))
+		pushLog("DENIED", "Akses import ditolak untuk UserId " .. tostring(MemorySession.UserId))
 		return
 	end
 
@@ -224,7 +381,15 @@ local function executeImportFeature(rawInput: string)
 				task.wait(0.25)
 			end
 		end
-		pushLog("PLACE", string.format("Pembuatan Place selesai: %d/%d slot dibuat", createdCount, firstNum))
+		local savedPath = saveToDeltaFolder("import", "place_slots.txt", string.format(
+			"User=%s (%d)\nUniverseId=%s\nCreatedSlots=%d/%d",
+			MemorySession.UserName,
+			MemorySession.UserId,
+			MemorySession.ActiveUniverseId,
+			createdCount,
+			firstNum
+		))
+		pushLog("PLACE", string.format("Pembuatan Place: %d/%d slot%s", createdCount, firstNum, savedPath and (" -> " .. savedPath) or ""))
 		return
 	end
 
@@ -244,29 +409,36 @@ local function executeImportFeature(rawInput: string)
 		for _, pid in ipairs(permIds) do
 			table.insert(listStr, tostring(pid))
 		end
-		safeCopy(table.concat(listStr, ","))
-		pushLog("PERM", string.format("Batch permission %d ID -> Universe %s (disalin)", #permIds, universeId))
+		local csvIds = table.concat(listStr, ",")
+		safeCopy(csvIds)
+		local savedPath = saveToDeltaFolder("import", string.format("perm_%s.txt", universeId), csvIds)
+		pushLog("PERM", string.format(
+			"Batch permission %d ID -> Universe %s%s",
+			#permIds,
+			universeId,
+			savedPath and (" -> " .. savedPath) or " (disalin)"
+		))
 	elseif #permIds == 1 then
 		pushLog("PERM", string.format("Permission ID %d -> Universe %s siap", permIds[1], universeId))
 	else
-		pushLog("PERM", "Target Universe ID aktif: " .. universeId)
+		pushLog("PERM", "Target Universe ID otomatis: " .. universeId)
 	end
 end
 
--- [Setting] Set Cookie / API Key / Speed / Universe / Exit
-local function executeSettingFeature(rawInput: string, screenGui: ScreenGui)
-	local trimmed = string.gsub(rawInput or "", "^%s*(.-)%s*$", "%1")
+local function executeSettingFeature(rawInput, guiRef)
+	syncAutoIdentity(true)
+	local trimmed = string.gsub(tostring(rawInput or ""), "^%s*(.-)%s*$", "%1")
 	local lower = string.lower(trimmed)
 
 	if lower == "exit" or lower == "keluar" then
 		table.clear(MemorySession.Logs)
-		screenGui:Destroy()
+		guiRef:Destroy()
 		return
 	end
 
 	if string.sub(trimmed, 1, 10) == "_|WARNING:" or string.len(trimmed) > 80 then
 		MemorySession.CookieToken = trimmed
-		pushLog("COOKIE", "Cookie tersimpan di sesi memori (" .. tostring(LocalPlayer.UserId) .. ")")
+		pushLog("COOKIE", "Cookie tersimpan di sesi memori (" .. tostring(MemorySession.UserId) .. ")")
 		return
 	end
 
@@ -293,25 +465,36 @@ local function executeSettingFeature(rawInput: string, screenGui: ScreenGui)
 		pushLog("SESSION", "Token/Key sesi diperbarui di memori")
 	else
 		pushLog("SETTING", string.format(
-			"Universe:%s | Speed:%.2f | Cookie:%s | API:%s",
+			"User:%s(%d) | Univ:%s | Speed:%.2f",
+			MemorySession.UserName,
+			MemorySession.UserId,
 			MemorySession.ActiveUniverseId,
-			MemorySession.PlaybackSpeed,
-			MemorySession.CookieToken ~= "" and "OK" or "-",
-			MemorySession.ApiKeyToken ~= "" and "OK" or "-"
+			MemorySession.PlaybackSpeed
 		))
 	end
 end
 
--- [About] Info Creator Ikyy & Detail Tools
-local ABOUT_SUMMARY = table.concat({
-	"Creator: Ikyy (sptzyy / IkyyXD)",
-	"Tools: Plugin Studio Lite (Spoof Audio/RBXM, Upload Aset, Place & Asset Permissions)",
-	"Mode: In-Memory Session (Tanpa Save File, Isolasi Sesi Aktif)",
-}, " • ")
+local function buildAboutText()
+	syncAutoIdentity(true)
+	return table.concat({
+		"Creator    : Ikyy (sptzyy / IkyyXD)",
+		"Tools      : Plugin Studio Lite (Delta Executor)",
+		string.format("User       : %s (%d)", MemorySession.UserName, MemorySession.UserId),
+		string.format("UniverseId : %s", MemorySession.ActiveUniverseId),
+		"Folder     : " .. WORKSPACE_ROOT .. "/<fitur>",
+	}, "\n")
+end
 
 local function executeAboutFeature()
-	local copied = safeCopy(ABOUT_SUMMARY)
-	pushLog("ABOUT", "by Ikyy • Tools: Spoof, Upload, Import/Place, Permission (In-Memory)" .. (copied and " [Disalin]" or ""))
+	local fullInfo = buildAboutText()
+	local savedPath = saveToDeltaFolder("about", "about_ikyy.txt", fullInfo)
+	local copied = safeCopy(fullInfo)
+	pushLog("ABOUT", string.format(
+		"User:%d | Univ:%s by Ikyy%s",
+		MemorySession.UserId,
+		MemorySession.ActiveUniverseId,
+		savedPath and (" -> " .. savedPath) or (copied and " [Disalin]" or "")
+	))
 end
 
 -- ==========================================
@@ -321,7 +504,7 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "IkyyStudioLiteCaseUI"
 screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
-screenGui.Parent = PlayerGui[span_1](start_span)[span_1](end_span)
+screenGui.Parent = guiParent[span_1](start_span)[span_1](end_span)
 
 local restoreBtn = Instance.new("TextButton")
 restoreBtn.Name = "RestoreButton"
@@ -398,14 +581,14 @@ titleLabel.Text = "Plugin Studio Lite"
 titleLabel.Parent = mainFrame[span_5](start_span)[span_5](end_span)
 
 local subLabel = Instance.new("TextLabel")
-subLabel.Size = UDim2.new(0, 280, 0, 16)
+subLabel.Size = UDim2.new(0, 340, 0, 16)
 subLabel.Position = UDim2.new(0, 58, 0, 32)
 subLabel.BackgroundTransparency = 1
 subLabel.Font = Enum.Font.Gotham
 subLabel.TextSize = 11
 subLabel.TextXAlignment = Enum.TextXAlignment.Left
 subLabel.TextColor3 = Color3.fromRGB(135, 130, 160)
-subLabel.Text = "by Ikyy • v1.0 (In-Memory)"
+subLabel.Text = string.format("by Ikyy • Univ:%s • UID:%d", MemorySession.ActiveUniverseId, MemorySession.UserId)
 subLabel.Parent = mainFrame[span_6](start_span)[span_6](end_span)
 
 local closeBtn = Instance.new("TextButton")
@@ -480,7 +663,7 @@ featureDesc.Font = Enum.Font.Gotham
 featureDesc.TextSize = 11
 featureDesc.TextXAlignment = Enum.TextXAlignment.Left
 featureDesc.TextColor3 = Color3.fromRGB(130, 126, 155)
-featureDesc.Text = "Downloader Spoof Audio / RBXM (satuan & massal)"
+featureDesc.Text = "Downloader Spoof Audio / RBXM (save ke folder Delta)"
 featureDesc.Parent = contentPanel[span_11](start_span)[span_11](end_span)
 
 local inputLabel = Instance.new("TextLabel")
@@ -534,7 +717,7 @@ chipLayout.Padding = UDim.new(0, 6)
 chipLayout.Parent = chipRow
 
 local chipNames = { "Auto", "Audio", "Decal", "Model", "Anim" }[span_15](start_span)[span_15](end_span)
-local chipButtons: {[string]: TextButton} = {}
+local chipButtons = {}
 
 local function refreshChips()
 	for _, cname in ipairs(chipNames) do
@@ -617,7 +800,7 @@ logBox.Font = Enum.Font.Code
 logBox.TextSize = 11
 logBox.TextXAlignment = Enum.TextXAlignment.Left
 logBox.TextColor3 = Color3.fromRGB(190, 245, 255)
-logBox.Text = "  Siap."
+logBox.Text = "  " .. (MemorySession.Logs[1] or "Siap.")
 logBox.Parent = contentPanel[span_18](start_span)[span_18](end_span)
 
 local logCorner = Instance.new("UICorner")
@@ -625,6 +808,8 @@ logCorner.CornerRadius = UDim.new(0, 6)
 logCorner.Parent = logBox
 
 local function refreshLogs()
+	syncAutoIdentity(true)
+	subLabel.Text = string.format("by Ikyy • Univ:%s • UID:%d", MemorySession.ActiveUniverseId, MemorySession.UserId)
 	if #MemorySession.Logs == 0 then
 		logBox.Text = "  Siap."
 	else
@@ -638,30 +823,27 @@ end
 local tabMeta = {
 	Spoof = {
 		title = "Spoof",
-		desc = "Downloader Spoof Audio / RBXM (satuan & massal)",
+		desc = "Downloader Spoof Audio / RBXM (save ke folder Delta)",
 		label = "ASSET ID",
 		placeholder = "Tempel Asset ID atau format SongName: ... SongId: ...",
 		btnText = "⇄  SPOOF SEKARANG",
 		editable = true,
-		presetText = "",
 	},
 	Upload = {
 		title = "Upload",
-		desc = "Pengunggah Aset & Decal (satuan & massal)",
+		desc = "Pengunggah Aset & Decal (save ke folder Delta/upload)",
 		label = "ASSET ID",
 		placeholder = "Masukkan Asset ID (satuan atau massal, pisah koma/spasi)",
 		btnText = "↑  UPLOAD SEKARANG",
 		editable = true,
-		presetText = "",
 	},
 	Import = {
 		title = "Import",
-		desc = "Pembuat Place (1-20) & Asset Permissions (Universe)",
+		desc = "Pembuat Place (1-20) & Asset Permissions (Universe otomatis)",
 		label = "JUMLAH PLACE / UNIVERSE ID",
-		placeholder = "Masukkan jumlah Place (1-20) atau UniverseId,AssetId1,AssetId2",
+		placeholder = "Kosongkan untuk pakai UniverseId otomatis, atau isi jumlah/ID",
 		btnText = "↓  IMPORT SEKARANG",
 		editable = true,
-		presetText = "",
 	},
 	Setting = {
 		title = "Setting",
@@ -670,28 +852,22 @@ local tabMeta = {
 		placeholder = "Tempel Cookie, API Key, Speed (misal 1.25), Universe ID, atau 'exit'",
 		btnText = "⚙  SIMPAN SESI",
 		editable = true,
-		presetText = "",
 	},
 	About = {
 		title = "About",
-		desc = "Tentang Creator Ikyy & Informasi Plugin Studio Lite",
-		label = "CREATOR & TENTANG TOOLS",
+		desc = "Tentang Creator Ikyy • Auto Cek User & UniverseId",
+		label = "CREATOR & AUTO DETECT INFO",
 		placeholder = "",
-		btnText = "📋  SALIN INFO ABOUT",
+		btnText = "💾  SAVE & SALIN INFO",
 		editable = false,
-		presetText = table.concat({
-			"Creator : Ikyy (sptzyy / IkyyXD)",
-			"Tools   : Plugin Studio Lite (Delta Executor - In-Memory)",
-			"Fitur   : Spoof Audio/RBXM, Upload Aset, Place & Permission",
-			"Sesi    : Terisolasi di memori tanpa save file lokal",
-		}, "\n"),
 	},
 }
 
 local navOrder = { "Spoof", "Upload", "Import", "Setting", "About" }
-local navButtons: {[string]: TextButton} = {}
+local navButtons = {}
 
-local function selectTab(name: string)
+local function selectTab(name)
+	syncAutoIdentity(true)
 	MemorySession.ActiveTab = name
 	local info = tabMeta[name]
 	featureTitle.Text = info.title
@@ -702,8 +878,8 @@ local function selectTab(name: string)
 	inputBox.TextEditable = info.editable
 
 	if name == "About" then
-		inputBox.Text = info.presetText
-	elseif inputBox.Text == tabMeta.About.presetText then
+		inputBox.Text = buildAboutText()
+	elseif string.find(inputBox.Text, "Creator    : Ikyy", 1, true) then
 		inputBox.Text = ""
 	end
 
@@ -712,6 +888,7 @@ local function selectTab(name: string)
 		btn.BackgroundColor3 = isAct and Color3.fromRGB(46, 40, 76) or Color3.fromRGB(18, 17, 28)
 		btn.TextColor3 = isAct and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(165, 162, 188)
 	end
+	refreshLogs()
 end
 
 for i, name in ipairs(navOrder) do
@@ -799,6 +976,9 @@ actionBtn.MouseButton1Click:Connect(function()
 		executeAboutFeature()
 	end
 	refreshLogs()
+	if MemorySession.ActiveTab == "About" then
+		inputBox.Text = buildAboutText()
+	end
 end)
 
 clearBtn.MouseButton1Click:Connect(function()
@@ -810,11 +990,14 @@ clearBtn.MouseButton1Click:Connect(function()
 end)
 
 cekBtn.MouseButton1Click:Connect(function()
+	syncAutoIdentity(true)
+	local reqFn = getHttpRequestFn()
+	local netStatus = (type(reqFn) == "function") and "HTTP:OK" or "HTTP:LOCAL"
 	local details = fetchAssetDetails(1848354536)
 	if details and details.Name ~= "Asset_1848354536" then
-		pushLog("CONN", "Koneksi aktif • Aset uji: " .. details.Name)
+		pushLog("AUTO", string.format("User:%s(%d) | Univ:%s | %s", MemorySession.UserName, MemorySession.UserId, MemorySession.ActiveUniverseId, netStatus))
 	else
-		pushLog("CONN", "Sesi aktif • Periksa koneksi MarketplaceService")
+		pushLog("AUTO", string.format("User:%s(%d) | Univ:%s", MemorySession.UserName, MemorySession.UserId, MemorySession.ActiveUniverseId))
 	end
 	refreshLogs()
 end)
@@ -838,8 +1021,8 @@ selectTab("Spoof")
 
 pcall(function()
 	StarterGui:SetCore("SendNotification", {
-		Title = "Plugin Studio Lite",
-		Text = "Dimuat di Delta Executor • by Ikyy",
+		Title = "Plugin Studio Lite (Delta)",
+		Text = string.format("User:%d • Univ:%s • by Ikyy", MemorySession.UserId, MemorySession.ActiveUniverseId),
 		Duration = 4,
 	})
 end)
