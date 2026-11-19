@@ -127,6 +127,22 @@ local function inferRobloxAssetType(ext: string): string
 	return "Model"
 end
 
+local function inferMimeType(ext: string): string
+	local e = ext:lower()
+	if e == ".mp3" then
+		return "audio/mpeg"
+	elseif e == ".ogg" then
+		return "audio/ogg"
+	elseif e == ".wav" then
+		return "audio/wav"
+	elseif e == ".png" then
+		return "image/png"
+	elseif e == ".jpg" or e == ".jpeg" then
+		return "image/jpeg"
+	end
+	return "application/octet-stream"
+end
+
 local function notify(title: string, text: string)
 	pcall(function()
 		StarterGui:SetCore("SendNotification", {
@@ -580,6 +596,28 @@ local function apiRequest(options: {
 	return lastRes, lastOk, lastErr
 end
 
+local function buildMultipartAssetBody(
+	boundary: string,
+	payloadJson: string,
+	fileName: string,
+	mimeType: string,
+	fileBytes: string
+): string
+	local crlf = string.char(13, 10)
+	local parts = {
+		"--" .. boundary .. crlf,
+		'Content-Disposition: form-data; name="request"' .. crlf,
+		"Content-Type: application/json; charset=UTF-8" .. crlf .. crlf,
+		payloadJson .. crlf,
+		"--" .. boundary .. crlf,
+		string.format('Content-Disposition: form-data; name="fileContent"; filename="%s"', fileName) .. crlf,
+		"Content-Type: " .. mimeType .. crlf .. crlf,
+		fileBytes .. crlf,
+		"--" .. boundary .. "--" .. crlf,
+	}
+	return table.concat(parts)
+end
+
 local function getHeaderCaseInsensitive(headers: any, targetKey: string): string?
 	if type(headers) ~= "table" then return nil end
 	local lowerTarget = targetKey:lower()
@@ -818,7 +856,7 @@ local MetaLabel = Instance.new("TextLabel")
 MetaLabel.Size = UDim2.new(0, 240, 0, 11)
 MetaLabel.Position = UDim2.new(0, 48, 0, 31)
 MetaLabel.BackgroundTransparency = 1
-MetaLabel.Text = "by Ikyy • v1.3 • @" .. LocalPlayer.Name
+MetaLabel.Text = "by Ikyy • v1.3.1 • @" .. LocalPlayer.Name
 MetaLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
 MetaLabel.TextSize = 8
 MetaLabel.Font = Enum.Font.GothamMedium
@@ -2532,7 +2570,7 @@ AboutText.BackgroundTransparency = 1
 AboutText.Text = table.concat({
 	"Creator       : Ikyy (@" .. LocalPlayer.Name .. " | ID: " .. tostring(LocalPlayer.UserId) .. ")",
 	"Tools         : Plugin Studio Lite (Delta Executor Edition)",
-	"Versi         : v1.3",
+	"Versi         : v1.3.1",
 	"Workspace     : " .. CONFIG.WorkspaceRoot .. "/ (TXT, SPOOF, Logs)",
 	"",
 	"Fitur Utama:",
@@ -2857,16 +2895,16 @@ UploadSelectedBtn.MouseButton1Click:Connect(function()
 	task.spawn(function()
 		local sukses, gagal = 0, 0
 		local formattedBlocks: {string} = {}
-		local ownerUserId = tostring(LocalPlayer.UserId)
+		local ownerUserId = tonumber(tostring(LocalPlayer.UserId)) or LocalPlayer.UserId
 
 		for idx, item in ipairs(chosenItems) do
 			local fileContent = loadTextFile(item.relPath)
 			local assetIdOut = "-"
 			local statusOut = "Gagal"
 
-			if not fileContent or fileContent == "" then
+			if not fileContent or #fileContent == 0 then
 				gagal += 1
-				statusOut = "Gagal (File kosong/tidak terbaca)"
+				statusOut = "Gagal (File kosong atau tidak terbaca)"
 			else
 				local payloadJson = HttpService:JSONEncode({
 					assetType = item.assetType,
@@ -2874,26 +2912,15 @@ UploadSelectedBtn.MouseButton1Click:Connect(function()
 					description = "Uploaded via Plugin Studio Lite",
 					creationContext = {
 						creator = {
-							userId = ownerUserId,
+							userId = tostring(ownerUserId),
 						},
 					},
 				})
 
 				local boundary = "----IkyyStudioLiteBoundary" .. tostring(os.time()) .. tostring(idx)
-				local multipartBody = table.concat({
-					"--" .. boundary,
-					'Content-Disposition: form-data; name="request"',
-					"Content-Type: application/json",
-					"",
-					payloadJson,
-					"--" .. boundary,
-					string.format('Content-Disposition: form-data; name="fileContent"; filename="%s%s"', sanitizeFileName(item.displayName), item.ext),
-					"Content-Type: application/octet-stream",
-					"",
-					fileContent,
-					"--" .. boundary .. "--",
-					"",
-				}, "\r\n")
+				local safeFileName = sanitizeFileName(item.displayName) .. item.ext
+				local mimeType = inferMimeType(item.ext)
+				local multipartBody = buildMultipartAssetBody(boundary, payloadJson, safeFileName, mimeType, fileContent)
 
 				local res, ok, info = apiRequest({
 					Url = "https://apis.roblox.com/assets/v1/assets",
@@ -2927,7 +2954,7 @@ UploadSelectedBtn.MouseButton1Click:Connect(function()
 					sukses += 1
 				else
 					gagal += 1
-					local shortErr = bodyStr:gsub("[\r\n]+", " "):sub(1, 90)
+					local shortErr = bodyStr:gsub("[\r\n]+", " "):sub(1, 140)
 					statusOut = "Gagal (" .. info .. (shortErr ~= "" and (": " .. shortErr) or "") .. ")"
 				end
 			end
