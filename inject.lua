@@ -1,6 +1,6 @@
 --!strict
 -- Plugin Studio Lite (Delta Executor Edition) by Ikyy
--- Fitur: Spoof (Audio/RBXM), Upload Asset, Place Maker, Asset Permissions, Setting, Close -> Ikon Lingkaran Profile (Draggable)
+-- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Hasil
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -32,6 +32,8 @@ local CONFIG = {
 	UserAgent = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
 }
 
+local MEMORY_FILES: {[string]: string} = {}
+
 local WINDOW_SIZE = UDim2.fromOffset(540, 320)
 local WINDOW_POS = UDim2.new(0.5, -270, 0.5, -160)
 local ICON_SIZE = UDim2.fromOffset(42, 42)
@@ -60,20 +62,66 @@ local function notify(title: string, text: string)
 		StarterGui:SetCore("SendNotification", {
 			Title = title,
 			Text = text,
-			Duration = 2.5,
+			Duration = 3,
 		})
 	end)
 end
 
-local function hasFileIO(): boolean
-	return type(writefile) == "function"
-		and type(readfile) == "function"
-		and type(isfolder) == "function"
-		and type(makefolder) == "function"
+-- ==========================================
+-- DELTA EXECUTOR ENVIRONMENT BRIDGE
+-- ==========================================
+local function getEnvTable(): {[string]: any}
+	local env: {[string]: any} = {}
+	pcall(function()
+		if type(getgenv) == "function" then
+			local g = getgenv()
+			if type(g) == "table" then
+				for k, v in pairs(g) do
+					env[k] = v
+				end
+			end
+		end
+	end)
+	pcall(function()
+		local f = getfenv(0)
+		if type(f) == "table" then
+			for k, v in pairs(f) do
+				if env[k] == nil then
+					env[k] = v
+				end
+			end
+		end
+	end)
+	return env
 end
 
+local ENV = getEnvTable()
+
+local function getDeltaHttpFunc()
+	local candidates = {
+		ENV.request,
+		ENV.http_request,
+		type(ENV.syn) == "table" and ENV.syn.request or nil,
+		type(ENV.http) == "table" and ENV.http.request or nil,
+		type(ENV.fluxus) == "table" and ENV.fluxus.request or nil,
+		type(ENV.delta) == "table" and ENV.delta.request or nil,
+	}
+	for _, fn in ipairs(candidates) do
+		if type(fn) == "function" then
+			return fn
+		end
+	end
+	return nil
+end
+
+local fnWriteFile = type(ENV.writefile) == "function" and ENV.writefile or nil
+local fnReadFile = type(ENV.readfile) == "function" and ENV.readfile or nil
+local fnIsFile = type(ENV.isfile) == "function" and ENV.isfile or nil
+local fnIsFolder = type(ENV.isfolder) == "function" and ENV.isfolder or nil
+local fnMakeFolder = type(ENV.makefolder) == "function" and ENV.makefolder or nil
+
 local function ensureFolders()
-	if not hasFileIO() then return end
+	if not fnMakeFolder then return end
 	local folders = {
 		CONFIG.WorkspaceRoot,
 		CONFIG.WorkspaceRoot .. "/SPOOF",
@@ -84,36 +132,62 @@ local function ensureFolders()
 		CONFIG.WorkspaceRoot .. "/Logs",
 	}
 	for _, folder in ipairs(folders) do
-		if not isfolder(folder) then
-			pcall(makefolder, folder)
+		local exists = false
+		if fnIsFolder then
+			local okChk, resChk = pcall(fnIsFolder, folder)
+			exists = okChk and (resChk == true)
+		end
+		if not exists then
+			pcall(fnMakeFolder, folder)
 		end
 	end
 end
 
 local function saveTextFile(relPath: string, content: string): boolean
-	if not hasFileIO() then return false end
+	local cleanRel = relPath:gsub("^/+", "")
+	local fullPath = CONFIG.WorkspaceRoot .. "/" .. cleanRel
+	MEMORY_FILES[cleanRel] = content
+	MEMORY_FILES[fullPath] = content
+
+	if not fnWriteFile then
+		return true
+	end
+
 	ensureFolders()
-	local ok = pcall(writefile, CONFIG.WorkspaceRoot .. "/" .. relPath, content)
+	local ok = pcall(fnWriteFile, fullPath, content)
 	return ok
 end
 
 local function loadTextFile(relPath: string): string?
-	if not hasFileIO() then return nil end
 	local cleanRel = relPath:gsub("^/+", "")
 	local candidates = {
 		CONFIG.WorkspaceRoot .. "/" .. cleanRel,
 		cleanRel,
 	}
-	for _, fullPath in ipairs(candidates) do
-		local ok, res = pcall(function()
-			if type(isfile) == "function" and isfile(fullPath) then
-				return readfile(fullPath)
+
+	if fnReadFile then
+		for _, fullPath in ipairs(candidates) do
+			local canRead = true
+			if fnIsFile then
+				local okChk, exists = pcall(fnIsFile, fullPath)
+				canRead = okChk and (exists == true)
 			end
-			return nil
-		end)
-		if ok and type(res) == "string" then
-			return res
+			if canRead then
+				local okRead, res = pcall(fnReadFile, fullPath)
+				if okRead and type(res) == "string" then
+					return res
+				end
+			end
 		end
+	end
+
+	for _, key in ipairs(candidates) do
+		if type(MEMORY_FILES[key]) == "string" then
+			return MEMORY_FILES[key]
+		end
+	end
+	if type(MEMORY_FILES[cleanRel]) == "string" then
+		return MEMORY_FILES[cleanRel]
 	end
 	return nil
 end
@@ -123,15 +197,6 @@ local savedApiKey = loadTextFile("apikey.txt")
 if savedCookie and trim(savedCookie) ~= "" then CONFIG.Cookie = normalizeCookie(savedCookie) end
 if savedApiKey and trim(savedApiKey) ~= "" then CONFIG.ApiKey = trim(savedApiKey) end
 
-local function getHttpFunc()
-	if type(request) == "function" then return request end
-	if type(http_request) == "function" then return http_request end
-	if syn and type(syn.request) == "function" then return syn.request end
-	if http and type(http.request) == "function" then return http.request end
-	return nil
-end
-
--- Wrapper request ala requests.Session di Python
 local function apiRequest(options: {
 	Url: string,
 	Method: string?,
@@ -139,9 +204,9 @@ local function apiRequest(options: {
 	Body: string?,
 	Retries: number?,
 })
-	local reqFn = getHttpFunc()
+	local reqFn = getDeltaHttpFunc()
 	if not reqFn then
-		return nil, false
+		return nil, false, "HTTP function tidak tersedia di executor"
 	end
 
 	local maxAttempts = math.max(1, options.Retries or 1)
@@ -156,6 +221,7 @@ local function apiRequest(options: {
 
 	local lastRes = nil
 	local lastOk = false
+	local lastErr = "Tidak ada respons"
 
 	for attempt = 1, maxAttempts do
 		local ok, res = pcall(reqFn, {
@@ -166,18 +232,24 @@ local function apiRequest(options: {
 		})
 		if ok and type(res) == "table" then
 			lastRes = res
-			local code = tonumber(res.StatusCode) or 0
+			local code = tonumber(res.StatusCode or res.Status or res.status_code) or 0
 			lastOk = (code >= 200 and code < 300)
-			if lastOk or code == 400 or code == 401 or code == 403 or code == 404 then
-				return res, lastOk
+			if lastOk then
+				return res, true, "HTTP " .. tostring(code)
 			end
+			lastErr = "HTTP " .. tostring(code)
+			if code == 400 or code == 401 or code == 403 or code == 404 then
+				return res, false, lastErr
+			end
+		else
+			lastErr = tostring(res)
 		end
 		if attempt < maxAttempts then
 			task.wait(0.6)
 		end
 	end
 
-	return lastRes, lastOk
+	return lastRes, lastOk, lastErr
 end
 
 local function getHeaderCaseInsensitive(headers: any, targetKey: string): string?
@@ -218,7 +290,7 @@ local function getUserAvatarAsync(userId: number): string
 end
 
 -- ==========================================
--- UI UTAMA (WINDOW TERKUNCI DI TENGAH, IKON BISA DIGESER LUAS)
+-- UI UTAMA
 -- ==========================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "IkyyPluginStudioLite_GUI"
@@ -227,7 +299,7 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.Parent = PlayerGui
 
--- 1. IKON LINGKARAN PROFILE USER (UKURAN KECIL 42x42, BISA DIGESER KE SELURUH LAYAR)
+-- 1. IKON LINGKARAN PROFILE USER (42x42, DRAGGABLE)
 local FloatingProfileBtn = Instance.new("ImageButton")
 FloatingProfileBtn.Name = "FloatingProfileToggle"
 FloatingProfileBtn.Size = ICON_SIZE
@@ -240,16 +312,12 @@ FloatingProfileBtn.ZIndex = 50
 FloatingProfileBtn.Image = getUserAvatarAsync(LocalPlayer.UserId)
 FloatingProfileBtn.Parent = ScreenGui
 
-local FloatCorner = Instance.new("UICorner")
-FloatCorner.CornerRadius = UDim.new(1, 0)
-FloatCorner.Parent = FloatingProfileBtn
-
-local FloatStroke = Instance.new("UIStroke")
+Instance.new("UICorner", FloatingProfileBtn).CornerRadius = UDim.new(1, 0)
+local FloatStroke = Instance.new("UIStroke", FloatingProfileBtn)
 FloatStroke.Color = Color3.fromRGB(130, 92, 255)
 FloatStroke.Thickness = 2
-FloatStroke.Parent = FloatingProfileBtn
 
--- 2. WINDOW UTAMA (UKURAN LEBIH KECIL 540x320)
+-- 2. WINDOW UTAMA (540x320)
 local MainWindow = Instance.new("Frame")
 MainWindow.Name = "MainWindow"
 MainWindow.Size = WINDOW_SIZE
@@ -259,15 +327,11 @@ MainWindow.BorderSizePixel = 0
 MainWindow.ClipsDescendants = true
 MainWindow.Parent = ScreenGui
 
-local MainCorner = Instance.new("UICorner")
-MainCorner.CornerRadius = UDim.new(0, 14)
-MainCorner.Parent = MainWindow
-
-local MainStroke = Instance.new("UIStroke")
+Instance.new("UICorner", MainWindow).CornerRadius = UDim.new(0, 14)
+local MainStroke = Instance.new("UIStroke", MainWindow)
 MainStroke.Color = Color3.fromRGB(92, 72, 168)
 MainStroke.Thickness = 1.4
 MainStroke.Transparency = 0.25
-MainStroke.Parent = MainWindow
 
 local MainGradient = Instance.new("UIGradient")
 MainGradient.Color = ColorSequence.new({
@@ -294,7 +358,6 @@ HeaderLogoBox.Position = UDim2.new(0, 12, 0.5, -15)
 HeaderLogoBox.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
 HeaderLogoBox.BorderSizePixel = 0
 HeaderLogoBox.Parent = HeaderBar
-
 Instance.new("UICorner", HeaderLogoBox).CornerRadius = UDim.new(0, 8)
 local LogoStroke = Instance.new("UIStroke", HeaderLogoBox)
 LogoStroke.Color = Color3.fromRGB(95, 85, 145)
@@ -342,7 +405,6 @@ MetaLabel.Font = Enum.Font.GothamMedium
 MetaLabel.TextXAlignment = Enum.TextXAlignment.Left
 MetaLabel.Parent = HeaderBar
 
--- Tombol Close (X) -> Mengecil menjadi Ikon Lingkaran Profile User (42x42)
 local CloseCircleBtn = Instance.new("TextButton")
 CloseCircleBtn.Name = "CloseToCircleBtn"
 CloseCircleBtn.Size = UDim2.fromOffset(28, 28)
@@ -353,7 +415,6 @@ CloseCircleBtn.TextColor3 = Color3.fromRGB(220, 218, 238)
 CloseCircleBtn.TextSize = 12
 CloseCircleBtn.Font = Enum.Font.GothamBold
 CloseCircleBtn.Parent = HeaderBar
-
 Instance.new("UICorner", CloseCircleBtn).CornerRadius = UDim.new(1, 0)
 local CloseStroke = Instance.new("UIStroke", CloseCircleBtn)
 CloseStroke.Color = Color3.fromRGB(85, 80, 120)
@@ -387,7 +448,7 @@ local function setMinimized(minimized: boolean)
 	end
 end
 
--- Logika Geser Luas (Drag) & Klik pada Ikon Profil
+-- Geser luas ikon profil
 do
 	local dragging = false
 	local movedSignificantly = false
@@ -403,9 +464,7 @@ do
 		local pad = 6
 		local maxX = math.max(pad, viewport.X - iconW - pad)
 		local maxY = math.max(pad, viewport.Y - iconH - pad)
-		local clampedX = math.clamp(pos.X.Offset, pad, maxX)
-		local clampedY = math.clamp(pos.Y.Offset, pad, maxY)
-		return UDim2.fromOffset(clampedX, clampedY)
+		return UDim2.fromOffset(math.clamp(pos.X.Offset, pad, maxX), math.clamp(pos.Y.Offset, pad, maxY))
 	end
 
 	local function getCurrentOffsetPos(): UDim2
@@ -464,7 +523,6 @@ Sidebar.Position = UDim2.new(0, 10, 0, 52)
 Sidebar.BackgroundColor3 = Color3.fromRGB(21, 20, 32)
 Sidebar.BorderSizePixel = 0
 Sidebar.Parent = MainWindow
-
 Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 10)
 local SideStroke = Instance.new("UIStroke", Sidebar)
 SideStroke.Color = Color3.fromRGB(52, 48, 82)
@@ -497,7 +555,6 @@ local function createNavButton(name: string, label: string, order: number)
 	btn.LayoutOrder = order
 	btn.AutoButtonColor = false
 	btn.Parent = NavList
-
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
 	tabButtons[name] = btn
 	return btn
@@ -553,7 +610,6 @@ ContentArea.Position = UDim2.new(0, 142, 0, 52)
 ContentArea.BackgroundColor3 = Color3.fromRGB(20, 19, 30)
 ContentArea.BorderSizePixel = 0
 ContentArea.Parent = MainWindow
-
 Instance.new("UICorner", ContentArea).CornerRadius = UDim.new(0, 10)
 local ContStroke = Instance.new("UIStroke", ContentArea)
 ContStroke.Color = Color3.fromRGB(52, 48, 82)
@@ -571,19 +627,15 @@ local function switchTab(tabName: string)
 	end
 end
 
--- Helper indikator hasil (tanpa menampilkan teks nama status)
-local function createResultBar(parent: GuiObject, yPos: number)
+-- Helper Komponen Output Hasil (Progress Bar + Kotak Teks Hasil yang bisa disalin)
+local function createOutcomePanel(parent: GuiObject, yPos: number, boxHeight: number)
 	local bar = Instance.new("Frame")
-	bar.Size = UDim2.new(1, -24, 0, 10)
+	bar.Size = UDim2.new(1, -24, 0, 6)
 	bar.Position = UDim2.new(0, 12, 0, yPos)
 	bar.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
 	bar.BorderSizePixel = 0
 	bar.Parent = parent
 	Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-
-	local stroke = Instance.new("UIStroke", bar)
-	stroke.Color = Color3.fromRGB(58, 54, 88)
-	stroke.Thickness = 1
 
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.new(0, 0, 1, 0)
@@ -592,21 +644,53 @@ local function createResultBar(parent: GuiObject, yPos: number)
 	fill.Parent = bar
 	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
 
-	local statusTextHidden = Instance.new("TextLabel")
-	statusTextHidden.Visible = false
-	statusTextHidden.Parent = bar
+	local resultBox = Instance.new("TextBox")
+	resultBox.Size = UDim2.new(1, -24, 0, boxHeight)
+	resultBox.Position = UDim2.new(0, 12, 0, yPos + 10)
+	resultBox.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+	resultBox.Text = ""
+	resultBox.PlaceholderText = "Hasil akan muncul di sini..."
+	resultBox.PlaceholderColor3 = Color3.fromRGB(95, 92, 118)
+	resultBox.TextColor3 = Color3.fromRGB(210, 240, 220)
+	resultBox.TextSize = 10
+	resultBox.Font = Enum.Font.Code
+	resultBox.TextXAlignment = Enum.TextXAlignment.Left
+	resultBox.TextYAlignment = Enum.TextYAlignment.Top
+	resultBox.ClearTextOnFocus = false
+	resultBox.TextEditable = false
+	resultBox.MultiLine = true
+	resultBox.TextWrapped = true
+	resultBox.Parent = parent
+	Instance.new("UICorner", resultBox).CornerRadius = UDim.new(0, 6)
+	local rbStroke = Instance.new("UIStroke", resultBox)
+	rbStroke.Color = Color3.fromRGB(48, 44, 74)
+	rbStroke.Thickness = 1
 
-	return function(success: boolean, ratio: number)
+	return function(state: "idle" | "working" | "ok" | "err", ratio: number, outputText: string?)
 		local clamped = math.clamp(ratio, 0, 1)
-		fill.BackgroundColor3 = success and Color3.fromRGB(56, 239, 125) or Color3.fromRGB(255, 86, 102)
-		TweenService:Create(fill, TweenInfo.new(0.18), {
+		if state == "idle" then
+			fill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
+		elseif state == "working" then
+			fill.BackgroundColor3 = Color3.fromRGB(96, 165, 250)
+		elseif state == "ok" then
+			fill.BackgroundColor3 = Color3.fromRGB(56, 239, 125)
+		else
+			fill.BackgroundColor3 = Color3.fromRGB(255, 86, 102)
+		end
+
+		TweenService:Create(fill, TweenInfo.new(0.15), {
 			Size = UDim2.new(clamped, 0, 1, 0),
 		}):Play()
+
+		if outputText ~= nil then
+			resultBox.Text = outputText
+			resultBox.TextColor3 = (state == "err") and Color3.fromRGB(255, 145, 155) or Color3.fromRGB(205, 242, 218)
+		end
 	end
 end
 
 -- ==========================================
--- HALAMAN 1: SPOOF (SUSUNAN PERSIS SEPERTI GAMBAR)
+-- HALAMAN 1: SPOOF (INPUT -> PROSES -> HASIL)
 -- ==========================================
 local SpoofPage = Instance.new("Frame")
 SpoofPage.Size = UDim2.fromScale(1, 1)
@@ -616,44 +700,22 @@ SpoofPage.Parent = ContentArea
 tabPages["Spoof"] = SpoofPage
 
 local SpoofTitle = Instance.new("TextLabel")
-SpoofTitle.Size = UDim2.new(1, -24, 0, 18)
-SpoofTitle.Position = UDim2.new(0, 12, 0, 8)
+SpoofTitle.Size = UDim2.new(1, -24, 0, 16)
+SpoofTitle.Position = UDim2.new(0, 12, 0, 6)
 SpoofTitle.BackgroundTransparency = 1
-SpoofTitle.Text = "Spoof"
+SpoofTitle.Text = "Spoof Asset"
 SpoofTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-SpoofTitle.TextSize = 14
+SpoofTitle.TextSize = 13
 SpoofTitle.Font = Enum.Font.GothamBold
 SpoofTitle.TextXAlignment = Enum.TextXAlignment.Left
 SpoofTitle.Parent = SpoofPage
 
-local SpoofDesc = Instance.new("TextLabel")
-SpoofDesc.Size = UDim2.new(1, -24, 0, 14)
-SpoofDesc.Position = UDim2.new(0, 12, 0, 25)
-SpoofDesc.BackgroundTransparency = 1
-SpoofDesc.Text = "Asset ID lama jadi ID baru milikmu"
-SpoofDesc.TextColor3 = Color3.fromRGB(145, 142, 170)
-SpoofDesc.TextSize = 10
-SpoofDesc.Font = Enum.Font.Gotham
-SpoofDesc.TextXAlignment = Enum.TextXAlignment.Left
-SpoofDesc.Parent = SpoofPage
-
-local AssetIdHeader = Instance.new("TextLabel")
-AssetIdHeader.Size = UDim2.new(1, -24, 0, 14)
-AssetIdHeader.Position = UDim2.new(0, 12, 0, 43)
-AssetIdHeader.BackgroundTransparency = 1
-AssetIdHeader.Text = "｜ ASSET ID"
-AssetIdHeader.TextColor3 = Color3.fromRGB(175, 172, 205)
-AssetIdHeader.TextSize = 10
-AssetIdHeader.Font = Enum.Font.GothamBold
-AssetIdHeader.TextXAlignment = Enum.TextXAlignment.Left
-AssetIdHeader.Parent = SpoofPage
-
 local AssetIdBox = Instance.new("TextBox")
-AssetIdBox.Size = UDim2.new(1, -24, 0, 68)
-AssetIdBox.Position = UDim2.new(0, 12, 0, 59)
+AssetIdBox.Size = UDim2.new(1, -24, 0, 56)
+AssetIdBox.Position = UDim2.new(0, 12, 0, 26)
 AssetIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 AssetIdBox.Text = ""
-AssetIdBox.PlaceholderText = "Tempel Asset ID di sini (pisah spasi, koma, atau baris baru)"
+AssetIdBox.PlaceholderText = "Input Asset ID (pisah spasi, koma, atau baris baru)"
 AssetIdBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 AssetIdBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 AssetIdBox.TextSize = 11
@@ -670,8 +732,8 @@ AssetStroke.Color = Color3.fromRGB(65, 60, 102)
 AssetStroke.Thickness = 1
 
 local FilterRow = Instance.new("Frame")
-FilterRow.Size = UDim2.new(1, -24, 0, 26)
-FilterRow.Position = UDim2.new(0, 12, 0, 134)
+FilterRow.Size = UDim2.new(1, -24, 0, 24)
+FilterRow.Position = UDim2.new(0, 12, 0, 88)
 FilterRow.BackgroundTransparency = 1
 FilterRow.Parent = SpoofPage
 
@@ -714,8 +776,8 @@ end
 setFilter("Auto")
 
 local SpoofNowBtn = Instance.new("TextButton")
-SpoofNowBtn.Size = UDim2.new(0.62, -14, 0, 36)
-SpoofNowBtn.Position = UDim2.new(0, 12, 0, 168)
+SpoofNowBtn.Size = UDim2.new(0.62, -14, 0, 32)
+SpoofNowBtn.Position = UDim2.new(0, 12, 0, 118)
 SpoofNowBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
 SpoofNowBtn.Text = "⇄  SPOOF SEKARANG"
 SpoofNowBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -725,8 +787,8 @@ SpoofNowBtn.Parent = SpoofPage
 Instance.new("UICorner", SpoofNowBtn).CornerRadius = UDim.new(0, 8)
 
 local BersihkanBtn = Instance.new("TextButton")
-BersihkanBtn.Size = UDim2.new(0.38, -14, 0, 36)
-BersihkanBtn.Position = UDim2.new(0.62, 2, 0, 168)
+BersihkanBtn.Size = UDim2.new(0.38, -14, 0, 32)
+BersihkanBtn.Position = UDim2.new(0.62, 2, 0, 118)
 BersihkanBtn.BackgroundColor3 = Color3.fromRGB(26, 25, 39)
 BersihkanBtn.Text = "BERSIHKAN"
 BersihkanBtn.TextColor3 = Color3.fromRGB(210, 208, 232)
@@ -738,15 +800,15 @@ local BersStroke = Instance.new("UIStroke", BersihkanBtn)
 BersStroke.Color = Color3.fromRGB(68, 64, 100)
 BersStroke.Thickness = 1
 
-local setSpoofOutcome = createResultBar(SpoofPage, 214)
+local updateSpoofOutcome = createOutcomePanel(SpoofPage, 156, 86)
 
 BersihkanBtn.MouseButton1Click:Connect(function()
 	AssetIdBox.Text = ""
-	setSpoofOutcome(true, 0)
+	updateSpoofOutcome("idle", 0, "")
 end)
 
 -- ==========================================
--- HALAMAN 2: UPLOAD ASSET
+-- HALAMAN 2: UPLOAD ASSET (INPUT -> PROSES -> HASIL)
 -- ==========================================
 local UploadPage = Instance.new("Frame")
 UploadPage.Size = UDim2.fromScale(1, 1)
@@ -756,19 +818,19 @@ UploadPage.Parent = ContentArea
 tabPages["Upload"] = UploadPage
 
 local UploadTitle = Instance.new("TextLabel")
-UploadTitle.Size = UDim2.new(1, -24, 0, 18)
-UploadTitle.Position = UDim2.new(0, 12, 0, 8)
+UploadTitle.Size = UDim2.new(1, -24, 0, 16)
+UploadTitle.Position = UDim2.new(0, 12, 0, 6)
 UploadTitle.BackgroundTransparency = 1
 UploadTitle.Text = "Upload Asset"
 UploadTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-UploadTitle.TextSize = 14
+UploadTitle.TextSize = 13
 UploadTitle.Font = Enum.Font.GothamBold
 UploadTitle.TextXAlignment = Enum.TextXAlignment.Left
 UploadTitle.Parent = UploadPage
 
 local UploadNameBox = Instance.new("TextBox")
-UploadNameBox.Size = UDim2.new(0.5, -15, 0, 30)
-UploadNameBox.Position = UDim2.new(0, 12, 0, 32)
+UploadNameBox.Size = UDim2.new(0.5, -15, 0, 26)
+UploadNameBox.Position = UDim2.new(0, 12, 0, 26)
 UploadNameBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 UploadNameBox.PlaceholderText = "Nama Asset"
 UploadNameBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
@@ -776,12 +838,13 @@ UploadNameBox.Text = ""
 UploadNameBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 UploadNameBox.TextSize = 10
 UploadNameBox.Font = Enum.Font.Gotham
+UploadNameBox.ClearTextOnFocus = false
 UploadNameBox.Parent = UploadPage
 Instance.new("UICorner", UploadNameBox).CornerRadius = UDim.new(0, 7)
 
 local UploadTypeBox = Instance.new("TextBox")
-UploadTypeBox.Size = UDim2.new(0.5, -15, 0, 30)
-UploadTypeBox.Position = UDim2.new(0.5, 3, 0, 32)
+UploadTypeBox.Size = UDim2.new(0.5, -15, 0, 26)
+UploadTypeBox.Position = UDim2.new(0.5, 3, 0, 26)
 UploadTypeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 UploadTypeBox.PlaceholderText = "Model / Audio / Animation / Decal"
 UploadTypeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
@@ -789,12 +852,13 @@ UploadTypeBox.Text = "Model"
 UploadTypeBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 UploadTypeBox.TextSize = 10
 UploadTypeBox.Font = Enum.Font.Gotham
+UploadTypeBox.ClearTextOnFocus = false
 UploadTypeBox.Parent = UploadPage
 Instance.new("UICorner", UploadTypeBox).CornerRadius = UDim.new(0, 7)
 
 local UploadCreatorBox = Instance.new("TextBox")
-UploadCreatorBox.Size = UDim2.new(0.5, -15, 0, 30)
-UploadCreatorBox.Position = UDim2.new(0, 12, 0, 68)
+UploadCreatorBox.Size = UDim2.new(0.5, -15, 0, 26)
+UploadCreatorBox.Position = UDim2.new(0, 12, 0, 56)
 UploadCreatorBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 UploadCreatorBox.PlaceholderText = "Creator ID"
 UploadCreatorBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
@@ -802,12 +866,13 @@ UploadCreatorBox.Text = tostring(LocalPlayer.UserId)
 UploadCreatorBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 UploadCreatorBox.TextSize = 10
 UploadCreatorBox.Font = Enum.Font.Gotham
+UploadCreatorBox.ClearTextOnFocus = false
 UploadCreatorBox.Parent = UploadPage
 Instance.new("UICorner", UploadCreatorBox).CornerRadius = UDim.new(0, 7)
 
 local UploadOwnerModeBox = Instance.new("TextBox")
-UploadOwnerModeBox.Size = UDim2.new(0.5, -15, 0, 30)
-UploadOwnerModeBox.Position = UDim2.new(0.5, 3, 0, 68)
+UploadOwnerModeBox.Size = UDim2.new(0.5, -15, 0, 26)
+UploadOwnerModeBox.Position = UDim2.new(0.5, 3, 0, 56)
 UploadOwnerModeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 UploadOwnerModeBox.PlaceholderText = "user atau group"
 UploadOwnerModeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
@@ -815,19 +880,21 @@ UploadOwnerModeBox.Text = "user"
 UploadOwnerModeBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 UploadOwnerModeBox.TextSize = 10
 UploadOwnerModeBox.Font = Enum.Font.Gotham
+UploadOwnerModeBox.ClearTextOnFocus = false
 UploadOwnerModeBox.Parent = UploadPage
 Instance.new("UICorner", UploadOwnerModeBox).CornerRadius = UDim.new(0, 7)
 
 local UploadPayloadBox = Instance.new("TextBox")
-UploadPayloadBox.Size = UDim2.new(1, -24, 0, 66)
-UploadPayloadBox.Position = UDim2.new(0, 12, 0, 104)
+UploadPayloadBox.Size = UDim2.new(1, -24, 0, 44)
+UploadPayloadBox.Position = UDim2.new(0, 12, 0, 86)
 UploadPayloadBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-UploadPayloadBox.PlaceholderText = "Path file di workspace atau isi payload"
+UploadPayloadBox.PlaceholderText = "Path file (misal SPOOF/music/12345.mp3) atau isi konten"
 UploadPayloadBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 UploadPayloadBox.Text = ""
 UploadPayloadBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 UploadPayloadBox.TextSize = 10
 UploadPayloadBox.Font = Enum.Font.Gotham
+UploadPayloadBox.ClearTextOnFocus = false
 UploadPayloadBox.MultiLine = true
 UploadPayloadBox.TextWrapped = true
 UploadPayloadBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -836,20 +903,20 @@ UploadPayloadBox.Parent = UploadPage
 Instance.new("UICorner", UploadPayloadBox).CornerRadius = UDim.new(0, 7)
 
 local UploadActionBtn = Instance.new("TextButton")
-UploadActionBtn.Size = UDim2.new(1, -24, 0, 34)
-UploadActionBtn.Position = UDim2.new(0, 12, 0, 176)
+UploadActionBtn.Size = UDim2.new(1, -24, 0, 28)
+UploadActionBtn.Position = UDim2.new(0, 12, 0, 134)
 UploadActionBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
 UploadActionBtn.Text = "⬆  UPLOAD ASSET"
 UploadActionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-UploadActionBtn.TextSize = 11
+UploadActionBtn.TextSize = 10
 UploadActionBtn.Font = Enum.Font.GothamBold
 UploadActionBtn.Parent = UploadPage
-Instance.new("UICorner", UploadActionBtn).CornerRadius = UDim.new(0, 8)
+Instance.new("UICorner", UploadActionBtn).CornerRadius = UDim.new(0, 7)
 
-local setUploadOutcome = createResultBar(UploadPage, 218)
+local updateUploadOutcome = createOutcomePanel(UploadPage, 168, 74)
 
 -- ==========================================
--- HALAMAN 3: PLACE MAKER & ASSET PERMISSIONS
+-- HALAMAN 3: PLACE MAKER & ASSET PERMISSIONS (INPUT -> PROSES -> HASIL)
 -- ==========================================
 local ToolsPage = Instance.new("Frame")
 ToolsPage.Size = UDim2.fromScale(1, 1)
@@ -859,19 +926,19 @@ ToolsPage.Parent = ContentArea
 tabPages["Tools"] = ToolsPage
 
 local ToolsTitle = Instance.new("TextLabel")
-ToolsTitle.Size = UDim2.new(1, -24, 0, 18)
-ToolsTitle.Position = UDim2.new(0, 12, 0, 6)
+ToolsTitle.Size = UDim2.new(1, -24, 0, 16)
+ToolsTitle.Position = UDim2.new(0, 12, 0, 5)
 ToolsTitle.BackgroundTransparency = 1
 ToolsTitle.Text = "Place Maker & Permissions"
 ToolsTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-ToolsTitle.TextSize = 13
+ToolsTitle.TextSize = 12
 ToolsTitle.Font = Enum.Font.GothamBold
 ToolsTitle.TextXAlignment = Enum.TextXAlignment.Left
 ToolsTitle.Parent = ToolsPage
 
 local TemplateIdBox = Instance.new("TextBox")
-TemplateIdBox.Size = UDim2.new(0.36, -12, 0, 28)
-TemplateIdBox.Position = UDim2.new(0, 12, 0, 26)
+TemplateIdBox.Size = UDim2.new(0.36, -12, 0, 24)
+TemplateIdBox.Position = UDim2.new(0, 12, 0, 23)
 TemplateIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 TemplateIdBox.Text = "95206881"
 TemplateIdBox.PlaceholderText = "Template ID"
@@ -879,25 +946,27 @@ TemplateIdBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 TemplateIdBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 TemplateIdBox.TextSize = 10
 TemplateIdBox.Font = Enum.Font.Gotham
+TemplateIdBox.ClearTextOnFocus = false
 TemplateIdBox.Parent = ToolsPage
 Instance.new("UICorner", TemplateIdBox).CornerRadius = UDim.new(0, 6)
 
 local GroupIdBox = Instance.new("TextBox")
-GroupIdBox.Size = UDim2.new(0.32, -8, 0, 28)
-GroupIdBox.Position = UDim2.new(0.36, 2, 0, 26)
+GroupIdBox.Size = UDim2.new(0.32, -8, 0, 24)
+GroupIdBox.Position = UDim2.new(0.36, 2, 0, 23)
 GroupIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 GroupIdBox.Text = ""
-GroupIdBox.PlaceholderText = "Group ID"
+GroupIdBox.PlaceholderText = "Group ID (opsional)"
 GroupIdBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 GroupIdBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 GroupIdBox.TextSize = 10
 GroupIdBox.Font = Enum.Font.Gotham
+GroupIdBox.ClearTextOnFocus = false
 GroupIdBox.Parent = ToolsPage
 Instance.new("UICorner", GroupIdBox).CornerRadius = UDim.new(0, 6)
 
 local PlaceCountBox = Instance.new("TextBox")
-PlaceCountBox.Size = UDim2.new(0.32, -10, 0, 28)
-PlaceCountBox.Position = UDim2.new(0.68, 0, 0, 26)
+PlaceCountBox.Size = UDim2.new(0.32, -10, 0, 24)
+PlaceCountBox.Position = UDim2.new(0.68, 0, 0, 23)
 PlaceCountBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 PlaceCountBox.Text = "1"
 PlaceCountBox.PlaceholderText = "Jumlah"
@@ -905,23 +974,24 @@ PlaceCountBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 PlaceCountBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 PlaceCountBox.TextSize = 10
 PlaceCountBox.Font = Enum.Font.Gotham
+PlaceCountBox.ClearTextOnFocus = false
 PlaceCountBox.Parent = ToolsPage
 Instance.new("UICorner", PlaceCountBox).CornerRadius = UDim.new(0, 6)
 
 local CreatePlaceBtn = Instance.new("TextButton")
-CreatePlaceBtn.Size = UDim2.new(1, -24, 0, 30)
-CreatePlaceBtn.Position = UDim2.new(0, 12, 0, 58)
+CreatePlaceBtn.Size = UDim2.new(1, -24, 0, 25)
+CreatePlaceBtn.Position = UDim2.new(0, 12, 0, 50)
 CreatePlaceBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
 CreatePlaceBtn.Text = "🏗  BUAT PLACE"
 CreatePlaceBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 CreatePlaceBtn.TextSize = 10
 CreatePlaceBtn.Font = Enum.Font.GothamBold
 CreatePlaceBtn.Parent = ToolsPage
-Instance.new("UICorner", CreatePlaceBtn).CornerRadius = UDim.new(0, 7)
+Instance.new("UICorner", CreatePlaceBtn).CornerRadius = UDim.new(0, 6)
 
 local TargetUniverseBox = Instance.new("TextBox")
-TargetUniverseBox.Size = UDim2.new(1, -24, 0, 28)
-TargetUniverseBox.Position = UDim2.new(0, 12, 0, 94)
+TargetUniverseBox.Size = UDim2.new(1, -24, 0, 24)
+TargetUniverseBox.Position = UDim2.new(0, 12, 0, 80)
 TargetUniverseBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 TargetUniverseBox.Text = CONFIG.DefaultUniverseId
 TargetUniverseBox.PlaceholderText = "Target Universe ID"
@@ -929,12 +999,13 @@ TargetUniverseBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 TargetUniverseBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 TargetUniverseBox.TextSize = 10
 TargetUniverseBox.Font = Enum.Font.Gotham
+TargetUniverseBox.ClearTextOnFocus = false
 TargetUniverseBox.Parent = ToolsPage
 Instance.new("UICorner", TargetUniverseBox).CornerRadius = UDim.new(0, 6)
 
 local PermIdsBox = Instance.new("TextBox")
-PermIdsBox.Size = UDim2.new(1, -24, 0, 44)
-PermIdsBox.Position = UDim2.new(0, 12, 0, 126)
+PermIdsBox.Size = UDim2.new(1, -24, 0, 34)
+PermIdsBox.Position = UDim2.new(0, 12, 0, 108)
 PermIdsBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 PermIdsBox.Text = ""
 PermIdsBox.PlaceholderText = "Asset IDs Permission (pisah koma/spasi/baris)"
@@ -942,6 +1013,7 @@ PermIdsBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 PermIdsBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 PermIdsBox.TextSize = 10
 PermIdsBox.Font = Enum.Font.Gotham
+PermIdsBox.ClearTextOnFocus = false
 PermIdsBox.MultiLine = true
 PermIdsBox.TextWrapped = true
 PermIdsBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -950,20 +1022,20 @@ PermIdsBox.Parent = ToolsPage
 Instance.new("UICorner", PermIdsBox).CornerRadius = UDim.new(0, 6)
 
 local GrantPermBtn = Instance.new("TextButton")
-GrantPermBtn.Size = UDim2.new(1, -24, 0, 30)
-GrantPermBtn.Position = UDim2.new(0, 12, 0, 174)
+GrantPermBtn.Size = UDim2.new(1, -24, 0, 25)
+GrantPermBtn.Position = UDim2.new(0, 12, 0, 146)
 GrantPermBtn.BackgroundColor3 = Color3.fromRGB(48, 45, 74)
 GrantPermBtn.Text = "🔑  GRANT PERMISSIONS"
 GrantPermBtn.TextColor3 = Color3.fromRGB(240, 240, 255)
 GrantPermBtn.TextSize = 10
 GrantPermBtn.Font = Enum.Font.GothamBold
 GrantPermBtn.Parent = ToolsPage
-Instance.new("UICorner", GrantPermBtn).CornerRadius = UDim.new(0, 7)
+Instance.new("UICorner", GrantPermBtn).CornerRadius = UDim.new(0, 6)
 
-local setToolsOutcome = createResultBar(ToolsPage, 212)
+local updateToolsOutcome = createOutcomePanel(ToolsPage, 176, 66)
 
 -- ==========================================
--- HALAMAN 4: SETTING
+-- HALAMAN 4: SETTING (INPUT LANGSUNG SINKRON + SIMPAN)
 -- ==========================================
 local SettingPage = Instance.new("Frame")
 SettingPage.Size = UDim2.fromScale(1, 1)
@@ -973,19 +1045,19 @@ SettingPage.Parent = ContentArea
 tabPages["Setting"] = SettingPage
 
 local SettingTitle = Instance.new("TextLabel")
-SettingTitle.Size = UDim2.new(1, -24, 0, 18)
-SettingTitle.Position = UDim2.new(0, 12, 0, 8)
+SettingTitle.Size = UDim2.new(1, -24, 0, 16)
+SettingTitle.Position = UDim2.new(0, 12, 0, 6)
 SettingTitle.BackgroundTransparency = 1
 SettingTitle.Text = "Pengaturan Kredensial"
 SettingTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-SettingTitle.TextSize = 14
+SettingTitle.TextSize = 13
 SettingTitle.Font = Enum.Font.GothamBold
 SettingTitle.TextXAlignment = Enum.TextXAlignment.Left
 SettingTitle.Parent = SettingPage
 
 local CookieBox = Instance.new("TextBox")
-CookieBox.Size = UDim2.new(1, -24, 0, 56)
-CookieBox.Position = UDim2.new(0, 12, 0, 32)
+CookieBox.Size = UDim2.new(1, -24, 0, 46)
+CookieBox.Position = UDim2.new(0, 12, 0, 26)
 CookieBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 CookieBox.Text = CONFIG.Cookie
 CookieBox.PlaceholderText = ".ROBLOSECURITY Cookie..."
@@ -993,6 +1065,7 @@ CookieBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 CookieBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 CookieBox.TextSize = 10
 CookieBox.Font = Enum.Font.Gotham
+CookieBox.ClearTextOnFocus = false
 CookieBox.MultiLine = true
 CookieBox.TextWrapped = true
 CookieBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -1001,8 +1074,8 @@ CookieBox.Parent = SettingPage
 Instance.new("UICorner", CookieBox).CornerRadius = UDim.new(0, 7)
 
 local ApiKeyBox = Instance.new("TextBox")
-ApiKeyBox.Size = UDim2.new(1, -24, 0, 56)
-ApiKeyBox.Position = UDim2.new(0, 12, 0, 94)
+ApiKeyBox.Size = UDim2.new(1, -24, 0, 46)
+ApiKeyBox.Position = UDim2.new(0, 12, 0, 78)
 ApiKeyBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 ApiKeyBox.Text = CONFIG.ApiKey
 ApiKeyBox.PlaceholderText = "Roblox Open Cloud API Key (x-api-key)..."
@@ -1010,6 +1083,7 @@ ApiKeyBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 ApiKeyBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 ApiKeyBox.TextSize = 10
 ApiKeyBox.Font = Enum.Font.Gotham
+ApiKeyBox.ClearTextOnFocus = false
 ApiKeyBox.MultiLine = true
 ApiKeyBox.TextWrapped = true
 ApiKeyBox.TextXAlignment = Enum.TextXAlignment.Left
@@ -1018,17 +1092,38 @@ ApiKeyBox.Parent = SettingPage
 Instance.new("UICorner", ApiKeyBox).CornerRadius = UDim.new(0, 7)
 
 local SaveSettingBtn = Instance.new("TextButton")
-SaveSettingBtn.Size = UDim2.new(1, -24, 0, 34)
-SaveSettingBtn.Position = UDim2.new(0, 12, 0, 158)
+SaveSettingBtn.Size = UDim2.new(1, -24, 0, 30)
+SaveSettingBtn.Position = UDim2.new(0, 12, 0, 130)
 SaveSettingBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-SaveSettingBtn.Text = "💾  SIMPAN"
+SaveSettingBtn.Text = "💾  SIMPAN KREDENSIAL"
 SaveSettingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 SaveSettingBtn.TextSize = 11
 SaveSettingBtn.Font = Enum.Font.GothamBold
 SaveSettingBtn.Parent = SettingPage
 Instance.new("UICorner", SaveSettingBtn).CornerRadius = UDim.new(0, 8)
 
-local setSettingOutcome = createResultBar(SettingPage, 202)
+local updateSettingOutcome = createOutcomePanel(SettingPage, 166, 76)
+
+-- Fungsi sinkronisasi input kredensial langsung dari GUI (meski user belum menekan Simpan)
+local function syncCredentialsFromInputs(): (string, string)
+	local boxCookie = normalizeCookie(CookieBox.Text)
+	local boxApiKey = trim(ApiKeyBox.Text)
+	if boxCookie ~= "" then
+		CONFIG.Cookie = boxCookie
+	end
+	if boxApiKey ~= "" then
+		CONFIG.ApiKey = boxApiKey
+	end
+	return CONFIG.Cookie, CONFIG.ApiKey
+end
+
+CookieBox:GetPropertyChangedSignal("Text"):Connect(function()
+	CONFIG.Cookie = normalizeCookie(CookieBox.Text)
+end)
+
+ApiKeyBox:GetPropertyChangedSignal("Text"):Connect(function()
+	CONFIG.ApiKey = trim(ApiKeyBox.Text)
+end)
 
 SaveSettingBtn.MouseButton1Click:Connect(function()
 	local c = normalizeCookie(CookieBox.Text)
@@ -1038,17 +1133,16 @@ SaveSettingBtn.MouseButton1Click:Connect(function()
 	CookieBox.Text = c
 	ApiKeyBox.Text = k
 
-	if not hasFileIO() then
-		setSettingOutcome(true, 1)
-		notify("Plugin Studio Lite", "Berhasil.")
-		return
-	end
-
 	local okC = saveTextFile("cookie.txt", c)
 	local okK = saveTextFile("apikey.txt", k)
 	local ok = (c == "" or okC) and (k == "" or okK)
-	setSettingOutcome(ok, ok and 1 or 0)
-	notify("Plugin Studio Lite", ok and "Berhasil." or "Gagal.")
+	local summary = string.format(
+		"Cookie: %s | API Key: %s",
+		c ~= "" and ("Terisi (" .. tostring(#c) .. " karakter)") or "Kosong",
+		k ~= "" and ("Terisi (" .. tostring(#k) .. " karakter)") or "Kosong"
+	)
+	updateSettingOutcome(ok and "ok" or "err", ok and 1 or 0, summary)
+	notify("Setting", ok and "Tersimpan." or "Gagal menyimpan.")
 end)
 
 -- Navigasi Sidebar
@@ -1059,7 +1153,7 @@ createNavButton("Setting", "⚙  Setting", 4).MouseButton1Click:Connect(function
 switchTab("Spoof")
 
 -- ==========================================
--- LOGIKA EKSEKUSI FITUR (ALA PYTHON WORKFLOW)
+-- LOGIKA EKSEKUSI: INPUT -> KIRIM PERMINTAAN -> HASIL
 -- ==========================================
 local function parseIds(raw: string): {string}
 	local seen: {[string]: boolean} = {}
@@ -1101,9 +1195,8 @@ local function extractFileNamesFromList(bodyText: string): {string}
 	return names
 end
 
--- Step Python: ambil & simpan session YGF_\d+ dari halaman tools
-local function fetchAndStoreSession(): string
-	local res, ok = apiRequest({
+local function fetchAndStoreSession(): (string, boolean, string)
+	local res, ok, info = apiRequest({
 		Url = CONFIG.BaseUrl .. "/tools/spoof-audio",
 		Method = "GET",
 		Headers = {
@@ -1116,17 +1209,16 @@ local function fetchAndStoreSession(): string
 		if sessMatch then
 			CONFIG.SessionId = sessMatch
 			saveTextFile("SPOOF/info/session.txt", CONFIG.SessionId)
-			return CONFIG.SessionId
 		end
+		return CONFIG.SessionId, true, info
 	end
-	return CONFIG.SessionId
+	return CONFIG.SessionId, false, info
 end
 
--- Step Python: kirim command spoof lalu poll /list-files, /is-ready/<file>, dan /files/<file>
-local function spoofSingleAssetPythonStyle(assetId: string, filterMode: string): boolean
+local function spoofSingleAsset(assetId: string, filterMode: string): (boolean, string)
 	local isRbxmMode = (filterMode == "Model" or filterMode == "Anim")
 
-	local _, cmdOk = apiRequest({
+	local _, cmdOk, cmdInfo = apiRequest({
 		Url = CONFIG.BaseUrl .. "/send-command",
 		Method = "POST",
 		Headers = {
@@ -1142,7 +1234,7 @@ local function spoofSingleAssetPythonStyle(assetId: string, filterMode: string):
 	})
 
 	if not cmdOk then
-		return false
+		return false, assetId .. " -> Gagal kirim perintah (" .. cmdInfo .. ")"
 	end
 
 	local foundFile: string? = nil
@@ -1177,7 +1269,7 @@ local function spoofSingleAssetPythonStyle(assetId: string, filterMode: string):
 	end
 
 	if not foundFile then
-		return false
+		return false, assetId .. " -> File hasil belum muncul di /list-files"
 	end
 
 	local encodedName = HttpService:UrlEncode(foundFile)
@@ -1197,7 +1289,7 @@ local function spoofSingleAssetPythonStyle(assetId: string, filterMode: string):
 		task.wait(1.5)
 	end
 
-	local dlRes, dlOk = apiRequest({
+	local dlRes, dlOk, dlInfo = apiRequest({
 		Url = CONFIG.BaseUrl .. "/files/" .. encodedName .. "?t=" .. tostring(os.time() * 1000),
 		Method = "GET",
 		Headers = {
@@ -1209,11 +1301,15 @@ local function spoofSingleAssetPythonStyle(assetId: string, filterMode: string):
 	if dlOk and dlRes and dlRes.Body and tostring(dlRes.Body) ~= "" then
 		local ext = (foundFile:match("%.[^%.]+$") or (isRbxmMode and ".rbxm" or ".mp3")):lower()
 		local subDir = (ext == ".rbxm") and "SPOOF/animasi/" or "SPOOF/music/"
-		local saved = saveTextFile(subDir .. assetId .. ext, tostring(dlRes.Body))
-		return saved or (not hasFileIO())
+		local outRel = subDir .. assetId .. ext
+		local saved = saveTextFile(outRel, tostring(dlRes.Body))
+		if saved then
+			return true, assetId .. " -> OK (" .. CONFIG.WorkspaceRoot .. "/" .. outRel .. ")"
+		end
+		return false, assetId .. " -> Gagal menyimpan file lokal"
 	end
 
-	return false
+	return false, assetId .. " -> Gagal unduh (" .. dlInfo .. ")"
 end
 
 -- Cek Koneksi
@@ -1221,68 +1317,80 @@ local isCheckingConn = false
 CekKoneksiBtn.MouseButton1Click:Connect(function()
 	if isCheckingConn then return end
 	isCheckingConn = true
+	switchTab("Spoof")
+	updateSpoofOutcome("working", 0.35, "Memeriksa koneksi ke " .. CONFIG.BaseUrl .. "...")
 	task.spawn(function()
-		switchTab("Spoof")
-		local sess = fetchAndStoreSession()
-		local res, ok = apiRequest({
+		local sess, sessOk, sessInfo = fetchAndStoreSession()
+		local _, listOk, listInfo = apiRequest({
 			Url = CONFIG.BaseUrl .. "/list-files",
 			Method = "GET",
 			Headers = {
 				["Referer"] = CONFIG.BaseUrl .. "/tools/spoof-audio",
 			},
 		})
-		local success = ok and res ~= nil and sess ~= nil
-		setSpoofOutcome(success, success and 1 or 0)
-		notify("Koneksi", success and "Berhasil." or "Gagal.")
+		local success = sessOk or listOk
+		local msg = string.format(
+			"Server: %s | Session: %s | List: %s",
+			success and "Terhubung" or "Gagal",
+			sess,
+			listOk and listInfo or sessInfo
+		)
+		updateSpoofOutcome(success and "ok" or "err", success and 1 or 0, msg)
+		notify("Koneksi", success and "Terhubung." or "Gagal terhubung.")
 		isCheckingConn = false
 	end)
 end)
 
--- Spoof
+-- Proses Spoof
 local isSpoofing = false
 SpoofNowBtn.MouseButton1Click:Connect(function()
 	if isSpoofing then return end
-	local ids = parseIds(AssetIdBox.Text)
+	local rawInput = AssetIdBox.Text
+	local ids = parseIds(rawInput)
 	if #ids == 0 then
-		setSpoofOutcome(false, 0)
-		notify("Spoof", "Gagal.")
+		updateSpoofOutcome("err", 0, "Input Asset ID kosong atau tidak valid.")
+		notify("Spoof", "Input kosong.")
 		return
 	end
 
 	isSpoofing = true
+	updateSpoofOutcome("working", 0.1, "Mengirim permintaan untuk " .. tostring(#ids) .. " ID...")
 	task.spawn(function()
 		ensureFolders()
 		fetchAndStoreSession()
 
 		local berhasil, gagal = 0, 0
+		local lines: {string} = {}
 		for i, assetId in ipairs(ids) do
-			local okItem = spoofSingleAssetPythonStyle(assetId, CONFIG.SpoofFilter)
+			updateSpoofOutcome("working", (i - 0.5) / #ids, "Memproses ID " .. assetId .. " (" .. tostring(i) .. "/" .. tostring(#ids) .. ")...")
+			local okItem, detail = spoofSingleAsset(assetId, CONFIG.SpoofFilter)
 			if okItem then
 				berhasil += 1
 			else
 				gagal += 1
 			end
-			setSpoofOutcome(berhasil > 0 and gagal == 0, i / #ids)
+			table.insert(lines, detail)
+			updateSpoofOutcome((gagal == 0) and "working" or "err", i / #ids, table.concat(lines, "\n"))
 			if i < #ids then
 				task.wait(0.35)
 			end
 		end
 
 		local allOk = (berhasil > 0 and gagal == 0)
-		setSpoofOutcome(allOk, 1)
-		notify("Spoof", allOk and "Berhasil." or "Gagal.")
+		updateSpoofOutcome(allOk and "ok" or "err", 1, table.concat(lines, "\n"))
+		notify("Spoof", string.format("Selesai: %d berhasil, %d gagal.", berhasil, gagal))
 		isSpoofing = false
 	end)
 end)
 
--- Upload Asset (Multipart ala Python requests files+data, fallback JSON)
+-- Proses Upload Asset
 local isUploading = false
 UploadActionBtn.MouseButton1Click:Connect(function()
 	if isUploading then return end
-	local apiKey = trim(CONFIG.ApiKey)
+	local _, apiKey = syncCredentialsFromInputs()
 	if apiKey == "" then
-		setUploadOutcome(false, 0)
-		notify("Upload", "Gagal.")
+		updateUploadOutcome("err", 0, "API Key (x-api-key) belum diisi di Setting.")
+		notify("Upload", "API Key kosong.")
 		return
 	end
 
@@ -1311,6 +1419,7 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 	end
 
 	isUploading = true
+	updateUploadOutcome("working", 0.35, "Mengirim permintaan upload '" .. assetName .. "' (" .. assetType .. ")...")
 	task.spawn(function()
 		local creatorObj = isGroup and { groupId = creatorIdNum } or { userId = creatorIdNum }
 		local requestPayloadJson = HttpService:JSONEncode({
@@ -1323,7 +1432,7 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 		})
 
 		local multipartBody, contentTypeHeader = buildMultipartAssetBody(requestPayloadJson, payloadData, uploadFilename)
-		local res, ok = apiRequest({
+		local res, ok, info = apiRequest({
 			Url = "https://apis.roblox.com/assets/v1/assets",
 			Method = "POST",
 			Headers = {
@@ -1335,7 +1444,7 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 		})
 
 		if not ok then
-			res, ok = apiRequest({
+			res, ok, info = apiRequest({
 				Url = "https://apis.roblox.com/assets/v1/assets",
 				Method = "POST",
 				Headers = {
@@ -1353,26 +1462,27 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 			})
 		end
 
+		local bodyStr = res and tostring(res.Body or "") or ""
 		if ok and res then
-			saveTextFile("Uploads/upload_" .. tostring(os.time()) .. ".json", tostring(res.Body or ""))
-			setUploadOutcome(true, 1)
+			saveTextFile("Uploads/upload_" .. tostring(os.time()) .. ".json", bodyStr)
+			updateUploadOutcome("ok", 1, "Berhasil (" .. info .. "):\n" .. bodyStr:sub(1, 300))
 			notify("Upload", "Berhasil.")
 		else
-			setUploadOutcome(false, 0)
+			updateUploadOutcome("err", 0, "Gagal (" .. info .. "):\n" .. bodyStr:sub(1, 300))
 			notify("Upload", "Gagal.")
 		end
 		isUploading = false
 	end)
 end)
 
--- Place Maker (Loop jumlah + X-CSRF-Token retry ala Python)
+-- Proses Place Maker
 local isCreatingPlace = false
 CreatePlaceBtn.MouseButton1Click:Connect(function()
 	if isCreatingPlace then return end
-	local cookieVal = normalizeCookie(CONFIG.Cookie)
+	local cookieVal = syncCredentialsFromInputs()
 	if cookieVal == "" then
-		setToolsOutcome(false, 0)
-		notify("Place Maker", "Gagal.")
+		updateToolsOutcome("err", 0, "Cookie .ROBLOSECURITY belum diisi di Setting.")
+		notify("Place Maker", "Cookie kosong.")
 		return
 	end
 
@@ -1381,9 +1491,11 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 	local count = math.clamp(tonumber(trim(PlaceCountBox.Text):match("%d+")) or 1, 1, 50)
 
 	isCreatingPlace = true
+	updateToolsOutcome("working", 0.1, "Mengirim permintaan pembuatan " .. tostring(count) .. " place...")
 	task.spawn(function()
 		local csrf = ""
 		local sukses, gagal = 0, 0
+		local lines: {string} = {}
 
 		for i = 1, count do
 			local bodyTbl: {[string]: any} = { templatePlaceId = tplId }
@@ -1411,60 +1523,65 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 				})
 			end
 
-			local res, ok = sendCreateRequest(csrf)
-			if not ok and res and tonumber(res.StatusCode) == 403 then
+			local res, ok, info = sendCreateRequest(csrf)
+			if not ok and res and tonumber(res.StatusCode or res.Status or res.status_code) == 403 then
 				local newCsrf = getHeaderCaseInsensitive(res.Headers, "x-csrf-token")
 				if newCsrf and newCsrf ~= "" then
 					csrf = newCsrf
-					res, ok = sendCreateRequest(csrf)
+					res, ok, info = sendCreateRequest(csrf)
 				end
 			end
 
+			local bodyStr = res and tostring(res.Body or "") or ""
 			if ok and res then
 				sukses += 1
-				saveTextFile("Logs/place_" .. tostring(os.time()) .. "_" .. tostring(i) .. ".json", tostring(res.Body or ""))
+				saveTextFile("Logs/place_" .. tostring(os.time()) .. "_" .. tostring(i) .. ".json", bodyStr)
+				table.insert(lines, "#" .. tostring(i) .. " OK: " .. bodyStr)
 			else
 				gagal += 1
+				table.insert(lines, "#" .. tostring(i) .. " Gagal (" .. info .. "): " .. bodyStr:sub(1, 140))
 			end
 
-			setToolsOutcome(sukses > 0 and gagal == 0, i / count)
+			updateToolsOutcome((gagal == 0) and "working" or "err", i / count, table.concat(lines, "\n"))
 			if i < count then
 				task.wait(1)
 			end
 		end
 
 		local allOk = (sukses > 0 and gagal == 0)
-		setToolsOutcome(allOk, 1)
-		notify("Place Maker", allOk and "Berhasil." or "Gagal.")
+		updateToolsOutcome(allOk and "ok" or "err", 1, table.concat(lines, "\n"))
+		notify("Place Maker", string.format("Selesai: %d berhasil, %d gagal.", sukses, gagal))
 		isCreatingPlace = false
 	end)
 end)
 
--- Asset Permissions (Batch 50 ID per request ala Python)
+-- Proses Asset Permissions
 local isGrantingPerm = false
 GrantPermBtn.MouseButton1Click:Connect(function()
 	if isGrantingPerm then return end
-	local apiKey = trim(CONFIG.ApiKey)
+	local _, apiKey = syncCredentialsFromInputs()
 	if apiKey == "" then
-		setToolsOutcome(false, 0)
-		notify("Permissions", "Gagal.")
+		updateToolsOutcome("err", 0, "API Key (x-api-key) belum diisi di Setting.")
+		notify("Permissions", "API Key kosong.")
 		return
 	end
 
 	local univId = trim(TargetUniverseBox.Text):match("%d+")
 	local ids = parseIds(PermIdsBox.Text)
 	if not univId or #ids == 0 then
-		setToolsOutcome(false, 0)
-		notify("Permissions", "Gagal.")
+		updateToolsOutcome("err", 0, "Target Universe ID atau daftar Asset ID masih kosong.")
+		notify("Permissions", "Input kosong.")
 		return
 	end
 
 	isGrantingPerm = true
+	updateToolsOutcome("working", 0.1, "Mengirim izin untuk " .. tostring(#ids) .. " aset ke Universe " .. univId .. "...")
 	task.spawn(function()
 		local batchSize = 50
 		local totalBatches = math.ceil(#ids / batchSize)
 		local suksesBatch, gagalBatch = 0, 0
 		local bIdx = 0
+		local lines: {string} = {}
 
 		for i = 1, #ids, batchSize do
 			bIdx += 1
@@ -1476,7 +1593,7 @@ GrantPermBtn.MouseButton1Click:Connect(function()
 				end
 			end
 
-			local res, ok = apiRequest({
+			local res, ok, info = apiRequest({
 				Url = "https://apis.roblox.com/asset-permissions-api/v1/assets/permissions",
 				Method = "PATCH",
 				Headers = {
@@ -1492,22 +1609,25 @@ GrantPermBtn.MouseButton1Click:Connect(function()
 				Retries = 2,
 			})
 
+			local bodyStr = res and tostring(res.Body or "") or ""
 			if ok and res then
 				suksesBatch += 1
-				saveTextFile("Logs/perm_" .. tostring(os.time()) .. "_" .. tostring(bIdx) .. ".json", tostring(res.Body or ""))
+				saveTextFile("Logs/perm_" .. tostring(os.time()) .. "_" .. tostring(bIdx) .. ".json", bodyStr)
+				table.insert(lines, "Batch " .. tostring(bIdx) .. "/" .. tostring(totalBatches) .. " OK (" .. tostring(#reqList) .. " ID)")
 			else
 				gagalBatch += 1
+				table.insert(lines, "Batch " .. tostring(bIdx) .. " Gagal (" .. info .. "): " .. bodyStr:sub(1, 140))
 			end
 
-			setToolsOutcome(suksesBatch > 0 and gagalBatch == 0, bIdx / totalBatches)
+			updateToolsOutcome((gagalBatch == 0) and "working" or "err", bIdx / totalBatches, table.concat(lines, "\n"))
 			if i + batchSize <= #ids then
 				task.wait(1)
 			end
 		end
 
 		local allOk = (suksesBatch > 0 and gagalBatch == 0)
-		setToolsOutcome(allOk, 1)
-		notify("Permissions", allOk and "Berhasil." or "Gagal.")
+		updateToolsOutcome(allOk and "ok" or "err", 1, table.concat(lines, "\n"))
+		notify("Permissions", allOk and "Berhasil." or "Sebagian/semua gagal.")
 		isGrantingPerm = false
 	end)
 end)
