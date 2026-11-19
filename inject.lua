@@ -2181,6 +2181,16 @@ end)
 -- ==========================================
 -- METHOD UPLOAD ASSET (AUDIO & RBXM)
 -- ==========================================
+local function safeJsonEncode(tbl: {[string]: any}): (boolean, string)
+	local ok, encoded = pcall(function()
+		return HttpService:JSONEncode(tbl)
+	end)
+	if ok and type(encoded) == "string" then
+		return true, encoded
+	end
+	return false, tostring(encoded)
+end
+
 local function executeUploadAssetMethod(params: {
 	apiKey: string,
 	assetName: string,
@@ -2214,7 +2224,6 @@ local function executeUploadAssetMethod(params: {
 		detectedType = tKind
 		detectedMime = mType
 	else
-		-- Jika bukan path file yang tersimpan, anggap rawInput sebagai konten/data langsung
 		payloadContent = rawInput
 		local lowerType = params.assetType:lower()
 		if lowerType == "audio" then
@@ -2245,7 +2254,7 @@ local function executeUploadAssetMethod(params: {
 	end
 
 	local creatorObj = params.isGroup and { groupId = params.creatorId } or { userId = params.creatorId }
-	local requestPayloadJson = HttpService:JSONEncode({
+	local okReqJson, requestPayloadJson = safeJsonEncode({
 		assetType = finalAssetType,
 		displayName = finalDisplayName,
 		description = "Uploaded via Plugin Studio Lite by Ikyy",
@@ -2253,6 +2262,10 @@ local function executeUploadAssetMethod(params: {
 			creator = creatorObj,
 		},
 	})
+
+	if not okReqJson then
+		return false, "Gagal membuat request JSON: " .. requestPayloadJson, ""
+	end
 
 	local multipartBody, contentTypeHeader = buildMultipartAssetBody(
 		requestPayloadJson,
@@ -2273,22 +2286,24 @@ local function executeUploadAssetMethod(params: {
 	})
 
 	if not ok then
-		res, ok, info = apiRequest({
-			Url = "https://apis.roblox.com/assets/v1/assets",
-			Method = "POST",
-			Headers = {
-				["x-api-key"] = params.apiKey,
-				["Content-Type"] = "application/json",
-			},
-			Body = HttpService:JSONEncode({
-				assetType = finalAssetType,
-				displayName = finalDisplayName,
-				description = "Uploaded via Plugin Studio Lite by Ikyy",
-				creationContext = { creator = creatorObj },
-				payload = payloadContent,
-			}),
-			Retries = 1,
+		local okFallbackJson, fallbackBody = safeJsonEncode({
+			assetType = finalAssetType,
+			displayName = finalDisplayName,
+			description = "Uploaded via Plugin Studio Lite by Ikyy",
+			creationContext = { creator = creatorObj },
 		})
+		if okFallbackJson then
+			res, ok, info = apiRequest({
+				Url = "https://apis.roblox.com/assets/v1/assets",
+				Method = "POST",
+				Headers = {
+					["x-api-key"] = params.apiKey,
+					["Content-Type"] = "application/json",
+				},
+				Body = fallbackBody,
+				Retries = 1,
+			})
+		end
 	end
 
 	local bodyStr = res and tostring(res.Body or "") or ""
