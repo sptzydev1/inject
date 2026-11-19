@@ -27,7 +27,7 @@ local CONFIG = {
 	DefaultUniverseId = "10516113765",
 	IsMinimized = false,
 	ActiveTab = "Spoof",
-	SpoofFilter = "Auto", -- Auto, Audio, Decal, Model, Anim
+	SpoofFilter = "Auto", -- Auto, Suara, Stiker, Model, Anim
 	SessionId = "YGF_0000",
 	UserAgent = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
 }
@@ -743,7 +743,7 @@ FilterLayout.Padding = UDim.new(0, 6)
 FilterLayout.Parent = FilterRow
 
 local filterButtons: {[string]: TextButton} = {}
-local filters = {"Auto", "Audio", "Decal", "Model", "Anim"}
+local filters = {"Auto", "Suara", "Stiker", "Model", "Anim"}
 
 local function setFilter(name: string)
 	CONFIG.SpoofFilter = name
@@ -1158,8 +1158,9 @@ switchTab("Spoof")
 local function parseIds(raw: string): {string}
 	local seen: {[string]: boolean} = {}
 	local out: {string} = {}
-	for digits in raw:gmatch("%d{4,}") do
-		if not seen[digits] then
+	if type(raw) ~= "string" then return out end
+	for digits in raw:gmatch("%d+") do
+		if #digits >= 4 and not seen[digits] then
 			seen[digits] = true
 			table.insert(out, digits)
 		end
