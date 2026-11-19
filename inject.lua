@@ -1,4 +1,4 @@
---!strict
+--!nonstrict
 -- Plugin Studio Lite (Delta Executor Edition) by Ikyy
 -- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Hasil
 
@@ -127,79 +127,84 @@ local function notify(title: string, text: string)
 	end)
 end
 
-local function copyToClipboard(text: string): boolean
-	local env = {}
-	pcall(function()
-		if type(getgenv) == "function" and type(getgenv()) == "table" then
-			for k, v in pairs(getgenv()) do env[k] = v end
-		end
-	end)
-	pcall(function()
-		for k, v in pairs(getfenv(0)) do
-			if env[k] == nil then env[k] = v end
-		end
-	end)
-	local clipFn = env.setclipboard or env.toclipboard or (type(env.syn) == "table" and env.syn.write_clipboard)
-	if type(clipFn) == "function" then
-		local ok = pcall(clipFn, text)
-		if ok then return true end
-	end
-	return false
-end
-
 -- ==========================================
--- DELTA EXECUTOR ENVIRONMENT BRIDGE
+-- DELTA EXECUTOR ENVIRONMENT BRIDGE (SAFE)
 -- ==========================================
 local function getEnvTable(): {[string]: any}
 	local env: {[string]: any} = {}
-	pcall(function()
-		if type(getgenv) == "function" then
-			local g = getgenv()
-			if type(g) == "table" then
-				for k, v in pairs(g) do
-					env[k] = v
-				end
+
+	local okGenv, genvFn = pcall(function()
+		return getgenv
+	end)
+	if okGenv and type(genvFn) == "function" then
+		local okCall, g = pcall(genvFn)
+		if okCall and type(g) == "table" then
+			for k, v in pairs(g) do
+				env[k] = v
 			end
 		end
+	end
+
+	local okGetf, getfFn = pcall(function()
+		return getfenv
 	end)
-	pcall(function()
-		local f = getfenv(0)
-		if type(f) == "table" then
+	if okGetf and type(getfFn) == "function" then
+		local okF, f = pcall(getfFn, 0)
+		if okF and type(f) == "table" then
 			for k, v in pairs(f) do
 				if env[k] == nil then
 					env[k] = v
 				end
 			end
 		end
-	end)
+	end
+
 	return env
 end
 
 local ENV = getEnvTable()
 
+local function safeCallable(fn: any)
+	if type(fn) == "function" then
+		return fn
+	end
+	return nil
+end
+
+local function copyToClipboard(text: string): boolean
+	local clipFn = safeCallable(ENV.setclipboard)
+		or safeCallable(ENV.toclipboard)
+		or (type(ENV.syn) == "table" and safeCallable(ENV.syn.write_clipboard))
+	if clipFn then
+		local ok = pcall(clipFn, text)
+		if ok then return true end
+	end
+	return false
+end
+
 local function getDeltaHttpFunc()
 	local candidates = {
-		ENV.request,
-		ENV.http_request,
-		type(ENV.syn) == "table" and ENV.syn.request or nil,
-		type(ENV.http) == "table" and ENV.http.request or nil,
-		type(ENV.fluxus) == "table" and ENV.fluxus.request or nil,
-		type(ENV.delta) == "table" and ENV.delta.request or nil,
+		safeCallable(ENV.request),
+		safeCallable(ENV.http_request),
+		type(ENV.syn) == "table" and safeCallable(ENV.syn.request) or nil,
+		type(ENV.http) == "table" and safeCallable(ENV.http.request) or nil,
+		type(ENV.fluxus) == "table" and safeCallable(ENV.fluxus.request) or nil,
+		type(ENV.delta) == "table" and safeCallable(ENV.delta.request) or nil,
 	}
 	for _, fn in ipairs(candidates) do
-		if type(fn) == "function" then
+		if fn then
 			return fn
 		end
 	end
 	return nil
 end
 
-local fnWriteFile = type(ENV.writefile) == "function" and ENV.writefile or nil
-local fnReadFile = type(ENV.readfile) == "function" and ENV.readfile or nil
-local fnIsFile = type(ENV.isfile) == "function" and ENV.isfile or nil
-local fnIsFolder = type(ENV.isfolder) == "function" and ENV.isfolder or nil
-local fnMakeFolder = type(ENV.makefolder) == "function" and ENV.makefolder or nil
-local fnListFiles = type(ENV.listfiles) == "function" and ENV.listfiles or nil
+local fnWriteFile = safeCallable(ENV.writefile)
+local fnReadFile = safeCallable(ENV.readfile)
+local fnIsFile = safeCallable(ENV.isfile)
+local fnIsFolder = safeCallable(ENV.isfolder)
+local fnMakeFolder = safeCallable(ENV.makefolder)
+local fnListFiles = safeCallable(ENV.listfiles)
 
 local function ensureFolders()
 	if not fnMakeFolder then return end
@@ -474,7 +479,6 @@ local function parseTxtEntries(content: string, forceKind: "auto" | "audio" | "r
 	return entries
 end
 
--- Ambil data playback / playbackspeed dari file TXT yang diproses
 local function extractPlaybackFromTxtFiles(targetFiles: {string}): {
 	byName: {[string]: {key: string, value: number}},
 	byId: {[string]: {key: string, value: number}},
@@ -504,7 +508,6 @@ local function extractPlaybackFromTxtFiles(targetFiles: {string}): {
 	for _, relPath in ipairs(txtCandidates) do
 		local raw = loadTextFile(relPath)
 		if raw and trim(raw) ~= "" then
-			-- Cek nama field asli di TXT (playbackspeed atau playback)
 			local fieldKey = raw:match("[Pp][Ll][Aa][Yy][Bb][Aa][Cc][Kk][Ss][Pp][Ee][Ee][Dd]") and "playbackspeed" or "playback"
 
 			for block in raw:gmatch("{(.-)}%s*,?") do
@@ -786,7 +789,6 @@ local function fetchUniverseInfo(universeId: string, cookieVal: string?): string
 	}, "\n")
 end
 
--- Deteksi format upload otomatis berdasarkan jenis file / asset
 local function detectAssetFormatByFile(filename: string, manualType: string): (string, string)
 	local low = filename:lower()
 	local manLow = trim(manualType):lower()
@@ -1095,7 +1097,7 @@ CloseCircleBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- SIDEBAR KIRI (TANPA CEK & SEMBUNYI)
+-- SIDEBAR KIRI
 -- ==========================================
 local Sidebar = Instance.new("Frame")
 Sidebar.Name = "Sidebar"
@@ -1172,7 +1174,6 @@ local function switchTab(tabName: string)
 	end
 end
 
--- Helper Komponen Output Hasil Standar (Progress Bar + Console)
 local function createOutcomePanel(parent: GuiObject, yPos: number, boxHeight: number, editableConsole: boolean)
 	local bar = Instance.new("Frame")
 	bar.Size = UDim2.new(1, -24, 0, 4)
@@ -1825,7 +1826,6 @@ uploadFill.BorderSizePixel = 0
 uploadFill.Parent = uploadBar
 Instance.new("UICorner", uploadFill).CornerRadius = UDim.new(1, 0)
 
--- Console 1: Proses Upload
 local uploadProcScroll = Instance.new("ScrollingFrame")
 uploadProcScroll.Name = "UploadProcessConsole"
 uploadProcScroll.Size = UDim2.new(1, -24, 0, 40)
@@ -1860,7 +1860,6 @@ uploadProcBox.MultiLine = true
 uploadProcBox.TextWrapped = true
 uploadProcBox.Parent = uploadProcScroll
 
--- Console 2: Hasil JSON Upload + Tombol Copy
 local uploadJsonScroll = Instance.new("ScrollingFrame")
 uploadJsonScroll.Name = "UploadJsonConsole"
 uploadJsonScroll.Size = UDim2.new(1, -24, 0, 68)
@@ -2135,7 +2134,6 @@ TargetUniverseBox.ClearTextOnFocus = false
 TargetUniverseBox.Parent = ToolsPage
 Instance.new("UICorner", TargetUniverseBox).CornerRadius = UDim.new(0, 6)
 
--- Input API Key khusus izin permission asset
 local PermApiKeyBox = Instance.new("TextBox")
 PermApiKeyBox.Size = UDim2.new(0.55, -12, 0, 20)
 PermApiKeyBox.Position = UDim2.new(0.45, 2, 0, 66)
@@ -2240,7 +2238,7 @@ LoadPermTxtBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- HALAMAN 4: MUSIC PLAYER (EQUALIZER + LOOP LOADING + VOLUME + << / ▶⏸ / >>)
+-- HALAMAN 4: MUSIC PLAYER
 -- ==========================================
 local MusicPage = Instance.new("Frame")
 MusicPage.Size = UDim2.fromScale(1, 1)
@@ -2270,7 +2268,6 @@ MusicStatusLabel.TextSize = 8
 MusicStatusLabel.Font = Enum.Font.GothamMedium
 MusicStatusLabel.Parent = MusicPage
 
--- Equalizer di tengah sesuai beat musik
 local EqFrame = Instance.new("Frame")
 EqFrame.Name = "EqualizerFrame"
 EqFrame.Size = UDim2.new(1, -24, 0, 44)
@@ -2305,7 +2302,6 @@ for i = 1, eqBarCount do
 	table.insert(eqBars, bar)
 end
 
--- Loop loading bar
 local MusicLoadTrack = Instance.new("Frame")
 MusicLoadTrack.Size = UDim2.new(1, -24, 0, 5)
 MusicLoadTrack.Position = UDim2.new(0, 12, 0, 82)
@@ -2321,7 +2317,6 @@ MusicLoadFill.BorderSizePixel = 0
 MusicLoadFill.Parent = MusicLoadTrack
 Instance.new("UICorner", MusicLoadFill).CornerRadius = UDim.new(1, 0)
 
--- Slider volume kanan-kiri
 local VolumeRow = Instance.new("Frame")
 VolumeRow.Size = UDim2.new(1, -24, 0, 20)
 VolumeRow.Position = UDim2.new(0, 12, 0, 91)
@@ -2362,7 +2357,6 @@ VolKnob.AutoButtonColor = false
 VolKnob.Parent = VolSliderBg
 Instance.new("UICorner", VolKnob).CornerRadius = UDim.new(1, 0)
 
--- Tombol kontrol: kiri (<<), tengah (Play/Jeda), kanan (>>)
 local ControlsRow = Instance.new("Frame")
 ControlsRow.Size = UDim2.new(1, -24, 0, 26)
 ControlsRow.Position = UDim2.new(0, 12, 0, 114)
@@ -2402,7 +2396,6 @@ NextTrackBtn.Font = Enum.Font.GothamBold
 NextTrackBtn.Parent = ControlsRow
 Instance.new("UICorner", NextTrackBtn).CornerRadius = UDim.new(0, 7)
 
--- List Musik
 local PlaylistScroll = Instance.new("ScrollingFrame")
 PlaylistScroll.Size = UDim2.new(1, -24, 0, 108)
 PlaylistScroll.Position = UDim2.new(0, 12, 0, 144)
@@ -2577,7 +2570,6 @@ NextTrackBtn.MouseButton1Click:Connect(function()
 	loadAndPlayTrack(currentTrackIndex + 1, true)
 end)
 
--- Drag slider volume kanan-kiri
 do
 	local draggingVol = false
 	local function updateVolFromInput(inputPos: Vector2)
@@ -2617,7 +2609,6 @@ end
 renderMusicPlaylist()
 applyVolume(0.5)
 
--- Animasi Equalizer & Loop Loading
 do
 	local elapsed = 0
 	RunService.RenderStepped:Connect(function(dt: number)
@@ -3010,7 +3001,6 @@ local function spoofSingleEntry(entry: SpoofEntry, filterMode: string): (boolean
 	return false, assetId .. " -> Gagal unduh (" .. dlInfo .. ")", jsonRecord
 end
 
--- Proses Spoof (ID Massal atau File TXT Massal)
 local isSpoofing = false
 SpoofNowBtn.MouseButton1Click:Connect(function()
 	if isSpoofing then return end
@@ -3112,7 +3102,6 @@ SpoofNowBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
--- Proses Upload Asset (Format Otomatis + 2 Console: Proses & JSON Hasil)
 local isUploading = false
 UploadActionBtn.MouseButton1Click:Connect(function()
 	if isUploading then return end
@@ -3168,90 +3157,89 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 				gagal += 1
 				table.insert(procLines, string.format("[%d/%d] %s Gagal: File tidak ditemukan atau kosong.", idx, #targets, itemTarget))
 				setUploadConsoles("err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
-				continue
-			end
-
-			local originalFileName = itemTarget:match("([^/\\]+)$") or itemTarget
-			local stemName = originalFileName:gsub("%.[^%.]+$", "")
-			local displayName = (not isMassUpload and customAssetName ~= "") and customAssetName or stemName
-			displayName = sanitizeJsonText(displayName)
-			if displayName == "" then
-				displayName = stemName
-			end
-
-			local autoAssetType, mimeType = detectAssetFormatByFile(originalFileName, requestedType)
-			local metaTable = {
-				assetType = autoAssetType,
-				displayName = displayName:sub(1, 50),
-				description = "Uploaded via Plugin Studio Lite by Ikyy",
-				creationContext = { creator = creatorObj },
-			}
-
-			local okMeta, requestPayloadJson = safeJsonEncode(metaTable)
-			if not okMeta then
-				gagal += 1
-				table.insert(procLines, string.format("[%d/%d] %s Gagal metadata: %s", idx, #targets, originalFileName, requestPayloadJson))
-				setUploadConsoles("err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
-				continue
-			end
-
-			local multipartBody, contentTypeHeader = buildMultipartAssetBody(
-				requestPayloadJson,
-				loadedFileData,
-				originalFileName,
-				mimeType
-			)
-
-			table.insert(procLines, string.format("[%d/%d] Mengunggah %s (%s)...", idx, #targets, originalFileName, autoAssetType))
-			setUploadConsoles("working", (idx - 0.5) / #targets, table.concat(procLines, "\n"), nil)
-
-			local res, ok, info = apiRequest({
-				Url = "https://apis.roblox.com/assets/v1/assets",
-				Method = "POST",
-				Headers = {
-					["x-api-key"] = apiKey,
-					["Content-Type"] = contentTypeHeader,
-				},
-				Body = multipartBody,
-				Retries = 2,
-			})
-
-			local bodyStr = res and tostring(res.Body or "") or ""
-			if ok and res then
-				sukses += 1
-				saveTextFile("Uploads/upload_" .. tostring(os.time()) .. "_" .. tostring(idx) .. ".json", bodyStr)
-				local uploadedId = extractUploadedAssetId(bodyStr)
-				if uploadedId == "" then
-					uploadedId = "-"
-				end
-
-				procLines[#procLines] = string.format("[%d/%d] %s OK -> ID: %s (%s)", idx, #targets, originalFileName, uploadedId, info)
-
-				if isMassUpload and txtPlaybackData then
-					local matchedRec = txtPlaybackData.byName[sanitizeFileName(stemName):lower()]
-						or txtPlaybackData.byId[uploadedId]
-						or txtPlaybackData.orderedList[idx]
-					local pbKey = matchedRec and matchedRec.key or "playback"
-					local pbVal = matchedRec and matchedRec.value or 1.0
-					local rowObj: {[string]: any} = {
-						nama = originalFileName,
-						id = uploadedId,
-					}
-					rowObj[pbKey] = pbVal
-					table.insert(resultRows, rowObj)
-				else
-					table.insert(resultRows, {
-						nama = originalFileName,
-						id = uploadedId,
-					})
-				end
 			else
-				gagal += 1
-				local shortErr = bodyStr:gsub("[%r\n]+", " "):sub(1, 120)
-				procLines[#procLines] = string.format("[%d/%d] %s Gagal (%s): %s", idx, #targets, originalFileName, info, shortErr)
+				local originalFileName = itemTarget:match("([^/\\]+)$") or itemTarget
+				local stemName = originalFileName:gsub("%.[^%.]+$", "")
+				local displayName = (not isMassUpload and customAssetName ~= "") and customAssetName or stemName
+				displayName = sanitizeJsonText(displayName)
+				if displayName == "" then
+					displayName = stemName
+				end
+
+				local autoAssetType, mimeType = detectAssetFormatByFile(originalFileName, requestedType)
+				local metaTable = {
+					assetType = autoAssetType,
+					displayName = displayName:sub(1, 50),
+					description = "Uploaded via Plugin Studio Lite by Ikyy",
+					creationContext = { creator = creatorObj },
+				}
+
+				local okMeta, requestPayloadJson = safeJsonEncode(metaTable)
+				if not okMeta then
+					gagal += 1
+					table.insert(procLines, string.format("[%d/%d] %s Gagal metadata: %s", idx, #targets, originalFileName, requestPayloadJson))
+					setUploadConsoles("err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
+				else
+					local multipartBody, contentTypeHeader = buildMultipartAssetBody(
+						requestPayloadJson,
+						loadedFileData,
+						originalFileName,
+						mimeType
+					)
+
+					table.insert(procLines, string.format("[%d/%d] Mengunggah %s (%s)...", idx, #targets, originalFileName, autoAssetType))
+					setUploadConsoles("working", (idx - 0.5) / #targets, table.concat(procLines, "\n"), nil)
+
+					local res, ok, info = apiRequest({
+						Url = "https://apis.roblox.com/assets/v1/assets",
+						Method = "POST",
+						Headers = {
+							["x-api-key"] = apiKey,
+							["Content-Type"] = contentTypeHeader,
+						},
+						Body = multipartBody,
+						Retries = 2,
+					})
+
+					local bodyStr = res and tostring(res.Body or "") or ""
+					if ok and res then
+						sukses += 1
+						saveTextFile("Uploads/upload_" .. tostring(os.time()) .. "_" .. tostring(idx) .. ".json", bodyStr)
+						local uploadedId = extractUploadedAssetId(bodyStr)
+						if uploadedId == "" then
+							uploadedId = "-"
+						end
+
+						procLines[#procLines] = string.format("[%d/%d] %s OK -> ID: %s (%s)", idx, #targets, originalFileName, uploadedId, info)
+
+						if isMassUpload and txtPlaybackData then
+							local matchedRec = txtPlaybackData.byName[sanitizeFileName(stemName):lower()]
+								or txtPlaybackData.byId[uploadedId]
+								or txtPlaybackData.orderedList[idx]
+							local pbKey = matchedRec and matchedRec.key or "playback"
+							local pbVal = matchedRec and matchedRec.value or 1.0
+							local rowObj: {[string]: any} = {
+								nama = originalFileName,
+								id = uploadedId,
+							}
+							rowObj[pbKey] = pbVal
+							table.insert(resultRows, rowObj)
+						else
+							table.insert(resultRows, {
+								nama = originalFileName,
+								id = uploadedId,
+							})
+						end
+					else
+						gagal += 1
+						local shortErr = bodyStr:gsub("[%r\n]+", " "):sub(1, 120)
+						procLines[#procLines] = string.format("[%d/%d] %s Gagal (%s): %s", idx, #targets, originalFileName, info, shortErr)
+					end
+
+					setUploadConsoles((gagal == 0) and "working" or "err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
+				end
 			end
 
-			setUploadConsoles((gagal == 0) and "working" or "err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
 			if idx < #targets then
 				task.wait(0.5)
 			end
@@ -3268,7 +3256,6 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
--- Proses Place Maker
 local isCreatingPlace = false
 CreatePlaceBtn.MouseButton1Click:Connect(function()
 	if isCreatingPlace then return end
@@ -3370,7 +3357,6 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
--- Proses Asset Permissions (API Key Permission Terpisah + File TXT id,id,id + Info Universe)
 local isGrantingPerm = false
 GrantPermBtn.MouseButton1Click:Connect(function()
 	if isGrantingPerm then return end
