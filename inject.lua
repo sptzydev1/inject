@@ -1,4 +1,3 @@
-
 --!strict
 -- Plugin Studio Lite (Delta Executor Edition) by Ikyy
 -- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Hasil
@@ -437,7 +436,6 @@ local function parseTxtEntries(content: string, forceKind: "auto" | "audio" | "r
 	return entries
 end
 
--- Format JSON bertumpuk (pretty-printed) per item agar mudah dibaca & disalin
 local function formatStackedJson(rows: {{[string]: any}}): string
 	if #rows == 0 then
 		return "[]"
@@ -448,7 +446,6 @@ local function formatStackedJson(rows: {{[string]: any}}): string
 			return HttpService:JSONEncode(row)
 		end)
 		if ok and type(singleEncoded) == "string" then
-			-- Pecah field utama agar bertumpuk ke bawah
 			local pretty = singleEncoded
 				:gsub("^%{", "{\n  ")
 				:gsub('%,"', ',\n  "')
@@ -530,8 +527,9 @@ local function getHeaderCaseInsensitive(headers: any, targetKey: string): string
 	return nil
 end
 
-local function buildMultipartAssetBody(requestJson: string, payloadContent: string, filename: string)
+local function buildMultipartAssetBody(requestJson: string, payloadContent: string, filename: string, mimeType: string?)
 	local boundary = "----IkyyStudioBoundary" .. tostring(os.time()) .. tostring(math.random(1000, 9999))
+	local cType = mimeType or "application/octet-stream"
 	local parts = {
 		"--" .. boundary .. "\r\n",
 		'Content-Disposition: form-data; name="request"\r\n',
@@ -539,7 +537,7 @@ local function buildMultipartAssetBody(requestJson: string, payloadContent: stri
 		requestJson .. "\r\n",
 		"--" .. boundary .. "\r\n",
 		'Content-Disposition: form-data; name="fileContent"; filename="' .. filename .. '"\r\n',
-		"Content-Type: application/octet-stream\r\n\r\n",
+		"Content-Type: " .. cType .. "\r\n\r\n",
 		payloadContent .. "\r\n",
 		"--" .. boundary .. "--\r\n",
 	}
@@ -1373,7 +1371,7 @@ BersihkanBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- HALAMAN 2: UPLOAD ASSET (SCAN SPOOF -> SELECT -> UPLOAD -> HASIL)
+-- HALAMAN 2: UPLOAD ASSET (PILIH FILE AUDIO/RBXM -> KLIK UPLOAD -> PROSES -> HASIL)
 -- ==========================================
 local UploadPage = Instance.new("Frame")
 UploadPage.Size = UDim2.fromScale(1, 1)
@@ -1383,21 +1381,21 @@ UploadPage.Parent = ContentArea
 tabPages["Upload"] = UploadPage
 
 local UploadTitle = Instance.new("TextLabel")
-UploadTitle.Size = UDim2.new(0.58, -12, 0, 16)
+UploadTitle.Size = UDim2.new(0.56, -12, 0, 16)
 UploadTitle.Position = UDim2.new(0, 12, 0, 4)
 UploadTitle.BackgroundTransparency = 1
-UploadTitle.Text = "Upload Asset"
+UploadTitle.Text = "Upload Asset (Audio / RBXM)"
 UploadTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-UploadTitle.TextSize = 12
+UploadTitle.TextSize = 11
 UploadTitle.Font = Enum.Font.GothamBold
 UploadTitle.TextXAlignment = Enum.TextXAlignment.Left
 UploadTitle.Parent = UploadPage
 
 local ScanSpoofBtn = Instance.new("TextButton")
-ScanSpoofBtn.Size = UDim2.new(0.42, -12, 0, 18)
-ScanSpoofBtn.Position = UDim2.new(0.58, 0, 0, 4)
+ScanSpoofBtn.Size = UDim2.new(0.44, -12, 0, 18)
+ScanSpoofBtn.Position = UDim2.new(0.56, 0, 0, 4)
 ScanSpoofBtn.BackgroundColor3 = Color3.fromRGB(64, 118, 240)
-ScanSpoofBtn.Text = "🔍 SCAN SPOOF"
+ScanSpoofBtn.Text = "🔍 PILIH / SCAN FILE"
 ScanSpoofBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ScanSpoofBtn.TextSize = 9
 ScanSpoofBtn.Font = Enum.Font.GothamBold
@@ -1422,9 +1420,9 @@ local UploadTypeBox = Instance.new("TextBox")
 UploadTypeBox.Size = UDim2.new(0.5, -15, 0, 22)
 UploadTypeBox.Position = UDim2.new(0.5, 3, 0, 24)
 UploadTypeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-UploadTypeBox.PlaceholderText = "Model / Audio / Animation / Decal"
+UploadTypeBox.PlaceholderText = "Audio / Model"
 UploadTypeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-UploadTypeBox.Text = "Model"
+UploadTypeBox.Text = "Audio"
 UploadTypeBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 UploadTypeBox.TextSize = 10
 UploadTypeBox.Font = Enum.Font.Gotham
@@ -1490,7 +1488,7 @@ FileListPad.Parent = SpoofFileListFrame
 local EmptyListLabel = Instance.new("TextLabel")
 EmptyListLabel.Size = UDim2.new(1, -8, 0, 20)
 EmptyListLabel.BackgroundTransparency = 1
-EmptyListLabel.Text = "Klik SCAN SPOOF untuk melihat list file..."
+EmptyListLabel.Text = "Klik PILIH / SCAN FILE untuk memilih file audio / .rbxm..."
 EmptyListLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
 EmptyListLabel.TextSize = 9
 EmptyListLabel.Font = Enum.Font.Gotham
@@ -1503,7 +1501,7 @@ local UploadPayloadBox = Instance.new("TextBox")
 UploadPayloadBox.Size = UDim2.new(1, -24, 0, 22)
 UploadPayloadBox.Position = UDim2.new(0, 12, 0, 133)
 UploadPayloadBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-UploadPayloadBox.PlaceholderText = "File terpilih dari SPOOF atau path/konten manual"
+UploadPayloadBox.PlaceholderText = "File terpilih (audio / .rbxm) atau path manual"
 UploadPayloadBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 UploadPayloadBox.Text = ""
 UploadPayloadBox.TextColor3 = Color3.fromRGB(235, 235, 250)
@@ -1517,7 +1515,7 @@ local UploadActionBtn = Instance.new("TextButton")
 UploadActionBtn.Size = UDim2.new(1, -24, 0, 25)
 UploadActionBtn.Position = UDim2.new(0, 12, 0, 158)
 UploadActionBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-UploadActionBtn.Text = "⬆  UPLOAD ASSET"
+UploadActionBtn.Text = "⬆  PROSES & UPLOAD ASSET"
 UploadActionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 UploadActionBtn.TextSize = 10
 UploadActionBtn.Font = Enum.Font.GothamBold
@@ -1525,6 +1523,34 @@ UploadActionBtn.Parent = UploadPage
 Instance.new("UICorner", UploadActionBtn).CornerRadius = UDim.new(0, 7)
 
 local updateUploadOutcome = createOutcomePanel(UploadPage, 186, 56, false)
+
+local function isSupportedUploadFile(relPath: string): (boolean, string?, string?)
+	local lower = relPath:lower()
+	if lower:sub(-4) == ".mp3" then
+		return true, "Audio", "audio/mpeg"
+	elseif lower:sub(-4) == ".ogg" then
+		return true, "Audio", "audio/ogg"
+	elseif lower:sub(-4) == ".wav" then
+		return true, "Audio", "audio/wav"
+	elseif lower:sub(-5) == ".rbxm" then
+		return true, "Model", "application/octet-stream"
+	elseif lower:sub(-5) == ".rbxmx" then
+		return true, "Model", "application/xml"
+	end
+	return false, nil, nil
+end
+
+local function scanUploadableFiles(): {string}
+	local allFiles = scanFilesByPrefix({ "SPOOF/", "Uploads/" }, nil)
+	local filtered: {string} = {}
+	for _, f in ipairs(allFiles) do
+		local okExt = isSupportedUploadFile(f)
+		if okExt then
+			table.insert(filtered, f)
+		end
+	end
+	return (#filtered > 0) and filtered or allFiles
+end
 
 local function renderSpoofFileList(files: {string})
 	for _, child in ipairs(SpoofFileListFrame:GetChildren()) do
@@ -1534,7 +1560,7 @@ local function renderSpoofFileList(files: {string})
 	end
 
 	if #files == 0 then
-		EmptyListLabel.Text = "Tidak ada file di folder SPOOF."
+		EmptyListLabel.Text = "Tidak ada file audio / .rbxm di SPOOF atau Uploads."
 		EmptyListLabel.Visible = true
 		return
 	end
@@ -1550,11 +1576,14 @@ local function renderSpoofFileList(files: {string})
 		row.Parent = SpoofFileListFrame
 		Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
 
+		local _, detectedType = isSupportedUploadFile(relFile)
+		local tagPrefix = detectedType and ("[" .. detectedType .. "] ") or ""
+
 		local nameLbl = Instance.new("TextLabel")
 		nameLbl.Size = UDim2.new(1, -54, 1, 0)
 		nameLbl.Position = UDim2.new(0, 6, 0, 0)
 		nameLbl.BackgroundTransparency = 1
-		nameLbl.Text = relFile
+		nameLbl.Text = tagPrefix .. relFile
 		nameLbl.TextColor3 = Color3.fromRGB(225, 222, 245)
 		nameLbl.TextSize = 9
 		nameLbl.Font = Enum.Font.Code
@@ -1566,7 +1595,7 @@ local function renderSpoofFileList(files: {string})
 		selectBtn.Size = UDim2.new(0, 44, 1, -4)
 		selectBtn.Position = UDim2.new(1, -46, 0, 2)
 		selectBtn.BackgroundColor3 = (selectedSpoofRelPath == relFile) and Color3.fromRGB(56, 185, 115) or Color3.fromRGB(108, 86, 245)
-		selectBtn.Text = (selectedSpoofRelPath == relFile) and "Selected" or "Select"
+		selectBtn.Text = (selectedSpoofRelPath == relFile) and "Selected" or "Pilih"
 		selectBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 		selectBtn.TextSize = 8
 		selectBtn.Font = Enum.Font.GothamBold
@@ -1576,32 +1605,29 @@ local function renderSpoofFileList(files: {string})
 		selectBtn.MouseButton1Click:Connect(function()
 			selectedSpoofRelPath = relFile
 			UploadPayloadBox.Text = relFile
-			if trim(UploadNameBox.Text) == "" then
-				local baseOnly = relFile:match("([^/]+)$") or relFile
-				local stemOnly = baseOnly:gsub("%.[^%.]+$", "")
+			local baseOnly = relFile:match("([^/]+)$") or relFile
+			local stemOnly = baseOnly:gsub("%.[^%.]+$", "")
+			if stemOnly ~= "" then
 				UploadNameBox.Text = stemOnly
 			end
-			local lowerFile = relFile:lower()
-			if lowerFile:sub(-4) == ".mp3" or lowerFile:sub(-4) == ".ogg" or lowerFile:sub(-4) == ".wav" then
-				UploadTypeBox.Text = "Audio"
-			elseif lowerFile:sub(-5) == ".rbxm" or lowerFile:sub(-5) == ".rbxmx" then
-				UploadTypeBox.Text = "Model"
+			if detectedType then
+				UploadTypeBox.Text = detectedType
 			end
 			renderSpoofFileList(files)
-			updateUploadOutcome("ok", 1, "Dipilih: " .. CONFIG.WorkspaceRoot .. "/" .. relFile)
+			updateUploadOutcome("ok", 0.25, "File dipilih: " .. CONFIG.WorkspaceRoot .. "/" .. relFile .. " (" .. (detectedType or "Asset") .. "). Klik PROSES & UPLOAD ASSET.")
 		end)
 	end
 end
 
 ScanSpoofBtn.MouseButton1Click:Connect(function()
-	local foundFiles = scanFilesByPrefix({ "SPOOF/" }, nil)
+	local foundFiles = scanUploadableFiles()
 	renderSpoofFileList(foundFiles)
 	if #foundFiles > 0 then
-		updateUploadOutcome("ok", 1, "Ditemukan " .. tostring(#foundFiles) .. " file di SPOOF. Klik Select untuk memilih.")
-		notify("Scan SPOOF", tostring(#foundFiles) .. " file ditemukan.")
+		updateUploadOutcome("ok", 0.15, "Ditemukan " .. tostring(#foundFiles) .. " file. Klik Pilih pada file yang ingin diupload.")
+		notify("Scan File", tostring(#foundFiles) .. " file ditemukan.")
 	else
-		updateUploadOutcome("err", 0, "Tidak ada file ditemukan di folder SPOOF.")
-		notify("Scan SPOOF", "Folder SPOOF kosong.")
+		updateUploadOutcome("err", 0, "Tidak ada file audio (.mp3/.ogg/.wav) atau .rbxm ditemukan.")
+		notify("Scan File", "Tidak ada file ditemukan.")
 	end
 end)
 
@@ -1838,7 +1864,7 @@ end)
 createNavButton("Spoof", "⇄  Spoof", 1).MouseButton1Click:Connect(function() switchTab("Spoof") end)
 createNavButton("Upload", "⬆  Upload", 2).MouseButton1Click:Connect(function()
 	switchTab("Upload")
-	renderSpoofFileList(scanFilesByPrefix({ "SPOOF/" }, nil))
+	renderSpoofFileList(scanUploadableFiles())
 end)
 createNavButton("Tools", "🛠  Place & Perm", 3).MouseButton1Click:Connect(function() switchTab("Tools") end)
 createNavButton("Setting", "⚙  Setting", 4).MouseButton1Click:Connect(function() switchTab("Setting") end)
@@ -2152,7 +2178,143 @@ SpoofNowBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
--- Proses Upload Asset
+-- ==========================================
+-- METHOD UPLOAD ASSET (AUDIO & RBXM)
+-- ==========================================
+local function executeUploadAssetMethod(params: {
+	apiKey: string,
+	assetName: string,
+	assetType: string,
+	creatorId: number,
+	isGroup: boolean,
+	filePathOrContent: string,
+}): (boolean, string, string)
+	local rawInput = trim(params.filePathOrContent)
+	if rawInput == "" and selectedSpoofRelPath then
+		rawInput = selectedSpoofRelPath
+	end
+
+	if rawInput == "" then
+		return false, "Pilih file audio / .rbxm terlebih dahulu.", ""
+	end
+
+	local payloadContent: string? = nil
+	local uploadFilename = sanitizeFileName(params.assetName):gsub("%s+", "_")
+	local detectedType: string? = nil
+	local detectedMime: string? = nil
+
+	local loaded = loadTextFile(rawInput)
+	if loaded ~= nil then
+		payloadContent = loaded
+		local baseName = rawInput:match("([^/\\]+)$") or rawInput
+		if baseName ~= "" then
+			uploadFilename = baseName
+		end
+		local _, tKind, mType = isSupportedUploadFile(rawInput)
+		detectedType = tKind
+		detectedMime = mType
+	else
+		-- Jika bukan path file yang tersimpan, anggap rawInput sebagai konten/data langsung
+		payloadContent = rawInput
+		local lowerType = params.assetType:lower()
+		if lowerType == "audio" then
+			uploadFilename = uploadFilename .. ".mp3"
+			detectedMime = "audio/mpeg"
+		else
+			uploadFilename = uploadFilename .. ".rbxm"
+			detectedMime = "application/octet-stream"
+		end
+	end
+
+	if not payloadContent or #payloadContent == 0 then
+		return false, "Konten file kosong (" .. uploadFilename .. ").", ""
+	end
+
+	local finalAssetType = trim(params.assetType)
+	if finalAssetType == "" then
+		finalAssetType = detectedType or "Model"
+	elseif finalAssetType:lower() == "rbxm" or finalAssetType:lower() == "anim" or finalAssetType:lower() == "animation" then
+		finalAssetType = (finalAssetType:lower() == "anim" or finalAssetType:lower() == "animation") and "Animation" or "Model"
+	elseif finalAssetType:lower() == "audio" or finalAssetType:lower() == "mp3" or finalAssetType:lower() == "suara" then
+		finalAssetType = "Audio"
+	end
+
+	local finalDisplayName = trim(params.assetName)
+	if finalDisplayName == "" then
+		finalDisplayName = uploadFilename:gsub("%.[^%.]+$", "")
+	end
+
+	local creatorObj = params.isGroup and { groupId = params.creatorId } or { userId = params.creatorId }
+	local requestPayloadJson = HttpService:JSONEncode({
+		assetType = finalAssetType,
+		displayName = finalDisplayName,
+		description = "Uploaded via Plugin Studio Lite by Ikyy",
+		creationContext = {
+			creator = creatorObj,
+		},
+	})
+
+	local multipartBody, contentTypeHeader = buildMultipartAssetBody(
+		requestPayloadJson,
+		payloadContent,
+		uploadFilename,
+		detectedMime
+	)
+
+	local res, ok, info = apiRequest({
+		Url = "https://apis.roblox.com/assets/v1/assets",
+		Method = "POST",
+		Headers = {
+			["x-api-key"] = params.apiKey,
+			["Content-Type"] = contentTypeHeader,
+		},
+		Body = multipartBody,
+		Retries = 2,
+	})
+
+	if not ok then
+		res, ok, info = apiRequest({
+			Url = "https://apis.roblox.com/assets/v1/assets",
+			Method = "POST",
+			Headers = {
+				["x-api-key"] = params.apiKey,
+				["Content-Type"] = "application/json",
+			},
+			Body = HttpService:JSONEncode({
+				assetType = finalAssetType,
+				displayName = finalDisplayName,
+				description = "Uploaded via Plugin Studio Lite by Ikyy",
+				creationContext = { creator = creatorObj },
+				payload = payloadContent,
+			}),
+			Retries = 1,
+		})
+	end
+
+	local bodyStr = res and tostring(res.Body or "") or ""
+	if ok and res then
+		saveTextFile("Uploads/upload_" .. tostring(os.time()) .. ".json", bodyStr)
+		local summary = string.format(
+			"Berhasil (%s) | File: %s | Type: %s\n%s",
+			info,
+			uploadFilename,
+			finalAssetType,
+			bodyStr:sub(1, 260)
+		)
+		return true, summary, bodyStr
+	end
+
+	local errMsg = string.format(
+		"Gagal (%s) | File: %s | Type: %s\n%s",
+		info,
+		uploadFilename,
+		finalAssetType,
+		bodyStr:sub(1, 260)
+	)
+	return false, errMsg, bodyStr
+end
+
+-- Proses Upload Asset (Step: Pilih File -> Klik Tombol -> Proses Method -> Tampilkan Hasil)
 local isUploading = false
 UploadActionBtn.MouseButton1Click:Connect(function()
 	if isUploading then return end
@@ -2163,87 +2325,36 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 		return
 	end
 
+	local rawFile = trim(UploadPayloadBox.Text)
+	if rawFile == "" and selectedSpoofRelPath then
+		rawFile = selectedSpoofRelPath
+		UploadPayloadBox.Text = rawFile
+	end
+
+	if rawFile == "" then
+		updateUploadOutcome("err", 0, "Pilih file audio atau .rbxm terlebih dahulu (klik PILIH / SCAN FILE -> Pilih).")
+		notify("Upload", "Belum ada file dipilih.")
+		return
+	end
+
 	local assetName = trim(UploadNameBox.Text)
-	if assetName == "" then assetName = "IkyyAsset_" .. tostring(os.time()) end
 	local assetType = trim(UploadTypeBox.Text)
-	if assetType == "" then assetType = "Model" end
 	local creatorIdNum = tonumber(trim(UploadCreatorBox.Text):match("%d+")) or LocalPlayer.UserId
 	local isGroup = (trim(UploadOwnerModeBox.Text):lower() == "group")
 
-	local rawInput = trim(UploadPayloadBox.Text)
-	if rawInput == "" and selectedSpoofRelPath then
-		rawInput = selectedSpoofRelPath
-	end
-
-	local payloadData = "-- Exported via Ikyy Plugin Studio Lite"
-	local uploadFilename = assetName:gsub("[^%w_%-]", "_") .. ".lua"
-
-	if rawInput ~= "" then
-		local loaded = loadTextFile(rawInput)
-		if loaded then
-			payloadData = loaded
-			local baseName = rawInput:match("([^/\\]+)$")
-			if baseName and baseName ~= "" then
-				uploadFilename = baseName
-			end
-		else
-			payloadData = rawInput
-		end
-	end
-
 	isUploading = true
-	updateUploadOutcome("working", 0.35, "Mengirim permintaan upload '" .. assetName .. "' (" .. uploadFilename .. ")...")
+	updateUploadOutcome("working", 0.5, "Memproses file '" .. rawFile .. "' ke method upload...")
 	task.spawn(function()
-		local creatorObj = isGroup and { groupId = creatorIdNum } or { userId = creatorIdNum }
-		local requestPayloadJson = HttpService:JSONEncode({
+		local okUpload, resultText = executeUploadAssetMethod({
+			apiKey = apiKey,
+			assetName = assetName,
 			assetType = assetType,
-			displayName = assetName,
-			description = "Uploaded via Plugin Studio Lite by Ikyy",
-			creationContext = {
-				creator = creatorObj,
-			},
+			creatorId = creatorIdNum,
+			isGroup = isGroup,
+			filePathOrContent = rawFile,
 		})
-
-		local multipartBody, contentTypeHeader = buildMultipartAssetBody(requestPayloadJson, payloadData, uploadFilename)
-		local res, ok, info = apiRequest({
-			Url = "https://apis.roblox.com/assets/v1/assets",
-			Method = "POST",
-			Headers = {
-				["x-api-key"] = apiKey,
-				["Content-Type"] = contentTypeHeader,
-			},
-			Body = multipartBody,
-			Retries = 2,
-		})
-
-		if not ok then
-			res, ok, info = apiRequest({
-				Url = "https://apis.roblox.com/assets/v1/assets",
-				Method = "POST",
-				Headers = {
-					["x-api-key"] = apiKey,
-					["Content-Type"] = "application/json",
-				},
-				Body = HttpService:JSONEncode({
-					assetType = assetType,
-					displayName = assetName,
-					description = "Uploaded via Plugin Studio Lite by Ikyy",
-					creationContext = { creator = creatorObj },
-					payload = payloadData,
-				}),
-				Retries = 1,
-			})
-		end
-
-		local bodyStr = res and tostring(res.Body or "") or ""
-		if ok and res then
-			saveTextFile("Uploads/upload_" .. tostring(os.time()) .. ".json", bodyStr)
-			updateUploadOutcome("ok", 1, "Berhasil (" .. info .. "):\n" .. bodyStr:sub(1, 300))
-			notify("Upload", "Berhasil.")
-		else
-			updateUploadOutcome("err", 0, "Gagal (" .. info .. "):\n" .. bodyStr:sub(1, 300))
-			notify("Upload", "Gagal.")
-		end
+		updateUploadOutcome(okUpload and "ok" or "err", okUpload and 1 or 0, resultText)
+		notify("Upload", okUpload and "Upload berhasil." or "Upload gagal.")
 		isUploading = false
 	end)
 end)
