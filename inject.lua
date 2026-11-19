@@ -32,6 +32,7 @@ local CONFIG = {
 	Cookie = "",
 	ApiKey = "",
 	PermApiKey = "",
+	UploadApiKey = "",
 	DefaultUniverseId = "10516113765",
 	IsMinimized = false,
 	ActiveTab = "Spoof",
@@ -56,6 +57,13 @@ export type MusicTrack = {
 	name: string,
 	songId: string,
 	playbackSpeed: number,
+}
+
+export type UploadCandidate = {
+	relPath: string,
+	displayName: string,
+	ext: string,
+	assetType: string,
 }
 
 local DEFAULT_MUSIC_PLAYLIST: {MusicTrack} = {
@@ -99,6 +107,24 @@ local function sanitizeFileName(name: string): string
 		return "UnnamedAsset"
 	end
 	return cleaned:sub(1, 80)
+end
+
+local function stripExtension(fileName: string): string
+	local base = fileName:match("([^/]+)$") or fileName
+	local withoutExt = base:match("^(.+)%.[^%.]+$")
+	return withoutExt or base
+end
+
+local function inferRobloxAssetType(ext: string): string
+	local e = ext:lower()
+	if e == ".mp3" or e == ".ogg" or e == ".wav" or e == ".flac" then
+		return "Audio"
+	elseif e == ".png" or e == ".jpg" or e == ".jpeg" or e == ".bmp" then
+		return "Decal"
+	elseif e == ".rbxm" or e == ".rbxmx" then
+		return "Model"
+	end
+	return "Model"
 end
 
 local function notify(title: string, text: string)
@@ -493,9 +519,11 @@ end
 local savedCookie = loadTextFile("cookie.txt")
 local savedApiKey = loadTextFile("apikey.txt")
 local savedPermApiKey = loadTextFile("perm_apikey.txt")
+local savedUploadApiKey = loadTextFile("upload_apikey.txt")
 if savedCookie and trim(savedCookie) ~= "" then CONFIG.Cookie = normalizeCookie(savedCookie) end
 if savedApiKey and trim(savedApiKey) ~= "" then CONFIG.ApiKey = trim(savedApiKey) end
 if savedPermApiKey and trim(savedPermApiKey) ~= "" then CONFIG.PermApiKey = trim(savedPermApiKey) end
+if savedUploadApiKey and trim(savedUploadApiKey) ~= "" then CONFIG.UploadApiKey = trim(savedUploadApiKey) end
 
 local function apiRequest(options: {
 	Url: string,
@@ -790,7 +818,7 @@ local MetaLabel = Instance.new("TextLabel")
 MetaLabel.Size = UDim2.new(0, 240, 0, 11)
 MetaLabel.Position = UDim2.new(0, 48, 0, 31)
 MetaLabel.BackgroundTransparency = 1
-MetaLabel.Text = "by Ikyy • v1.2 • @" .. LocalPlayer.Name
+MetaLabel.Text = "by Ikyy • v1.3 • @" .. LocalPlayer.Name
 MetaLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
 MetaLabel.TextSize = 8
 MetaLabel.Font = Enum.Font.GothamMedium
@@ -941,7 +969,7 @@ local tabButtons: {[string]: TextButton} = {}
 local function createNavButton(name: string, label: string, order: number)
 	local btn = Instance.new("TextButton")
 	btn.Name = "Nav_" .. name
-	btn.Size = UDim2.new(1, 0, 0, 34)
+	btn.Size = UDim2.new(1, 0, 0, 32)
 	btn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
 	btn.Text = "  " .. label
 	btn.TextColor3 = Color3.fromRGB(185, 182, 210)
@@ -971,6 +999,8 @@ local ContStroke = Instance.new("UIStroke", ContentArea)
 ContStroke.Color = Color3.fromRGB(52, 48, 82)
 ContStroke.Thickness = 1
 
+local onUploadTabOpened: (() -> ())? = nil
+
 local function switchTab(tabName: string)
 	CONFIG.ActiveTab = tabName
 	for name, page in pairs(tabPages) do
@@ -980,6 +1010,9 @@ local function switchTab(tabName: string)
 		local active = (name == tabName)
 		btn.BackgroundColor3 = active and Color3.fromRGB(45, 42, 68) or Color3.fromRGB(28, 27, 42)
 		btn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(185, 182, 210)
+	end
+	if tabName == "Upload" and onUploadTabOpened then
+		onUploadTabOpened()
 	end
 end
 
@@ -1457,7 +1490,269 @@ BersihkanBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- HALAMAN 2: PLACE MAKER & ASSET PERMISSIONS
+-- HALAMAN 2: UPLOAD ALL ASSET (API KEY ROBLOX + SELECT ALL / SATU-SATU + SAVE TXT)
+-- ==========================================
+local UploadPage = Instance.new("Frame")
+UploadPage.Size = UDim2.fromScale(1, 1)
+UploadPage.BackgroundTransparency = 1
+UploadPage.Visible = false
+UploadPage.Parent = ContentArea
+tabPages["Upload"] = UploadPage
+
+local UploadTitle = Instance.new("TextLabel")
+UploadTitle.Size = UDim2.new(0.55, -12, 0, 15)
+UploadTitle.Position = UDim2.new(0, 12, 0, 2)
+UploadTitle.BackgroundTransparency = 1
+UploadTitle.Text = "Upload All Asset (Open Cloud)"
+UploadTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+UploadTitle.TextSize = 11
+UploadTitle.Font = Enum.Font.GothamBold
+UploadTitle.TextXAlignment = Enum.TextXAlignment.Left
+UploadTitle.Parent = UploadPage
+
+local UploadApiKeyBox = Instance.new("TextBox")
+UploadApiKeyBox.Size = UDim2.new(1, -24, 0, 19)
+UploadApiKeyBox.Position = UDim2.new(0, 12, 0, 18)
+UploadApiKeyBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+UploadApiKeyBox.Text = CONFIG.UploadApiKey
+UploadApiKeyBox.PlaceholderText = "Roblox API Key (x-api-key) — kosong = pakai API Key Setting"
+UploadApiKeyBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+UploadApiKeyBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+UploadApiKeyBox.TextSize = 9
+UploadApiKeyBox.Font = Enum.Font.Gotham
+UploadApiKeyBox.ClearTextOnFocus = false
+UploadApiKeyBox.Parent = UploadPage
+Instance.new("UICorner", UploadApiKeyBox).CornerRadius = UDim.new(0, 6)
+
+local UploadActionBar = Instance.new("Frame")
+UploadActionBar.Size = UDim2.new(1, -24, 0, 18)
+UploadActionBar.Position = UDim2.new(0, 12, 0, 39)
+UploadActionBar.BackgroundTransparency = 1
+UploadActionBar.Parent = UploadPage
+
+local ScanUploadBtn = Instance.new("TextButton")
+ScanUploadBtn.Size = UDim2.new(0.24, -3, 1, 0)
+ScanUploadBtn.Position = UDim2.new(0, 0, 0, 0)
+ScanUploadBtn.BackgroundColor3 = Color3.fromRGB(64, 118, 240)
+ScanUploadBtn.Text = "Scan File"
+ScanUploadBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ScanUploadBtn.TextSize = 8
+ScanUploadBtn.Font = Enum.Font.GothamBold
+ScanUploadBtn.Parent = UploadActionBar
+Instance.new("UICorner", ScanUploadBtn).CornerRadius = UDim.new(0, 5)
+
+local SelectAllUploadBtn = Instance.new("TextButton")
+SelectAllUploadBtn.Size = UDim2.new(0.26, -3, 1, 0)
+SelectAllUploadBtn.Position = UDim2.new(0.24, 2, 0, 0)
+SelectAllUploadBtn.BackgroundColor3 = Color3.fromRGB(48, 45, 74)
+SelectAllUploadBtn.Text = "Select All"
+SelectAllUploadBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SelectAllUploadBtn.TextSize = 8
+SelectAllUploadBtn.Font = Enum.Font.GothamBold
+SelectAllUploadBtn.Parent = UploadActionBar
+Instance.new("UICorner", SelectAllUploadBtn).CornerRadius = UDim.new(0, 5)
+
+local ClearSelUploadBtn = Instance.new("TextButton")
+ClearSelUploadBtn.Size = UDim2.new(0.22, -3, 1, 0)
+ClearSelUploadBtn.Position = UDim2.new(0.50, 2, 0, 0)
+ClearSelUploadBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
+ClearSelUploadBtn.Text = "Unselect"
+ClearSelUploadBtn.TextColor3 = Color3.fromRGB(200, 198, 224)
+ClearSelUploadBtn.TextSize = 8
+ClearSelUploadBtn.Font = Enum.Font.GothamBold
+ClearSelUploadBtn.Parent = UploadActionBar
+Instance.new("UICorner", ClearSelUploadBtn).CornerRadius = UDim.new(0, 5)
+
+local UploadSelectedBtn = Instance.new("TextButton")
+UploadSelectedBtn.Size = UDim2.new(0.28, 0, 1, 0)
+UploadSelectedBtn.Position = UDim2.new(0.72, 2, 0, 0)
+UploadSelectedBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+UploadSelectedBtn.Text = "⬆ UPLOAD"
+UploadSelectedBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+UploadSelectedBtn.TextSize = 8
+UploadSelectedBtn.Font = Enum.Font.GothamBold
+UploadSelectedBtn.Parent = UploadActionBar
+Instance.new("UICorner", UploadSelectedBtn).CornerRadius = UDim.new(0, 5)
+
+local UploadListScroll = Instance.new("ScrollingFrame")
+UploadListScroll.Size = UDim2.new(1, -24, 0, 92)
+UploadListScroll.Position = UDim2.new(0, 12, 0, 59)
+UploadListScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+UploadListScroll.BorderSizePixel = 0
+UploadListScroll.ScrollBarThickness = 3
+UploadListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+UploadListScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+UploadListScroll.Parent = UploadPage
+Instance.new("UICorner", UploadListScroll).CornerRadius = UDim.new(0, 6)
+local ulStroke = Instance.new("UIStroke", UploadListScroll)
+ulStroke.Color = Color3.fromRGB(48, 44, 74)
+ulStroke.Thickness = 1
+
+local ulLayout = Instance.new("UIListLayout")
+ulLayout.Padding = UDim.new(0, 2)
+ulLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ulLayout.Parent = UploadListScroll
+
+local ulPad = Instance.new("UIPadding")
+ulPad.PaddingTop = UDim.new(0, 3)
+ulPad.PaddingBottom = UDim.new(0, 3)
+ulPad.PaddingLeft = UDim.new(0, 3)
+ulPad.PaddingRight = UDim.new(0, 3)
+ulPad.Parent = UploadListScroll
+
+local UploadEmptyLabel = Instance.new("TextLabel")
+UploadEmptyLabel.Size = UDim2.new(1, -6, 0, 20)
+UploadEmptyLabel.BackgroundTransparency = 1
+UploadEmptyLabel.Text = "Klik Scan File untuk memuat aset dari SPOOF/..."
+UploadEmptyLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
+UploadEmptyLabel.TextSize = 8
+UploadEmptyLabel.Font = Enum.Font.Gotham
+UploadEmptyLabel.TextXAlignment = Enum.TextXAlignment.Left
+UploadEmptyLabel.Parent = UploadListScroll
+
+local updateUploadOutcome = createOutcomePanel(UploadPage, 154, 102, true)
+
+local uploadCandidates: {UploadCandidate} = {}
+local uploadSelectedMap: {[string]: boolean} = {}
+
+local function refreshUploadListUI()
+	for _, child in ipairs(UploadListScroll:GetChildren()) do
+		if child:IsA("Frame") or (child:IsA("TextLabel") and child ~= UploadEmptyLabel) then
+			child:Destroy()
+		end
+	end
+
+	if #uploadCandidates == 0 then
+		UploadEmptyLabel.Text = "Tidak ada file aset di SPOOF/ atau TXT/."
+		UploadEmptyLabel.Visible = true
+		return
+	end
+
+	UploadEmptyLabel.Visible = false
+	for idx, item in ipairs(uploadCandidates) do
+		local isChecked = uploadSelectedMap[item.relPath] == true
+		local row = Instance.new("Frame")
+		row.Size = UDim2.new(1, -4, 0, 18)
+		row.BackgroundColor3 = isChecked and Color3.fromRGB(42, 38, 68) or Color3.fromRGB(20, 19, 32)
+		row.BorderSizePixel = 0
+		row.LayoutOrder = idx
+		row.Parent = UploadListScroll
+		Instance.new("UICorner", row).CornerRadius = UDim.new(0, 4)
+
+		local checkBtn = Instance.new("TextButton")
+		checkBtn.Size = UDim2.fromOffset(16, 14)
+		checkBtn.Position = UDim2.new(0, 2, 0.5, -7)
+		checkBtn.BackgroundColor3 = isChecked and Color3.fromRGB(56, 205, 125) or Color3.fromRGB(34, 32, 50)
+		checkBtn.Text = isChecked and "✓" or ""
+		checkBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		checkBtn.TextSize = 9
+		checkBtn.Font = Enum.Font.GothamBold
+		checkBtn.Parent = row
+		Instance.new("UICorner", checkBtn).CornerRadius = UDim.new(0, 3)
+
+		local nameLbl = Instance.new("TextLabel")
+		nameLbl.Size = UDim2.new(1, -66, 1, 0)
+		nameLbl.Position = UDim2.new(0, 21, 0, 0)
+		nameLbl.BackgroundTransparency = 1
+		nameLbl.Text = string.format("%s [%s]", item.displayName, item.assetType)
+		nameLbl.TextColor3 = isChecked and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 188, 215)
+		nameLbl.TextSize = 8
+		nameLbl.Font = isChecked and Enum.Font.GothamBold or Enum.Font.Gotham
+		nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+		nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+		nameLbl.Parent = row
+
+		local toggleRowBtn = Instance.new("TextButton")
+		toggleRowBtn.Size = UDim2.new(1, -66, 1, 0)
+		toggleRowBtn.Position = UDim2.new(0, 21, 0, 0)
+		toggleRowBtn.BackgroundTransparency = 1
+		toggleRowBtn.Text = ""
+		toggleRowBtn.Parent = row
+
+		local pickBadge = Instance.new("TextButton")
+		pickBadge.Size = UDim2.new(0, 42, 0, 14)
+		pickBadge.Position = UDim2.new(1, -44, 0.5, -7)
+		pickBadge.BackgroundColor3 = isChecked and Color3.fromRGB(108, 86, 245) or Color3.fromRGB(30, 28, 46)
+		pickBadge.Text = isChecked and "Selected" or "Select"
+		pickBadge.TextColor3 = Color3.fromRGB(255, 255, 255)
+		pickBadge.TextSize = 7
+		pickBadge.Font = Enum.Font.GothamBold
+		pickBadge.Parent = row
+		Instance.new("UICorner", pickBadge).CornerRadius = UDim.new(0, 3)
+
+		local function toggleSingle()
+			uploadSelectedMap[item.relPath] = not (uploadSelectedMap[item.relPath] == true)
+			refreshUploadListUI()
+		end
+
+		checkBtn.MouseButton1Click:Connect(toggleSingle)
+		toggleRowBtn.MouseButton1Click:Connect(toggleSingle)
+		pickBadge.MouseButton1Click:Connect(toggleSingle)
+	end
+end
+
+local function scanUploadCandidates(showToast: boolean)
+	local rawPaths = scanFilesByPrefix({ "SPOOF/", "TXT/" }, nil)
+	local nextList: {UploadCandidate} = {}
+	for _, rel in ipairs(rawPaths) do
+		local low = rel:lower()
+		local isInfoFile = low:sub(1, 12) == "spoof/info/" or low:match("session%.txt$") ~= nil
+		local ext = rel:match("(%.[^%.]+)$") or ""
+		if not isInfoFile and ext ~= "" and ext:lower() ~= ".txt" then
+			table.insert(nextList, {
+				relPath = rel,
+				displayName = stripExtension(rel),
+				ext = ext:lower(),
+				assetType = inferRobloxAssetType(ext),
+			})
+		end
+	end
+
+	uploadCandidates = nextList
+	local nextMap: {[string]: boolean} = {}
+	for _, c in ipairs(uploadCandidates) do
+		if uploadSelectedMap[c.relPath] == true then
+			nextMap[c.relPath] = true
+		end
+	end
+	uploadSelectedMap = nextMap
+	refreshUploadListUI()
+
+	if showToast then
+		notify("Upload Scan", tostring(#uploadCandidates) .. " file aset ditemukan.")
+	end
+end
+
+onUploadTabOpened = function()
+	if #uploadCandidates == 0 then
+		scanUploadCandidates(false)
+	end
+end
+
+UploadApiKeyBox:GetPropertyChangedSignal("Text"):Connect(function()
+	CONFIG.UploadApiKey = trim(UploadApiKeyBox.Text)
+end)
+
+ScanUploadBtn.MouseButton1Click:Connect(function()
+	scanUploadCandidates(true)
+end)
+
+SelectAllUploadBtn.MouseButton1Click:Connect(function()
+	for _, c in ipairs(uploadCandidates) do
+		uploadSelectedMap[c.relPath] = true
+	end
+	refreshUploadListUI()
+	notify("Upload", "Semua (" .. tostring(#uploadCandidates) .. ") file dipilih.")
+end)
+
+ClearSelUploadBtn.MouseButton1Click:Connect(function()
+	table.clear(uploadSelectedMap)
+	refreshUploadListUI()
+	notify("Upload", "Pilihan dibersihkan.")
+end)
+
+-- ==========================================
+-- HALAMAN 3: PLACE MAKER & ASSET PERMISSIONS
 -- ==========================================
 local ToolsPage = Instance.new("Frame")
 ToolsPage.Size = UDim2.fromScale(1, 1)
@@ -1649,7 +1944,7 @@ LoadPermTxtBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- HALAMAN 3: MUSIC PLAYER (EQUALIZER + LOOP LOADING + VOLUME + << / ▶⏸ / >>)
+-- HALAMAN 4: MUSIC PLAYER (EQUALIZER + LOOP LOADING + VOLUME + << / ▶⏸ / >>)
 -- ==========================================
 local MusicPage = Instance.new("Frame")
 MusicPage.Size = UDim2.fromScale(1, 1)
@@ -2064,7 +2359,7 @@ do
 end
 
 -- ==========================================
--- HALAMAN 4: SETTING
+-- HALAMAN 5: SETTING
 -- ==========================================
 local SettingPage = Instance.new("Frame")
 SettingPage.Size = UDim2.fromScale(1, 1)
@@ -2133,10 +2428,11 @@ Instance.new("UICorner", SaveSettingBtn).CornerRadius = UDim.new(0, 8)
 
 local updateSettingOutcome = createOutcomePanel(SettingPage, 166, 76, false)
 
-local function syncCredentialsFromInputs(): (string, string, string)
+local function syncCredentialsFromInputs(): (string, string, string, string)
 	local boxCookie = normalizeCookie(CookieBox.Text)
 	local boxApiKey = trim(ApiKeyBox.Text)
 	local boxPermKey = trim(PermApiKeyBox.Text)
+	local boxUploadKey = trim(UploadApiKeyBox.Text)
 	if boxCookie ~= "" then
 		CONFIG.Cookie = boxCookie
 	end
@@ -2146,8 +2442,12 @@ local function syncCredentialsFromInputs(): (string, string, string)
 	if boxPermKey ~= "" then
 		CONFIG.PermApiKey = boxPermKey
 	end
+	if boxUploadKey ~= "" then
+		CONFIG.UploadApiKey = boxUploadKey
+	end
 	local effectivePermKey = (CONFIG.PermApiKey ~= "") and CONFIG.PermApiKey or CONFIG.ApiKey
-	return CONFIG.Cookie, CONFIG.ApiKey, effectivePermKey
+	local effectiveUploadKey = (CONFIG.UploadApiKey ~= "") and CONFIG.UploadApiKey or CONFIG.ApiKey
+	return CONFIG.Cookie, CONFIG.ApiKey, effectivePermKey, effectiveUploadKey
 end
 
 CookieBox:GetPropertyChangedSignal("Text"):Connect(function()
@@ -2162,10 +2462,14 @@ SaveSettingBtn.MouseButton1Click:Connect(function()
 	local c = normalizeCookie(CookieBox.Text)
 	local k = trim(ApiKeyBox.Text)
 	local pk = trim(PermApiKeyBox.Text)
+	local uk = trim(UploadApiKeyBox.Text)
 	CONFIG.Cookie = c
 	CONFIG.ApiKey = k
 	if pk ~= "" then
 		CONFIG.PermApiKey = pk
+	end
+	if uk ~= "" then
+		CONFIG.UploadApiKey = uk
 	end
 	CookieBox.Text = c
 	ApiKeyBox.Text = k
@@ -2173,19 +2477,20 @@ SaveSettingBtn.MouseButton1Click:Connect(function()
 	local okC = saveTextFile("cookie.txt", c)
 	local okK = saveTextFile("apikey.txt", k)
 	local okPK = (pk == "") or saveTextFile("perm_apikey.txt", pk)
-	local ok = (c == "" or okC) and (k == "" or okK) and okPK
+	local okUK = (uk == "") or saveTextFile("upload_apikey.txt", uk)
+	local ok = (c == "" or okC) and (k == "" or okK) and okPK and okUK
 	local summary = string.format(
-		"Cookie: %s | API Key: %s | Perm Key: %s",
+		"Cookie: %s | API Key: %s | Upload Key: %s",
 		c ~= "" and ("Terisi (" .. tostring(#c) .. " karakter)") or "Kosong",
 		k ~= "" and ("Terisi (" .. tostring(#k) .. " karakter)") or "Kosong",
-		(CONFIG.PermApiKey ~= "") and ("Terisi (" .. tostring(#CONFIG.PermApiKey) .. " karakter)") or "Ikut API Key"
+		(CONFIG.UploadApiKey ~= "") and ("Terisi (" .. tostring(#CONFIG.UploadApiKey) .. " karakter)") or "Ikut API Key"
 	)
 	updateSettingOutcome(ok and "ok" or "err", ok and 1 or 0, summary)
 	notify("Setting", ok and "Tersimpan." or "Gagal menyimpan.")
 end)
 
 -- ==========================================
--- HALAMAN 5: ABOUT CREATOR & TOOLS
+-- HALAMAN 6: ABOUT CREATOR & TOOLS
 -- ==========================================
 local AboutPage = Instance.new("Frame")
 AboutPage.Size = UDim2.fromScale(1, 1)
@@ -2220,19 +2525,20 @@ AboutStroke.Color = Color3.fromRGB(64, 56, 102)
 AboutStroke.Thickness = 1
 
 local AboutText = Instance.new("TextLabel")
-AboutText.Size = UDim2.new(1, -16, 0, 170)
+AboutText.Size = UDim2.new(1, -16, 0, 190)
 AboutText.AutomaticSize = Enum.AutomaticSize.Y
 AboutText.Position = UDim2.new(0, 8, 0, 8)
 AboutText.BackgroundTransparency = 1
 AboutText.Text = table.concat({
 	"Creator       : Ikyy (@" .. LocalPlayer.Name .. " | ID: " .. tostring(LocalPlayer.UserId) .. ")",
 	"Tools         : Plugin Studio Lite (Delta Executor Edition)",
-	"Versi         : v1.2",
+	"Versi         : v1.3",
 	"Workspace     : " .. CONFIG.WorkspaceRoot .. "/ (TXT, SPOOF, Logs)",
 	"",
 	"Fitur Utama:",
 	"• Spoof Asset : Spoof ID satuan/massal & file .txt (Audio & RBXM) dengan JSON hasil.",
-	"• Place & Perm: Buat place, muat ID dari file TXT (id,id,id), grant permissions pakai API Key terpisah, & tampilkan info lengkap Universe.",
+	"• Upload All  : Upload aset via Roblox Open Cloud API Key, Select All / satu-satu, & simpan TXT.",
+	"• Place & Perm: Buat place, muat ID dari file TXT (id,id,id), grant permissions pakai API Key terpisah.",
 	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
 	"• Setting     : Kelola .ROBLOSECURITY cookie dan Open Cloud API Key.",
 }, "\n")
@@ -2246,10 +2552,11 @@ AboutText.Parent = AboutCard
 
 -- Navigasi Sidebar
 createNavButton("Spoof", "⇄  Spoof", 1).MouseButton1Click:Connect(function() switchTab("Spoof") end)
-createNavButton("Tools", "🛠  Place & Perm", 2).MouseButton1Click:Connect(function() switchTab("Tools") end)
-createNavButton("Music", "🎵  Music", 3).MouseButton1Click:Connect(function() switchTab("Music") end)
-createNavButton("Setting", "⚙  Setting", 4).MouseButton1Click:Connect(function() switchTab("Setting") end)
-createNavButton("About", "ℹ  About", 5).MouseButton1Click:Connect(function() switchTab("About") end)
+createNavButton("Upload", "⬆  Upload All", 2).MouseButton1Click:Connect(function() switchTab("Upload") end)
+createNavButton("Tools", "🛠  Place & Perm", 3).MouseButton1Click:Connect(function() switchTab("Tools") end)
+createNavButton("Music", "🎵  Music", 4).MouseButton1Click:Connect(function() switchTab("Music") end)
+createNavButton("Setting", "⚙  Setting", 5).MouseButton1Click:Connect(function() switchTab("Setting") end)
+createNavButton("About", "ℹ  About", 6).MouseButton1Click:Connect(function() switchTab("About") end)
 switchTab("Spoof")
 
 -- ==========================================
@@ -2513,6 +2820,146 @@ SpoofNowBtn.MouseButton1Click:Connect(function()
 		setJsonResultText(not allOk, finalJson)
 		notify("Spoof", string.format("Selesai: %d berhasil, %d gagal.", berhasil, gagal))
 		isSpoofing = false
+	end)
+end)
+
+-- Proses Upload All Asset (Open Cloud API Key + Select All / Satu-Satu + Save TXT)
+local isUploadingAll = false
+UploadSelectedBtn.MouseButton1Click:Connect(function()
+	if isUploadingAll then return end
+	local _, _, _, uploadKey = syncCredentialsFromInputs()
+	if uploadKey == "" then
+		updateUploadOutcome("err", 0, "Roblox API Key (x-api-key) belum diisi.")
+		notify("Upload All", "API Key kosong.")
+		return
+	end
+
+	local chosenItems: {UploadCandidate} = {}
+	for _, c in ipairs(uploadCandidates) do
+		if uploadSelectedMap[c.relPath] == true then
+			table.insert(chosenItems, c)
+		end
+	end
+
+	if #chosenItems == 0 then
+		updateUploadOutcome("err", 0, "Pilih minimal satu file aset (klik Select All atau pilih satu-satu).")
+		notify("Upload All", "Belum ada file dipilih.")
+		return
+	end
+
+	if trim(UploadApiKeyBox.Text) ~= "" then
+		saveTextFile("upload_apikey.txt", trim(UploadApiKeyBox.Text))
+	end
+
+	isUploadingAll = true
+	updateUploadOutcome("working", 0.08, "Mengunggah " .. tostring(#chosenItems) .. " aset ke Roblox Open Cloud...")
+
+	task.spawn(function()
+		local sukses, gagal = 0, 0
+		local formattedBlocks: {string} = {}
+		local ownerUserId = tostring(LocalPlayer.UserId)
+
+		for idx, item in ipairs(chosenItems) do
+			local fileContent = loadTextFile(item.relPath)
+			local assetIdOut = "-"
+			local statusOut = "Gagal"
+
+			if not fileContent or fileContent == "" then
+				gagal += 1
+				statusOut = "Gagal (File kosong/tidak terbaca)"
+			else
+				local payloadJson = HttpService:JSONEncode({
+					assetType = item.assetType,
+					displayName = item.displayName:sub(1, 50),
+					description = "Uploaded via Plugin Studio Lite",
+					creationContext = {
+						creator = {
+							userId = ownerUserId,
+						},
+					},
+				})
+
+				local boundary = "----IkyyStudioLiteBoundary" .. tostring(os.time()) .. tostring(idx)
+				local multipartBody = table.concat({
+					"--" .. boundary,
+					'Content-Disposition: form-data; name="request"',
+					"Content-Type: application/json",
+					"",
+					payloadJson,
+					"--" .. boundary,
+					string.format('Content-Disposition: form-data; name="fileContent"; filename="%s%s"', sanitizeFileName(item.displayName), item.ext),
+					"Content-Type: application/octet-stream",
+					"",
+					fileContent,
+					"--" .. boundary .. "--",
+					"",
+				}, "\r\n")
+
+				local res, ok, info = apiRequest({
+					Url = "https://apis.roblox.com/assets/v1/assets",
+					Method = "POST",
+					Headers = {
+						["x-api-key"] = uploadKey,
+						["Content-Type"] = "multipart/form-data; boundary=" .. boundary,
+					},
+					Body = multipartBody,
+					Retries = 2,
+				})
+
+				local bodyStr = res and tostring(res.Body or "") or ""
+				if ok and res then
+					local decodedId: string? = nil
+					local okDec, decoded = pcall(function()
+						return HttpService:JSONDecode(bodyStr)
+					end)
+					if okDec and type(decoded) == "table" then
+						if decoded.assetId ~= nil then
+							decodedId = tostring(decoded.assetId):match("%d+")
+						elseif type(decoded.operationId) == "string" and decoded.operationId ~= "" then
+							decodedId = decoded.operationId
+						end
+					end
+					if not decodedId then
+						decodedId = bodyStr:match('"assetId"%s*:%s*"?(%d+)"?') or bodyStr:match('"id"%s*:%s*"?(%d+)"?')
+					end
+					assetIdOut = decodedId or "-"
+					statusOut = "Berhasil (" .. info .. ")"
+					sukses += 1
+				else
+					gagal += 1
+					local shortErr = bodyStr:gsub("[\r\n]+", " "):sub(1, 90)
+					statusOut = "Gagal (" .. info .. (shortErr ~= "" and (": " .. shortErr) or "") .. ")"
+				end
+			end
+
+			table.insert(formattedBlocks, table.concat({
+				"name : " .. item.displayName,
+				"id : " .. assetIdOut,
+				"status : " .. statusOut,
+			}, "\n"))
+
+			updateUploadOutcome(
+				(gagal == 0) and "working" or "err",
+				idx / #chosenItems,
+				table.concat(formattedBlocks, "\n\n")
+			)
+
+			if idx < #chosenItems then
+				task.wait(0.5)
+			end
+		end
+
+		local resultTxtContent = table.concat(formattedBlocks, "\n\n")
+		local logRelPath = "Logs/upload_result_" .. tostring(os.time()) .. ".txt"
+		local savedOk = saveTextFile(logRelPath, resultTxtContent)
+		local footerNote = savedOk
+			and ("\n\nTersimpan ke: " .. CONFIG.WorkspaceRoot .. "/" .. logRelPath)
+			or "\n\nCatatan: Gagal menyimpan file .txt ke disk."
+
+		local allOk = (sukses > 0 and gagal == 0)
+		updateUploadOutcome(allOk and "ok" or "err", 1, resultTxtContent .. footerNote)
+		notify("Upload All", string.format("Selesai: %d berhasil, %d gagal.", sukses, gagal))
+		isUploadingAll = false
 	end)
 end)
 
