@@ -1,4 +1,4 @@
---!nonstrict
+--!strict
 -- Plugin Studio Lite (Delta Executor Edition) by Ikyy
 -- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Hasil
 
@@ -80,22 +80,6 @@ local function trim(s: string?): string
 	return s:match("^%s*(.-)%s*$") or ""
 end
 
-local function sanitizeJsonText(s: string?): string
-	if type(s) ~= "string" then return "" end
-	local cleaned = s:gsub("[%z\1-\31\127]", " ")
-	return trim(cleaned)
-end
-
-local function safeJsonEncode(value: any): (boolean, string)
-	local ok, encoded = pcall(function()
-		return HttpService:JSONEncode(value)
-	end)
-	if ok and type(encoded) == "string" then
-		return true, encoded
-	end
-	return false, tostring(encoded)
-end
-
 local function normalizeCookie(rawCookie: string): string
 	local c = trim(rawCookie)
 	if c == "" then return "" end
@@ -127,84 +111,79 @@ local function notify(title: string, text: string)
 	end)
 end
 
--- ==========================================
--- DELTA EXECUTOR ENVIRONMENT BRIDGE (SAFE)
--- ==========================================
-local function getEnvTable(): {[string]: any}
-	local env: {[string]: any} = {}
-
-	local okGenv, genvFn = pcall(function()
-		return getgenv
-	end)
-	if okGenv and type(genvFn) == "function" then
-		local okCall, g = pcall(genvFn)
-		if okCall and type(g) == "table" then
-			for k, v in pairs(g) do
-				env[k] = v
-			end
-		end
-	end
-
-	local okGetf, getfFn = pcall(function()
-		return getfenv
-	end)
-	if okGetf and type(getfFn) == "function" then
-		local okF, f = pcall(getfFn, 0)
-		if okF and type(f) == "table" then
-			for k, v in pairs(f) do
-				if env[k] == nil then
-					env[k] = v
-				end
-			end
-		end
-	end
-
-	return env
-end
-
-local ENV = getEnvTable()
-
-local function safeCallable(fn: any)
-	if type(fn) == "function" then
-		return fn
-	end
-	return nil
-end
-
 local function copyToClipboard(text: string): boolean
-	local clipFn = safeCallable(ENV.setclipboard)
-		or safeCallable(ENV.toclipboard)
-		or (type(ENV.syn) == "table" and safeCallable(ENV.syn.write_clipboard))
-	if clipFn then
+	local env = {}
+	pcall(function()
+		if type(getgenv) == "function" and type(getgenv()) == "table" then
+			for k, v in pairs(getgenv()) do env[k] = v end
+		end
+	end)
+	pcall(function()
+		for k, v in pairs(getfenv(0)) do
+			if env[k] == nil then env[k] = v end
+		end
+	end)
+	local clipFn = env.setclipboard or env.toclipboard or (type(env.syn) == "table" and env.syn.write_clipboard)
+	if type(clipFn) == "function" then
 		local ok = pcall(clipFn, text)
 		if ok then return true end
 	end
 	return false
 end
 
+-- ==========================================
+-- DELTA EXECUTOR ENVIRONMENT BRIDGE
+-- ==========================================
+local function getEnvTable(): {[string]: any}
+	local env: {[string]: any} = {}
+	pcall(function()
+		if type(getgenv) == "function" then
+			local g = getgenv()
+			if type(g) == "table" then
+				for k, v in pairs(g) do
+					env[k] = v
+				end
+			end
+		end
+	end)
+	pcall(function()
+		local f = getfenv(0)
+		if type(f) == "table" then
+			for k, v in pairs(f) do
+				if env[k] == nil then
+					env[k] = v
+				end
+			end
+		end
+	end)
+	return env
+end
+
+local ENV = getEnvTable()
+
 local function getDeltaHttpFunc()
 	local candidates = {
-		safeCallable(ENV.request),
-		safeCallable(ENV.http_request),
-		type(ENV.syn) == "table" and safeCallable(ENV.syn.request) or nil,
-		type(ENV.http) == "table" and safeCallable(ENV.http.request) or nil,
-		type(ENV.fluxus) == "table" and safeCallable(ENV.fluxus.request) or nil,
-		type(ENV.delta) == "table" and safeCallable(ENV.delta.request) or nil,
+		ENV.request,
+		ENV.http_request,
+		type(ENV.syn) == "table" and ENV.syn.request or nil,
+		type(ENV.http) == "table" and ENV.http.request or nil,
+		type(ENV.fluxus) == "table" and ENV.fluxus.request or nil,
+		type(ENV.delta) == "table" and ENV.delta.request or nil,
 	}
 	for _, fn in ipairs(candidates) do
-		if fn then
+		if type(fn) == "function" then
 			return fn
 		end
 	end
 	return nil
 end
 
-local fnWriteFile = safeCallable(ENV.writefile)
-local fnReadFile = safeCallable(ENV.readfile)
-local fnIsFile = safeCallable(ENV.isfile)
-local fnIsFolder = safeCallable(ENV.isfolder)
-local fnMakeFolder = safeCallable(ENV.makefolder)
-local fnListFiles = safeCallable(ENV.listfiles)
+local fnWriteFile = type(ENV.writefile) == "function" and ENV.writefile or nil
+local fnReadFile = type(ENV.readfile) == "function" and ENV.readfile or nil
+local fnIsFile = type(ENV.isfile) == "function" and ENV.isfile or nil
+local fnIsFolder = type(ENV.isfolder) == "function" and ENV.isfolder or nil
+local fnMakeFolder = type(ENV.makefolder) == "function" and ENV.makefolder or nil
+local fnListFiles = type(ENV.listfiles) == "function" and ENV.listfiles or nil
 
 local function ensureFolders()
 	if not fnMakeFolder then return end
@@ -479,104 +458,6 @@ local function parseTxtEntries(content: string, forceKind: "auto" | "audio" | "r
 	return entries
 end
 
-local function extractPlaybackFromTxtFiles(targetFiles: {string}): {
-	byName: {[string]: {key: string, value: number}},
-	byId: {[string]: {key: string, value: number}},
-	orderedList: {{key: string, value: number}},
-}
-	local byName: {[string]: {key: string, value: number}} = {}
-	local byId: {[string]: {key: string, value: number}} = {}
-	local orderedList: {{key: string, value: number}} = {}
-
-	local txtCandidates: {string} = {}
-	local seenTxt: {[string]: boolean} = {}
-	local function addTxt(p: string)
-		local norm = normalizeWorkspaceRelPath(p)
-		if norm:lower():sub(-4) == ".txt" and not seenTxt[norm] then
-			seenTxt[norm] = true
-			table.insert(txtCandidates, norm)
-		end
-	end
-
-	for _, tf in ipairs(targetFiles) do
-		addTxt(tf)
-	end
-	for _, tf in ipairs(scanFilesByPrefix({ "TXT/", "SPOOF/" }, ".txt")) do
-		addTxt(tf)
-	end
-
-	for _, relPath in ipairs(txtCandidates) do
-		local raw = loadTextFile(relPath)
-		if raw and trim(raw) ~= "" then
-			local fieldKey = raw:match("[Pp][Ll][Aa][Yy][Bb][Aa][Cc][Kk][Ss][Pp][Ee][Ee][Dd]") and "playbackspeed" or "playback"
-
-			for block in raw:gmatch("{(.-)}%s*,?") do
-				local sName = block:match('%["SongName"%]%s*=%s*"(.-)"') or block:match("%[%\"SongName\"%]%s*=%s*'(.-)'")
-				local pbNum = tonumber(block:match('%["PlaybackSpeed"%]%s*=%s*([%d%.]+)'))
-				if pbNum then
-					local rec = { key = fieldKey, value = pbNum }
-					table.insert(orderedList, rec)
-					if sName then
-						byName[sanitizeFileName(sName):lower()] = rec
-					end
-					for sid in block:gmatch("(%d+)") do
-						if #sid >= 4 then
-							byId[sid] = rec
-						end
-					end
-				end
-			end
-
-			local curName: string? = nil
-			local curId: string? = nil
-			local curRec: {key: string, value: number}? = nil
-			local function flushRec()
-				if curRec then
-					table.insert(orderedList, curRec)
-					if curName and trim(curName) ~= "" then
-						byName[sanitizeFileName(curName):lower()] = curRec
-					end
-					if curId and curId ~= "" then
-						byId[curId] = curRec
-					end
-				end
-				curName = nil
-				curId = nil
-				curRec = nil
-			end
-
-			for rawLine in (raw .. "\n"):gmatch("(.-)\r?\n") do
-				local line = trim(rawLine)
-				if line == "" then
-					flushRec()
-				else
-					local nVal = line:match("^[Nn][Aa][Mm][Aa]%s*:%s*(.+)$") or line:match("^[Ss][Oo][Nn][Gg]%s*[Nn][Aa][Mm][Ee]%s*:%s*(.+)$")
-					local iVal = line:match("^[Ss][Oo][Nn][Gg]%s*[Ii][Dd]%s*:%s*(%d+)") or line:match("^[Ii][Dd]%s*:%s*(%d+)")
-					local psVal = line:match("^[Pp][Ll][Aa][Yy][Bb][Aa][Cc][Kk][Ss][Pp][Ee][Ee][Dd]%s*:%s*([%d%.]+)")
-					local pbVal = line:match("^[Pp][Ll][Aa][Yy][Bb][Aa][Cc][Kk]%s*:%s*([%d%.]+)")
-					if nVal then
-						if curRec then flushRec() end
-						curName = trim(nVal)
-					elseif iVal then
-						curId = iVal
-					elseif psVal then
-						curRec = { key = "playbackspeed", value = tonumber(psVal) or 1.0 }
-					elseif pbVal then
-						curRec = { key = "playback", value = tonumber(pbVal) or 1.0 }
-					end
-				end
-			end
-			flushRec()
-		end
-	end
-
-	return {
-		byName = byName,
-		byId = byId,
-		orderedList = orderedList,
-	}
-end
-
 local function parseIds(raw: string): {string}
 	local seen: {[string]: boolean} = {}
 	local out: {string} = {}
@@ -596,8 +477,10 @@ local function formatStackedJson(rows: {{[string]: any}}): string
 	end
 	local blocks: {string} = {}
 	for _, row in ipairs(rows) do
-		local ok, singleEncoded = safeJsonEncode(row)
-		if ok then
+		local ok, singleEncoded = pcall(function()
+			return HttpService:JSONEncode(row)
+		end)
+		if ok and type(singleEncoded) == "string" then
 			local pretty = singleEncoded
 				:gsub("^%{", "{\n  ")
 				:gsub('%,"', ',\n  "')
@@ -789,77 +672,58 @@ local function fetchUniverseInfo(universeId: string, cookieVal: string?): string
 	}, "\n")
 end
 
-local function detectAssetFormatByFile(filename: string, manualType: string): (string, string)
-	local low = filename:lower()
-	local manLow = trim(manualType):lower()
-
-	if low:sub(-4) == ".mp3" then
-		return "Audio", "audio/mpeg"
-	elseif low:sub(-4) == ".ogg" then
-		return "Audio", "audio/ogg"
-	elseif low:sub(-4) == ".wav" then
-		return "Audio", "audio/wav"
-	elseif low:sub(-5) == ".rbxm" or low:sub(-5) == ".rbxmx" then
-		if manLow == "animation" or manLow == "anim" then
-			return "Animation", "application/octet-stream"
-		end
-		return "Model", "application/octet-stream"
-	elseif low:sub(-4) == ".png" then
-		return "Decal", "image/png"
-	elseif low:sub(-4) == ".jpg" or low:sub(-5) == ".jpeg" then
-		return "Decal", "image/jpeg"
-	elseif low:sub(-4) == ".lua" or low:sub(-5) == ".luau" then
-		local luaAssetType = (manLow ~= "" and manLow ~= "auto" and manLow ~= "model") and manualType or "Model"
-		return luaAssetType, "text/plain"
+-- ==========================================
+-- HELPER UPLOAD ASSET ROBLOX OPEN CLOUD
+-- ==========================================
+local function detectUploadMimeAndType(filename: string, rawType: string): (string, string)
+	local lower = filename:lower()
+	local cleanedType = trim(rawType)
+	if lower:sub(-4) == ".mp3" then
+		return "audio/mpeg", (cleanedType ~= "" and cleanedType or "Audio")
+	elseif lower:sub(-4) == ".ogg" then
+		return "audio/ogg", (cleanedType ~= "" and cleanedType or "Audio")
+	elseif lower:sub(-4) == ".wav" then
+		return "audio/wav", (cleanedType ~= "" and cleanedType or "Audio")
+	elseif lower:sub(-5) == ".rbxm" or lower:sub(-5) == ".rbxmx" then
+		return "model/x-rbxm", (cleanedType ~= "" and cleanedType or "Model")
+	elseif lower:sub(-4) == ".png" then
+		return "image/png", (cleanedType ~= "" and cleanedType or "Decal")
+	elseif lower:sub(-4) == ".jpg" or lower:sub(-5) == ".jpeg" then
+		return "image/jpeg", (cleanedType ~= "" and cleanedType or "Decal")
 	end
-
-	if manLow == "audio" or manLow == "suara" then
-		return "Audio", "audio/mpeg"
-	elseif manLow == "animation" or manLow == "anim" then
-		return "Animation", "application/octet-stream"
-	elseif manLow == "decal" or manLow == "stiker" or manLow == "image" then
-		return "Decal", "image/png"
-	end
-	return "Model", "application/octet-stream"
+	return "application/octet-stream", (cleanedType ~= "" and cleanedType or "Model")
 end
 
-local function buildMultipartAssetBody(requestJson: string, payloadContent: string, filename: string, mimeType: string)
+local function buildMultipartAssetBody(requestJson: string, payloadContent: string, filename: string, fileMime: string)
 	local boundary = "----IkyyStudioBoundary" .. tostring(os.time()) .. tostring(math.random(1000, 9999))
-	local safeFilename = sanitizeFileName(filename):gsub('"', "_")
-	local crlf = string.char(13, 10)
 	local parts = {
-		"--" .. boundary .. crlf,
-		'Content-Disposition: form-data; name="request"' .. crlf,
-		"Content-Type: application/json" .. crlf .. crlf,
-		requestJson .. crlf,
-		"--" .. boundary .. crlf,
-		'Content-Disposition: form-data; name="fileContent"; filename="' .. safeFilename .. '"' .. crlf,
-		"Content-Type: " .. mimeType .. crlf .. crlf,
-		payloadContent .. crlf,
-		"--" .. boundary .. "--" .. crlf,
+		"--" .. boundary .. "\r\n",
+		'Content-Disposition: form-data; name="request"\r\n',
+		"Content-Type: application/json\r\n\r\n",
+		requestJson .. "\r\n",
+		"--" .. boundary .. "\r\n",
+		'Content-Disposition: form-data; name="fileContent"; filename="' .. filename .. '"\r\n',
+		"Content-Type: " .. fileMime .. "\r\n\r\n",
+		payloadContent .. "\r\n",
+		"--" .. boundary .. "--\r\n",
 	}
 	return table.concat(parts), "multipart/form-data; boundary=" .. boundary
 end
 
-local function extractUploadedAssetId(bodyText: string): string
+local function extractCreatedAssetId(bodyStr: string): string?
 	local okDec, decoded = pcall(function()
-		return HttpService:JSONDecode(bodyText)
+		return HttpService:JSONDecode(bodyStr)
 	end)
 	if okDec and type(decoded) == "table" then
 		if decoded.assetId ~= nil then
-			local m = tostring(decoded.assetId):match("%d+")
-			if m then return m end
-		end
-		if decoded.id ~= nil then
-			local m = tostring(decoded.id):match("%d+")
-			if m then return m end
-		end
-		if type(decoded.response) == "table" and decoded.response.assetId ~= nil then
-			local m = tostring(decoded.response.assetId):match("%d+")
-			if m then return m end
+			return tostring(decoded.assetId):match("%d+")
+		elseif decoded.id ~= nil then
+			return tostring(decoded.id):match("%d+")
+		elseif type(decoded.path) == "string" then
+			return decoded.path:match("assets/(%d+)")
 		end
 	end
-	return bodyText:match('"assetId"%s*:%s*"?(%d+)"?') or bodyText:match('"id"%s*:%s*"?(%d+)"?') or ""
+	return bodyStr:match('"assetId"%s*:%s*"?(%d+)"?') or bodyStr:match('"id"%s*:%s*"?(%d+)"?') or bodyStr:match("assets/(%d+)")
 end
 
 local function getUserAvatarAsync(userId: number): string
@@ -1174,6 +1038,7 @@ local function switchTab(tabName: string)
 	end
 end
 
+-- Helper Komponen Output Hasil Standar (Progress Bar + Console)
 local function createOutcomePanel(parent: GuiObject, yPos: number, boxHeight: number, editableConsole: boolean)
 	local bar = Instance.new("Frame")
 	bar.Size = UDim2.new(1, -24, 0, 4)
@@ -1647,7 +1512,7 @@ BersihkanBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- HALAMAN 2: UPLOAD ASSET (2 CONSOLE: PROSES + JSON HASIL)
+-- HALAMAN 2: UPLOAD ASSET (+ SELECT ALL FILE)
 -- ==========================================
 local UploadPage = Instance.new("Frame")
 UploadPage.Size = UDim2.fromScale(1, 1)
@@ -1657,98 +1522,98 @@ UploadPage.Parent = ContentArea
 tabPages["Upload"] = UploadPage
 
 local UploadTitle = Instance.new("TextLabel")
-UploadTitle.Size = UDim2.new(0.42, -12, 0, 15)
-UploadTitle.Position = UDim2.new(0, 12, 0, 2)
+UploadTitle.Size = UDim2.new(0.42, -12, 0, 16)
+UploadTitle.Position = UDim2.new(0, 12, 0, 4)
 UploadTitle.BackgroundTransparency = 1
 UploadTitle.Text = "Upload Asset"
 UploadTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-UploadTitle.TextSize = 11
+UploadTitle.TextSize = 12
 UploadTitle.Font = Enum.Font.GothamBold
 UploadTitle.TextXAlignment = Enum.TextXAlignment.Left
 UploadTitle.Parent = UploadPage
 
 local ScanSpoofBtn = Instance.new("TextButton")
-ScanSpoofBtn.Size = UDim2.new(0.29, -4, 0, 16)
-ScanSpoofBtn.Position = UDim2.new(0.42, 0, 0, 2)
+ScanSpoofBtn.Size = UDim2.new(0.29, -4, 0, 18)
+ScanSpoofBtn.Position = UDim2.new(0.42, 0, 0, 3)
 ScanSpoofBtn.BackgroundColor3 = Color3.fromRGB(64, 118, 240)
 ScanSpoofBtn.Text = "🔍 SCAN"
 ScanSpoofBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 ScanSpoofBtn.TextSize = 8
 ScanSpoofBtn.Font = Enum.Font.GothamBold
 ScanSpoofBtn.Parent = UploadPage
-Instance.new("UICorner", ScanSpoofBtn).CornerRadius = UDim.new(0, 5)
+Instance.new("UICorner", ScanSpoofBtn).CornerRadius = UDim.new(0, 6)
 
 local SelectAllFilesBtn = Instance.new("TextButton")
-SelectAllFilesBtn.Size = UDim2.new(0.29, -12, 0, 16)
-SelectAllFilesBtn.Position = UDim2.new(0.71, 0, 0, 2)
+SelectAllFilesBtn.Size = UDim2.new(0.29, -12, 0, 18)
+SelectAllFilesBtn.Position = UDim2.new(0.71, 0, 0, 3)
 SelectAllFilesBtn.BackgroundColor3 = Color3.fromRGB(56, 155, 115)
 SelectAllFilesBtn.Text = "☑ SELECT ALL"
 SelectAllFilesBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 SelectAllFilesBtn.TextSize = 8
 SelectAllFilesBtn.Font = Enum.Font.GothamBold
 SelectAllFilesBtn.Parent = UploadPage
-Instance.new("UICorner", SelectAllFilesBtn).CornerRadius = UDim.new(0, 5)
+Instance.new("UICorner", SelectAllFilesBtn).CornerRadius = UDim.new(0, 6)
 
 local UploadNameBox = Instance.new("TextBox")
-UploadNameBox.Size = UDim2.new(0.5, -15, 0, 18)
-UploadNameBox.Position = UDim2.new(0, 12, 0, 20)
+UploadNameBox.Size = UDim2.new(0.5, -15, 0, 22)
+UploadNameBox.Position = UDim2.new(0, 12, 0, 24)
 UploadNameBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-UploadNameBox.PlaceholderText = "Nama Asset (otomatis jika kosong)"
+UploadNameBox.PlaceholderText = "Nama Asset"
 UploadNameBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 UploadNameBox.Text = ""
 UploadNameBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-UploadNameBox.TextSize = 9
+UploadNameBox.TextSize = 10
 UploadNameBox.Font = Enum.Font.Gotham
 UploadNameBox.ClearTextOnFocus = false
 UploadNameBox.Parent = UploadPage
-Instance.new("UICorner", UploadNameBox).CornerRadius = UDim.new(0, 5)
+Instance.new("UICorner", UploadNameBox).CornerRadius = UDim.new(0, 6)
 
 local UploadTypeBox = Instance.new("TextBox")
-UploadTypeBox.Size = UDim2.new(0.5, -15, 0, 18)
-UploadTypeBox.Position = UDim2.new(0.5, 3, 0, 20)
+UploadTypeBox.Size = UDim2.new(0.5, -15, 0, 22)
+UploadTypeBox.Position = UDim2.new(0.5, 3, 0, 24)
 UploadTypeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-UploadTypeBox.PlaceholderText = "Auto / Model / Audio / Animation / Decal"
+UploadTypeBox.PlaceholderText = "Model / Audio / Animation / Decal"
 UploadTypeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-UploadTypeBox.Text = "Auto"
+UploadTypeBox.Text = "Model"
 UploadTypeBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-UploadTypeBox.TextSize = 9
+UploadTypeBox.TextSize = 10
 UploadTypeBox.Font = Enum.Font.Gotham
 UploadTypeBox.ClearTextOnFocus = false
 UploadTypeBox.Parent = UploadPage
-Instance.new("UICorner", UploadTypeBox).CornerRadius = UDim.new(0, 5)
+Instance.new("UICorner", UploadTypeBox).CornerRadius = UDim.new(0, 6)
 
 local UploadCreatorBox = Instance.new("TextBox")
-UploadCreatorBox.Size = UDim2.new(0.5, -15, 0, 18)
-UploadCreatorBox.Position = UDim2.new(0, 12, 0, 40)
+UploadCreatorBox.Size = UDim2.new(0.5, -15, 0, 22)
+UploadCreatorBox.Position = UDim2.new(0, 12, 0, 49)
 UploadCreatorBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 UploadCreatorBox.PlaceholderText = "Creator ID"
 UploadCreatorBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 UploadCreatorBox.Text = tostring(LocalPlayer.UserId)
 UploadCreatorBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-UploadCreatorBox.TextSize = 9
+UploadCreatorBox.TextSize = 10
 UploadCreatorBox.Font = Enum.Font.Gotham
 UploadCreatorBox.ClearTextOnFocus = false
 UploadCreatorBox.Parent = UploadPage
-Instance.new("UICorner", UploadCreatorBox).CornerRadius = UDim.new(0, 5)
+Instance.new("UICorner", UploadCreatorBox).CornerRadius = UDim.new(0, 6)
 
 local UploadOwnerModeBox = Instance.new("TextBox")
-UploadOwnerModeBox.Size = UDim2.new(0.5, -15, 0, 18)
-UploadOwnerModeBox.Position = UDim2.new(0.5, 3, 0, 40)
+UploadOwnerModeBox.Size = UDim2.new(0.5, -15, 0, 22)
+UploadOwnerModeBox.Position = UDim2.new(0.5, 3, 0, 49)
 UploadOwnerModeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 UploadOwnerModeBox.PlaceholderText = "user atau group"
 UploadOwnerModeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 UploadOwnerModeBox.Text = "user"
 UploadOwnerModeBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-UploadOwnerModeBox.TextSize = 9
+UploadOwnerModeBox.TextSize = 10
 UploadOwnerModeBox.Font = Enum.Font.Gotham
 UploadOwnerModeBox.ClearTextOnFocus = false
 UploadOwnerModeBox.Parent = UploadPage
-Instance.new("UICorner", UploadOwnerModeBox).CornerRadius = UDim.new(0, 5)
+Instance.new("UICorner", UploadOwnerModeBox).CornerRadius = UDim.new(0, 6)
 
 local SpoofFileListFrame = Instance.new("ScrollingFrame")
 SpoofFileListFrame.Name = "SpoofFileListFrame"
-SpoofFileListFrame.Size = UDim2.new(1, -24, 0, 40)
-SpoofFileListFrame.Position = UDim2.new(0, 12, 0, 60)
+SpoofFileListFrame.Size = UDim2.new(1, -24, 0, 54)
+SpoofFileListFrame.Position = UDim2.new(0, 12, 0, 74)
 SpoofFileListFrame.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
 SpoofFileListFrame.BorderSizePixel = 0
 SpoofFileListFrame.ScrollBarThickness = 3
@@ -1761,23 +1626,23 @@ FileListStroke.Color = Color3.fromRGB(55, 50, 88)
 FileListStroke.Thickness = 1
 
 local FileListLayout = Instance.new("UIListLayout")
-FileListLayout.Padding = UDim.new(0, 2)
+FileListLayout.Padding = UDim.new(0, 3)
 FileListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 FileListLayout.Parent = SpoofFileListFrame
 
 local FileListPad = Instance.new("UIPadding")
-FileListPad.PaddingTop = UDim.new(0, 3)
-FileListPad.PaddingBottom = UDim.new(0, 3)
+FileListPad.PaddingTop = UDim.new(0, 4)
+FileListPad.PaddingBottom = UDim.new(0, 4)
 FileListPad.PaddingLeft = UDim.new(0, 4)
 FileListPad.PaddingRight = UDim.new(0, 4)
 FileListPad.Parent = SpoofFileListFrame
 
 local EmptyListLabel = Instance.new("TextLabel")
-EmptyListLabel.Size = UDim2.new(1, -8, 0, 18)
+EmptyListLabel.Size = UDim2.new(1, -8, 0, 20)
 EmptyListLabel.BackgroundTransparency = 1
 EmptyListLabel.Text = "Klik SCAN untuk melihat list file..."
 EmptyListLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
-EmptyListLabel.TextSize = 8
+EmptyListLabel.TextSize = 9
 EmptyListLabel.Font = Enum.Font.Gotham
 EmptyListLabel.TextXAlignment = Enum.TextXAlignment.Left
 EmptyListLabel.Parent = SpoofFileListFrame
@@ -1787,160 +1652,31 @@ local selectedSpoofFiles: {string} = {}
 local selectedSpoofRelPath: string? = nil
 
 local UploadPayloadBox = Instance.new("TextBox")
-UploadPayloadBox.Size = UDim2.new(1, -24, 0, 18)
-UploadPayloadBox.Position = UDim2.new(0, 12, 0, 102)
+UploadPayloadBox.Size = UDim2.new(1, -24, 0, 21)
+UploadPayloadBox.Position = UDim2.new(0, 12, 0, 131)
 UploadPayloadBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-UploadPayloadBox.PlaceholderText = "File terpilih (1 file = single, >1 file = massal)"
+UploadPayloadBox.PlaceholderText = "File terpilih (bisa 1 file atau banyak file pisah koma)"
 UploadPayloadBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 UploadPayloadBox.Text = ""
 UploadPayloadBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-UploadPayloadBox.TextSize = 8
+UploadPayloadBox.TextSize = 9
 UploadPayloadBox.Font = Enum.Font.Code
 UploadPayloadBox.ClearTextOnFocus = false
 UploadPayloadBox.Parent = UploadPage
-Instance.new("UICorner", UploadPayloadBox).CornerRadius = UDim.new(0, 5)
+Instance.new("UICorner", UploadPayloadBox).CornerRadius = UDim.new(0, 6)
 
 local UploadActionBtn = Instance.new("TextButton")
-UploadActionBtn.Size = UDim2.new(1, -24, 0, 20)
-UploadActionBtn.Position = UDim2.new(0, 12, 0, 122)
+UploadActionBtn.Size = UDim2.new(1, -24, 0, 24)
+UploadActionBtn.Position = UDim2.new(0, 12, 0, 155)
 UploadActionBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
 UploadActionBtn.Text = "⬆  UPLOAD ASSET"
 UploadActionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-UploadActionBtn.TextSize = 9
+UploadActionBtn.TextSize = 10
 UploadActionBtn.Font = Enum.Font.GothamBold
 UploadActionBtn.Parent = UploadPage
-Instance.new("UICorner", UploadActionBtn).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", UploadActionBtn).CornerRadius = UDim.new(0, 7)
 
-local uploadBar = Instance.new("Frame")
-uploadBar.Size = UDim2.new(1, -24, 0, 3)
-uploadBar.Position = UDim2.new(0, 12, 0, 144)
-uploadBar.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
-uploadBar.BorderSizePixel = 0
-uploadBar.Parent = UploadPage
-Instance.new("UICorner", uploadBar).CornerRadius = UDim.new(1, 0)
-
-local uploadFill = Instance.new("Frame")
-uploadFill.Size = UDim2.new(0, 0, 1, 0)
-uploadFill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
-uploadFill.BorderSizePixel = 0
-uploadFill.Parent = uploadBar
-Instance.new("UICorner", uploadFill).CornerRadius = UDim.new(1, 0)
-
-local uploadProcScroll = Instance.new("ScrollingFrame")
-uploadProcScroll.Name = "UploadProcessConsole"
-uploadProcScroll.Size = UDim2.new(1, -24, 0, 40)
-uploadProcScroll.Position = UDim2.new(0, 12, 0, 149)
-uploadProcScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-uploadProcScroll.BorderSizePixel = 0
-uploadProcScroll.ScrollBarThickness = 2
-uploadProcScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-uploadProcScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-uploadProcScroll.Parent = UploadPage
-Instance.new("UICorner", uploadProcScroll).CornerRadius = UDim.new(0, 6)
-local upProcStroke = Instance.new("UIStroke", uploadProcScroll)
-upProcStroke.Color = Color3.fromRGB(48, 44, 74)
-upProcStroke.Thickness = 1
-
-local uploadProcBox = Instance.new("TextBox")
-uploadProcBox.Size = UDim2.new(1, -10, 0, 36)
-uploadProcBox.AutomaticSize = Enum.AutomaticSize.Y
-uploadProcBox.Position = UDim2.new(0, 5, 0, 2)
-uploadProcBox.BackgroundTransparency = 1
-uploadProcBox.Text = ""
-uploadProcBox.PlaceholderText = "Console Proses Upload..."
-uploadProcBox.PlaceholderColor3 = Color3.fromRGB(95, 92, 118)
-uploadProcBox.TextColor3 = Color3.fromRGB(185, 205, 255)
-uploadProcBox.TextSize = 8
-uploadProcBox.Font = Enum.Font.Code
-uploadProcBox.TextXAlignment = Enum.TextXAlignment.Left
-uploadProcBox.TextYAlignment = Enum.TextYAlignment.Top
-uploadProcBox.ClearTextOnFocus = false
-uploadProcBox.TextEditable = false
-uploadProcBox.MultiLine = true
-uploadProcBox.TextWrapped = true
-uploadProcBox.Parent = uploadProcScroll
-
-local uploadJsonScroll = Instance.new("ScrollingFrame")
-uploadJsonScroll.Name = "UploadJsonConsole"
-uploadJsonScroll.Size = UDim2.new(1, -24, 0, 68)
-uploadJsonScroll.Position = UDim2.new(0, 12, 0, 191)
-uploadJsonScroll.BackgroundColor3 = Color3.fromRGB(11, 10, 17)
-uploadJsonScroll.BorderSizePixel = 0
-uploadJsonScroll.ScrollBarThickness = 3
-uploadJsonScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-uploadJsonScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-uploadJsonScroll.Parent = UploadPage
-Instance.new("UICorner", uploadJsonScroll).CornerRadius = UDim.new(0, 6)
-local upJsonStroke = Instance.new("UIStroke", uploadJsonScroll)
-upJsonStroke.Color = Color3.fromRGB(64, 56, 102)
-upJsonStroke.Thickness = 1
-
-local uploadJsonBox = Instance.new("TextBox")
-uploadJsonBox.Size = UDim2.new(1, -54, 0, 64)
-uploadJsonBox.AutomaticSize = Enum.AutomaticSize.Y
-uploadJsonBox.Position = UDim2.new(0, 6, 0, 3)
-uploadJsonBox.BackgroundTransparency = 1
-uploadJsonBox.Text = ""
-uploadJsonBox.PlaceholderText = "Console Hasil JSON (bisa diedit & dicopy)..."
-uploadJsonBox.PlaceholderColor3 = Color3.fromRGB(95, 92, 118)
-uploadJsonBox.TextColor3 = Color3.fromRGB(205, 242, 218)
-uploadJsonBox.TextSize = 8
-uploadJsonBox.Font = Enum.Font.Code
-uploadJsonBox.TextXAlignment = Enum.TextXAlignment.Left
-uploadJsonBox.TextYAlignment = Enum.TextYAlignment.Top
-uploadJsonBox.ClearTextOnFocus = false
-uploadJsonBox.TextEditable = true
-uploadJsonBox.MultiLine = true
-uploadJsonBox.TextWrapped = true
-uploadJsonBox.Parent = uploadJsonScroll
-
-local copyUploadJsonBtn = Instance.new("TextButton")
-copyUploadJsonBtn.Size = UDim2.fromOffset(44, 16)
-copyUploadJsonBtn.Position = UDim2.new(1, -48, 0, 3)
-copyUploadJsonBtn.BackgroundColor3 = Color3.fromRGB(38, 35, 60)
-copyUploadJsonBtn.Text = "Copy"
-copyUploadJsonBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-copyUploadJsonBtn.TextSize = 8
-copyUploadJsonBtn.Font = Enum.Font.GothamBold
-copyUploadJsonBtn.ZIndex = 5
-copyUploadJsonBtn.Parent = uploadJsonScroll
-Instance.new("UICorner", copyUploadJsonBtn).CornerRadius = UDim.new(0, 4)
-
-copyUploadJsonBtn.MouseButton1Click:Connect(function()
-	local okCopy = copyToClipboard(uploadJsonBox.Text)
-	copyUploadJsonBtn.Text = okCopy and "Copied!" or "Selected"
-	notify("Hasil Upload", okCopy and "JSON hasil disalin ke clipboard." or "Teks siap disalin manual.")
-	task.delay(1.2, function()
-		if copyUploadJsonBtn and copyUploadJsonBtn.Parent then
-			copyUploadJsonBtn.Text = "Copy"
-		end
-	end)
-end)
-
-local function setUploadConsoles(state: "idle" | "working" | "ok" | "err", ratio: number, procText: string?, jsonText: string?)
-	local clamped = math.clamp(ratio, 0, 1)
-	if state == "idle" then
-		uploadFill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
-	elseif state == "working" then
-		uploadFill.BackgroundColor3 = Color3.fromRGB(96, 165, 250)
-	elseif state == "ok" then
-		uploadFill.BackgroundColor3 = Color3.fromRGB(56, 239, 125)
-	else
-		uploadFill.BackgroundColor3 = Color3.fromRGB(255, 86, 102)
-	end
-	TweenService:Create(uploadFill, TweenInfo.new(0.15), {
-		Size = UDim2.new(clamped, 0, 1, 0),
-	}):Play()
-
-	if procText ~= nil then
-		uploadProcBox.Text = procText
-		uploadProcBox.TextColor3 = (state == "err") and Color3.fromRGB(255, 145, 155) or Color3.fromRGB(185, 205, 255)
-	end
-	if jsonText ~= nil then
-		uploadJsonBox.Text = jsonText
-		uploadJsonBox.TextColor3 = (state == "err") and Color3.fromRGB(255, 165, 175) or Color3.fromRGB(205, 242, 218)
-	end
-end
+local updateUploadOutcome = createOutcomePanel(UploadPage, 182, 60, false)
 
 local function isFileSelected(relPath: string): boolean
 	if selectedSpoofRelPath == relPath then
@@ -1973,7 +1709,7 @@ local function renderSpoofFileList(files: {string})
 		local isSel = isFileSelected(relFile)
 		local row = Instance.new("Frame")
 		row.Name = "FileRow_" .. tostring(idx)
-		row.Size = UDim2.new(1, -4, 0, 18)
+		row.Size = UDim2.new(1, -4, 0, 20)
 		row.BackgroundColor3 = isSel and Color3.fromRGB(45, 42, 72) or Color3.fromRGB(22, 21, 34)
 		row.BorderSizePixel = 0
 		row.LayoutOrder = idx
@@ -1986,7 +1722,7 @@ local function renderSpoofFileList(files: {string})
 		nameLbl.BackgroundTransparency = 1
 		nameLbl.Text = relFile
 		nameLbl.TextColor3 = Color3.fromRGB(225, 222, 245)
-		nameLbl.TextSize = 8
+		nameLbl.TextSize = 9
 		nameLbl.Font = Enum.Font.Code
 		nameLbl.TextXAlignment = Enum.TextXAlignment.Left
 		nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
@@ -1998,7 +1734,7 @@ local function renderSpoofFileList(files: {string})
 		selectBtn.BackgroundColor3 = isSel and Color3.fromRGB(56, 185, 115) or Color3.fromRGB(108, 86, 245)
 		selectBtn.Text = isSel and "Selected" or "Select"
 		selectBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-		selectBtn.TextSize = 7
+		selectBtn.TextSize = 8
 		selectBtn.Font = Enum.Font.GothamBold
 		selectBtn.Parent = row
 		Instance.new("UICorner", selectBtn).CornerRadius = UDim.new(0, 4)
@@ -2011,10 +1747,10 @@ local function renderSpoofFileList(files: {string})
 				local baseOnly = relFile:match("([^/]+)$") or relFile
 				UploadNameBox.Text = baseOnly:gsub("%.[^%.]+$", "")
 			end
-			local autoType = select(1, detectAssetFormatByFile(relFile, "Auto"))
+			local _, autoType = detectUploadMimeAndType(relFile, "")
 			UploadTypeBox.Text = autoType
 			renderSpoofFileList(files)
-			setUploadConsoles("ok", 1, "Dipilih: " .. CONFIG.WorkspaceRoot .. "/" .. relFile .. " [" .. autoType .. "]", nil)
+			updateUploadOutcome("ok", 1, "Dipilih: " .. CONFIG.WorkspaceRoot .. "/" .. relFile)
 		end)
 	end
 end
@@ -2023,10 +1759,10 @@ ScanSpoofBtn.MouseButton1Click:Connect(function()
 	local foundFiles = scanFilesByPrefix({ "SPOOF/" }, nil)
 	renderSpoofFileList(foundFiles)
 	if #foundFiles > 0 then
-		setUploadConsoles("ok", 1, "Ditemukan " .. tostring(#foundFiles) .. " file di SPOOF.", nil)
+		updateUploadOutcome("ok", 1, "Ditemukan " .. tostring(#foundFiles) .. " file di SPOOF.")
 		notify("Scan SPOOF", tostring(#foundFiles) .. " file ditemukan.")
 	else
-		setUploadConsoles("err", 0, "Tidak ada file ditemukan di folder SPOOF.", nil)
+		updateUploadOutcome("err", 0, "Tidak ada file ditemukan di folder SPOOF.")
 		notify("Scan SPOOF", "Folder SPOOF kosong.")
 	end
 end)
@@ -2034,7 +1770,7 @@ end)
 SelectAllFilesBtn.MouseButton1Click:Connect(function()
 	local listToSelect = (#scannedSpoofFiles > 0) and scannedSpoofFiles or scanFilesByPrefix({ "SPOOF/" }, nil)
 	if #listToSelect == 0 then
-		setUploadConsoles("err", 0, "Tidak ada file di folder SPOOF untuk dipilih.", nil)
+		updateUploadOutcome("err", 0, "Tidak ada file di folder SPOOF untuk dipilih.")
 		notify("Select All", "Folder SPOOF kosong.")
 		return
 	end
@@ -2042,7 +1778,7 @@ SelectAllFilesBtn.MouseButton1Click:Connect(function()
 	selectedSpoofRelPath = listToSelect[1]
 	UploadPayloadBox.Text = table.concat(listToSelect, ", ")
 	renderSpoofFileList(listToSelect)
-	setUploadConsoles("ok", 1, "Semua file dipilih (" .. tostring(#listToSelect) .. " file). Klik UPLOAD ASSET untuk memproses.", nil)
+	updateUploadOutcome("ok", 1, "Semua file dipilih (" .. tostring(#listToSelect) .. " file). Klik UPLOAD ASSET untuk memproses.")
 	notify("Select All", tostring(#listToSelect) .. " file dipilih.")
 end)
 
@@ -2814,7 +2550,7 @@ AboutText.Text = table.concat({
 	"",
 	"Fitur Utama:",
 	"• Spoof Asset : Spoof ID satuan/massal & file .txt (Audio & RBXM) dengan JSON hasil.",
-	"• Upload Asset: Scan folder SPOOF, Select / Select All file, upload otomatis, & 2 console (Proses + Hasil JSON).",
+	"• Upload Asset: Scan folder SPOOF, Select / Select All file, lalu upload ke Roblox Open Cloud.",
 	"• Place & Perm: Buat place, muat ID dari file TXT (id,id,id), grant permissions pakai API Key terpisah, & tampilkan info lengkap Universe.",
 	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
 	"• Setting     : Kelola .ROBLOSECURITY cookie dan Open Cloud API Key.",
@@ -2896,12 +2632,12 @@ local function spoofSingleEntry(entry: SpoofEntry, filterMode: string): (boolean
 
 	local jsonRecord: {[string]: any} = (entry.kind == "rbxm")
 		and {
-			nama = sanitizeJsonText(entry.name),
+			nama = entry.name,
 			id = assetId,
 			status = entry.statusType or "Dance",
 		}
 		or {
-			nama_song = sanitizeJsonText(entry.name),
+			nama_song = entry.name,
 			id = assetId,
 			playbackspeed = entry.playbackSpeed or 1.0,
 		}
@@ -2914,10 +2650,10 @@ local function spoofSingleEntry(entry: SpoofEntry, filterMode: string): (boolean
 			["Origin"] = CONFIG.BaseUrl,
 			["Referer"] = CONFIG.BaseUrl .. "/tools/spoof-audio",
 		},
-		Body = select(2, safeJsonEncode({
+		Body = HttpService:JSONEncode({
 			id = tostring(assetId),
 			session = CONFIG.SessionId,
-		})),
+		}),
 		Retries = 2,
 	})
 
@@ -3001,6 +2737,7 @@ local function spoofSingleEntry(entry: SpoofEntry, filterMode: string): (boolean
 	return false, assetId .. " -> Gagal unduh (" .. dlInfo .. ")", jsonRecord
 end
 
+-- Proses Spoof (ID Massal atau File TXT Massal)
 local isSpoofing = false
 SpoofNowBtn.MouseButton1Click:Connect(function()
 	if isSpoofing then return end
@@ -3102,160 +2839,151 @@ SpoofNowBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
+-- Proses Upload Asset (Diperbarui: MIME/Type otomatis + respons ID + log JSON)
 local isUploading = false
 UploadActionBtn.MouseButton1Click:Connect(function()
 	if isUploading then return end
 	local _, apiKey = syncCredentialsFromInputs()
 	if apiKey == "" then
-		setUploadConsoles("err", 0, "API Key (x-api-key) belum diisi di Setting.", "[]")
+		updateUploadOutcome("err", 0, "API Key (x-api-key) belum diisi di Setting.")
 		notify("Upload", "API Key kosong.")
 		return
 	end
 
-	local customAssetName = sanitizeJsonText(UploadNameBox.Text)
-	local requestedType = sanitizeJsonText(UploadTypeBox.Text)
-	if requestedType == "" then requestedType = "Auto" end
+	local baseAssetName = trim(UploadNameBox.Text)
+	local baseAssetType = trim(UploadTypeBox.Text)
+	if baseAssetType == "" then baseAssetType = "Model" end
 	local creatorIdNum = tonumber(trim(UploadCreatorBox.Text):match("%d+")) or LocalPlayer.UserId
 	local isGroup = (trim(UploadOwnerModeBox.Text):lower() == "group")
 	local creatorObj = isGroup and { groupId = creatorIdNum } or { userId = creatorIdNum }
 
 	local rawInput = trim(UploadPayloadBox.Text)
 	local targets: {string} = {}
-	if rawInput:find(",", 1, true) then
+	if #selectedSpoofFiles > 0 and (rawInput == "" or rawInput:find(",", 1, true)) then
+		targets = table.clone(selectedSpoofFiles)
+	elseif rawInput:find(",", 1, true) then
 		for part in rawInput:gmatch("([^,]+)") do
 			local p = trim(part)
 			if p ~= "" then
 				table.insert(targets, p)
 			end
 		end
-	elseif #selectedSpoofFiles > 1 then
-		targets = table.clone(selectedSpoofFiles)
-	elseif rawInput ~= "" then
+	else
 		table.insert(targets, rawInput)
 	end
 
-	if #targets == 0 then
-		setUploadConsoles("err", 0, "Pilih file terlebih dahulu (SCAN -> Select / Select All).", "[]")
-		notify("Upload", "Belum ada file dipilih.")
-		return
-	end
-
-	local isMassUpload = (#targets > 1)
-	local txtPlaybackData = isMassUpload and extractPlaybackFromTxtFiles(targets) or nil
-
 	isUploading = true
-	setUploadConsoles("working", 0.15, "Memulai upload " .. tostring(#targets) .. " file...", "[]")
-
+	updateUploadOutcome("working", 0.15, "Memvalidasi dan mengunggah " .. tostring(#targets) .. " aset...")
 	task.spawn(function()
+		ensureFolders()
 		local sukses, gagal = 0, 0
-		local procLines: {string} = {}
-		local resultRows: {{[string]: any}} = {}
+		local logs: {string} = {}
+		local uploadedIds: {string} = {}
 
 		for idx, itemTarget in ipairs(targets) do
-			local loadedFileData = loadTextFile(itemTarget)
-			if not loadedFileData or loadedFileData == "" then
-				gagal += 1
-				table.insert(procLines, string.format("[%d/%d] %s Gagal: File tidak ditemukan atau kosong.", idx, #targets, itemTarget))
-				setUploadConsoles("err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
-			else
-				local originalFileName = itemTarget:match("([^/\\]+)$") or itemTarget
-				local stemName = originalFileName:gsub("%.[^%.]+$", "")
-				local displayName = (not isMassUpload and customAssetName ~= "") and customAssetName or stemName
-				displayName = sanitizeJsonText(displayName)
-				if displayName == "" then
-					displayName = stemName
-				end
+			local payloadData = "-- Exported via Ikyy Plugin Studio Lite"
+			local inferredName = (baseAssetName ~= "") and baseAssetName or ("IkyyAsset_" .. tostring(os.time()) .. "_" .. tostring(idx))
+			local uploadFilename = sanitizeFileName(inferredName):gsub("%s+", "_") .. ".lua"
 
-				local autoAssetType, mimeType = detectAssetFormatByFile(originalFileName, requestedType)
-				local metaTable = {
-					assetType = autoAssetType,
-					displayName = displayName:sub(1, 50),
-					description = "Uploaded via Plugin Studio Lite by Ikyy",
-					creationContext = { creator = creatorObj },
-				}
-
-				local okMeta, requestPayloadJson = safeJsonEncode(metaTable)
-				if not okMeta then
-					gagal += 1
-					table.insert(procLines, string.format("[%d/%d] %s Gagal metadata: %s", idx, #targets, originalFileName, requestPayloadJson))
-					setUploadConsoles("err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
-				else
-					local multipartBody, contentTypeHeader = buildMultipartAssetBody(
-						requestPayloadJson,
-						loadedFileData,
-						originalFileName,
-						mimeType
-					)
-
-					table.insert(procLines, string.format("[%d/%d] Mengunggah %s (%s)...", idx, #targets, originalFileName, autoAssetType))
-					setUploadConsoles("working", (idx - 0.5) / #targets, table.concat(procLines, "\n"), nil)
-
-					local res, ok, info = apiRequest({
-						Url = "https://apis.roblox.com/assets/v1/assets",
-						Method = "POST",
-						Headers = {
-							["x-api-key"] = apiKey,
-							["Content-Type"] = contentTypeHeader,
-						},
-						Body = multipartBody,
-						Retries = 2,
-					})
-
-					local bodyStr = res and tostring(res.Body or "") or ""
-					if ok and res then
-						sukses += 1
-						saveTextFile("Uploads/upload_" .. tostring(os.time()) .. "_" .. tostring(idx) .. ".json", bodyStr)
-						local uploadedId = extractUploadedAssetId(bodyStr)
-						if uploadedId == "" then
-							uploadedId = "-"
-						end
-
-						procLines[#procLines] = string.format("[%d/%d] %s OK -> ID: %s (%s)", idx, #targets, originalFileName, uploadedId, info)
-
-						if isMassUpload and txtPlaybackData then
-							local matchedRec = txtPlaybackData.byName[sanitizeFileName(stemName):lower()]
-								or txtPlaybackData.byId[uploadedId]
-								or txtPlaybackData.orderedList[idx]
-							local pbKey = matchedRec and matchedRec.key or "playback"
-							local pbVal = matchedRec and matchedRec.value or 1.0
-							local rowObj: {[string]: any} = {
-								nama = originalFileName,
-								id = uploadedId,
-							}
-							rowObj[pbKey] = pbVal
-							table.insert(resultRows, rowObj)
-						else
-							table.insert(resultRows, {
-								nama = originalFileName,
-								id = uploadedId,
-							})
-						end
-					else
-						gagal += 1
-						local shortErr = bodyStr:gsub("[%r\n]+", " "):sub(1, 120)
-						procLines[#procLines] = string.format("[%d/%d] %s Gagal (%s): %s", idx, #targets, originalFileName, info, shortErr)
+			if itemTarget ~= "" then
+				local loaded = loadTextFile(itemTarget)
+				if loaded then
+					payloadData = loaded
+					local baseName = itemTarget:match("([^/\\]+)$") or itemTarget
+					uploadFilename = baseName
+					if baseAssetName == "" or #targets > 1 then
+						inferredName = baseName:gsub("%.[^%.]+$", "")
 					end
-
-					setUploadConsoles((gagal == 0) and "working" or "err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
+				else
+					payloadData = itemTarget
 				end
 			end
 
+			local fileMime, inferredType = detectUploadMimeAndType(uploadFilename, baseAssetType)
+			local requestPayloadJson = HttpService:JSONEncode({
+				assetType = inferredType,
+				displayName = sanitizeFileName(inferredName),
+				description = "Uploaded via Plugin Studio Lite by Ikyy",
+				creationContext = { creator = creatorObj },
+			})
+
+			local multipartBody, contentTypeHeader = buildMultipartAssetBody(requestPayloadJson, payloadData, uploadFilename, fileMime)
+			local res, ok, info = apiRequest({
+				Url = "https://apis.roblox.com/assets/v1/assets",
+				Method = "POST",
+				Headers = {
+					["x-api-key"] = apiKey,
+					["Content-Type"] = contentTypeHeader,
+				},
+				Body = multipartBody,
+				Retries = 2,
+			})
+
+			if not ok then
+				res, ok, info = apiRequest({
+					Url = "https://apis.roblox.com/assets/v1/assets",
+					Method = "POST",
+					Headers = {
+						["x-api-key"] = apiKey,
+						["Content-Type"] = "application/json",
+					},
+					Body = HttpService:JSONEncode({
+						assetType = inferredType,
+						displayName = sanitizeFileName(inferredName),
+						description = "Uploaded via Plugin Studio Lite by Ikyy",
+						creationContext = { creator = creatorObj },
+						payload = payloadData,
+					}),
+					Retries = 1,
+				})
+			end
+
+			local bodyStr = res and tostring(res.Body or "") or ""
+			if ok and res then
+				sukses += 1
+				local createdId = extractCreatedAssetId(bodyStr)
+				if createdId then
+					table.insert(uploadedIds, createdId)
+				end
+				saveTextFile("Uploads/upload_" .. tostring(os.time()) .. "_" .. tostring(idx) .. ".json", bodyStr)
+				table.insert(logs, string.format(
+					"[%d/%d] %s (%s) OK%s",
+					idx,
+					#targets,
+					inferredName,
+					inferredType,
+					createdId and (" -> ID: " .. createdId) or (" (" .. info .. ")")
+				))
+			else
+				gagal += 1
+				table.insert(logs, string.format(
+					"[%d/%d] %s Gagal (%s): %s",
+					idx,
+					#targets,
+					inferredName,
+					info,
+					bodyStr:sub(1, 120)
+				))
+			end
+
+			updateUploadOutcome((gagal == 0) and "working" or "err", idx / #targets, table.concat(logs, "\n"))
 			if idx < #targets then
 				task.wait(0.5)
 			end
 		end
 
-		local finalJson = formatStackedJson(resultRows)
-		saveTextFile("Logs/upload_result_" .. tostring(os.time()) .. ".json", finalJson)
-		table.insert(procLines, string.format("Selesai: %d berhasil, %d gagal.", sukses, gagal))
+		if #uploadedIds > 0 then
+			table.insert(logs, "ID Berhasil: " .. table.concat(uploadedIds, ","))
+		end
 
 		local allOk = (sukses > 0 and gagal == 0)
-		setUploadConsoles(allOk and "ok" or "err", 1, table.concat(procLines, "\n"), finalJson)
+		updateUploadOutcome(allOk and "ok" or "err", 1, table.concat(logs, "\n"))
 		notify("Upload", string.format("Selesai: %d berhasil, %d gagal.", sukses, gagal))
 		isUploading = false
 	end)
 end)
 
+-- Proses Place Maker
 local isCreatingPlace = false
 CreatePlaceBtn.MouseButton1Click:Connect(function()
 	if isCreatingPlace then return end
@@ -3282,7 +3010,7 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 			if grpId and grpId > 0 then
 				bodyTbl.groupId = grpId
 			end
-			local _, jsonBody = safeJsonEncode(bodyTbl)
+			local jsonBody = HttpService:JSONEncode(bodyTbl)
 
 			local function sendCreateRequest(token: string)
 				local hdrs: {[string]: string} = {
@@ -3357,6 +3085,7 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
+-- Proses Asset Permissions
 local isGrantingPerm = false
 GrantPermBtn.MouseButton1Click:Connect(function()
 	if isGrantingPerm then return end
@@ -3409,13 +3138,6 @@ GrantPermBtn.MouseButton1Click:Connect(function()
 				end
 			end
 
-			local _, permBodyJson = safeJsonEncode({
-				subjectType = "Universe",
-				subjectId = tostring(univId),
-				action = "Use",
-				requests = reqList,
-			})
-
 			local res, ok, info = apiRequest({
 				Url = "https://apis.roblox.com/asset-permissions-api/v1/assets/permissions",
 				Method = "PATCH",
@@ -3423,7 +3145,12 @@ GrantPermBtn.MouseButton1Click:Connect(function()
 					["x-api-key"] = permKey,
 					["Content-Type"] = "application/json",
 				},
-				Body = permBodyJson,
+				Body = HttpService:JSONEncode({
+					subjectType = "Universe",
+					subjectId = tostring(univId),
+					action = "Use",
+					requests = reqList,
+				}),
 				Retries = 2,
 			})
 
