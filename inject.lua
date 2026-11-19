@@ -1,6 +1,6 @@
 --!strict
 -- Plugin Studio Lite (Upload Only Edition) by Ikyy
--- Fitur: Upload Asset, Setting (API Key), Close -> Ikon Lingkaran Profile
+-- Fitur: Upload Asset (List SPOOF/music, Select 1 / Select All, 2 Console + Copy Hasil), Setting (API Key), Close -> Ikon Lingkaran Profile
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -20,6 +20,7 @@ end
 -- ==========================================
 local CONFIG = {
 	WorkspaceRoot = "IkyyStudioLite",
+	MusicFolder = "IkyyStudioLite/SPOOF/music",
 	ApiKey = "",
 	IsMinimized = false,
 	ActiveTab = "Upload",
@@ -45,17 +46,36 @@ local function notify(title: string, text: string)
 	end)
 end
 
+local function copyToClipboard(text: string): boolean
+	if type(setclipboard) == "function" then
+		local ok = pcall(setclipboard, text)
+		if ok then return true end
+	end
+	if type(toclipboard) == "function" then
+		local ok = pcall(toclipboard, text)
+		if ok then return true end
+	end
+	if set_clipboard and type(set_clipboard) == "function" then
+		local ok = pcall(set_clipboard, text)
+		if ok then return true end
+	end
+	return false
+end
+
 local function hasFileIO(): boolean
 	return type(writefile) == "function"
 		and type(readfile) == "function"
 		and type(isfolder) == "function"
 		and type(makefolder) == "function"
+		and type(listfiles) == "function"
 end
 
 local function ensureFolders()
 	if not hasFileIO() then return end
 	local folders = {
 		CONFIG.WorkspaceRoot,
+		CONFIG.WorkspaceRoot .. "/SPOOF",
+		CONFIG.MusicFolder,
 		CONFIG.WorkspaceRoot .. "/Uploads",
 	}
 	for _, folder in ipairs(folders) do
@@ -84,6 +104,51 @@ local function loadTextFile(relPath: string): string?
 		return res
 	end
 	return nil
+end
+
+local function readRawFile(fullPath: string): string?
+	if type(readfile) ~= "function" then return nil end
+	local ok, res = pcall(readfile, fullPath)
+	if ok and type(res) == "string" then
+		return res
+	end
+	return nil
+end
+
+local function basenameNoExt(pathOrName: string): string
+	local fileOnly = pathOrName:match("[^/\\]+$") or pathOrName
+	local clean = fileOnly:gsub("%.%w+$", "")
+	return clean ~= "" and clean or fileOnly
+end
+
+local function getMusicFiles(): {{path: string, name: string}}
+	ensureFolders()
+	local result: {{path: string, name: string}} = {}
+	if type(listfiles) ~= "function" then return result end
+
+	local ok, files = pcall(listfiles, CONFIG.MusicFolder)
+	if not ok or type(files) ~= "table" then return result end
+
+	for _, entry in ipairs(files) do
+		local raw = tostring(entry)
+		local isDir = false
+		if type(isfolder) == "function" then
+			local dOk, dRes = pcall(isfolder, raw)
+			if dOk and dRes then isDir = true end
+		end
+		if not isDir then
+			local display = raw:match("[^/\\]+$") or raw
+			table.insert(result, {
+				path = raw,
+				name = display,
+			})
+		end
+	end
+
+	table.sort(result, function(a, b)
+		return a.name:lower() < b.name:lower()
+	end)
+	return result
 end
 
 local savedApiKey = loadTextFile("apikey.txt")
@@ -191,15 +256,15 @@ MainGradient.Parent = MainWindow
 -- ==========================================
 local HeaderBar = Instance.new("Frame")
 HeaderBar.Name = "HeaderBar"
-HeaderBar.Size = UDim2.new(1, 0, 0, 48)
+HeaderBar.Size = UDim2.new(1, 0, 0, 44)
 HeaderBar.BackgroundColor3 = Color3.fromRGB(20, 19, 30)
 HeaderBar.BackgroundTransparency = 0.25
 HeaderBar.BorderSizePixel = 0
 HeaderBar.Parent = MainWindow
 
 local HeaderLogoBox = Instance.new("Frame")
-HeaderLogoBox.Size = UDim2.fromOffset(30, 30)
-HeaderLogoBox.Position = UDim2.new(0, 12, 0.5, -15)
+HeaderLogoBox.Size = UDim2.fromOffset(28, 28)
+HeaderLogoBox.Position = UDim2.new(0, 12, 0.5, -14)
 HeaderLogoBox.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
 HeaderLogoBox.BorderSizePixel = 0
 HeaderLogoBox.Parent = HeaderBar
@@ -214,37 +279,26 @@ LogoIcon.Size = UDim2.fromScale(1, 1)
 LogoIcon.BackgroundTransparency = 1
 LogoIcon.Text = "⬆"
 LogoIcon.TextColor3 = Color3.fromRGB(215, 210, 255)
-LogoIcon.TextSize = 15
+LogoIcon.TextSize = 14
 LogoIcon.Font = Enum.Font.GothamBold
 LogoIcon.Parent = HeaderLogoBox
 
-local SubTitleLabel = Instance.new("TextLabel")
-SubTitleLabel.Size = UDim2.new(0, 220, 0, 12)
-SubTitleLabel.Position = UDim2.new(0, 50, 0, 7)
-SubTitleLabel.BackgroundTransparency = 1
-SubTitleLabel.Text = "IKYYSTUDIO • UPLOAD EDITION"
-SubTitleLabel.TextColor3 = Color3.fromRGB(130, 126, 155)
-SubTitleLabel.TextSize = 8
-SubTitleLabel.Font = Enum.Font.GothamBold
-SubTitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-SubTitleLabel.Parent = HeaderBar
-
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(0, 240, 0, 17)
-TitleLabel.Position = UDim2.new(0, 50, 0, 17)
+TitleLabel.Size = UDim2.new(0, 240, 0, 16)
+TitleLabel.Position = UDim2.new(0, 48, 0, 6)
 TitleLabel.BackgroundTransparency = 1
 TitleLabel.Text = "Plugin Studio Lite"
 TitleLabel.TextColor3 = Color3.fromRGB(245, 245, 255)
-TitleLabel.TextSize = 14
+TitleLabel.TextSize = 13
 TitleLabel.Font = Enum.Font.GothamBold
 TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
 TitleLabel.Parent = HeaderBar
 
 local MetaLabel = Instance.new("TextLabel")
-MetaLabel.Size = UDim2.new(0, 240, 0, 12)
-MetaLabel.Position = UDim2.new(0, 50, 0, 34)
+MetaLabel.Size = UDim2.new(0, 260, 0, 12)
+MetaLabel.Position = UDim2.new(0, 48, 0, 23)
 MetaLabel.BackgroundTransparency = 1
-MetaLabel.Text = "by Ikyy • Upload Only • @" .. LocalPlayer.Name
+MetaLabel.Text = "SPOOF/music Uploader • @" .. LocalPlayer.Name
 MetaLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
 MetaLabel.TextSize = 9
 MetaLabel.Font = Enum.Font.GothamMedium
@@ -253,12 +307,12 @@ MetaLabel.Parent = HeaderBar
 
 local CloseCircleBtn = Instance.new("TextButton")
 CloseCircleBtn.Name = "CloseToCircleBtn"
-CloseCircleBtn.Size = UDim2.fromOffset(28, 28)
-CloseCircleBtn.Position = UDim2.new(1, -40, 0.5, -14)
+CloseCircleBtn.Size = UDim2.fromOffset(26, 26)
+CloseCircleBtn.Position = UDim2.new(1, -38, 0.5, -13)
 CloseCircleBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 50)
 CloseCircleBtn.Text = "✕"
 CloseCircleBtn.TextColor3 = Color3.fromRGB(220, 218, 238)
-CloseCircleBtn.TextSize = 12
+CloseCircleBtn.TextSize = 11
 CloseCircleBtn.Font = Enum.Font.GothamBold
 CloseCircleBtn.Parent = HeaderBar
 
@@ -308,8 +362,8 @@ end)
 -- ==========================================
 local Sidebar = Instance.new("Frame")
 Sidebar.Name = "Sidebar"
-Sidebar.Size = UDim2.new(0, 126, 1, -58)
-Sidebar.Position = UDim2.new(0, 10, 0, 52)
+Sidebar.Size = UDim2.new(0, 116, 1, -52)
+Sidebar.Position = UDim2.new(0, 8, 0, 46)
 Sidebar.BackgroundColor3 = Color3.fromRGB(21, 20, 32)
 Sidebar.BorderSizePixel = 0
 Sidebar.Parent = MainWindow
@@ -320,7 +374,7 @@ SideStroke.Color = Color3.fromRGB(52, 48, 82)
 SideStroke.Thickness = 1
 
 local NavList = Instance.new("Frame")
-NavList.Size = UDim2.new(1, -10, 0, 80)
+NavList.Size = UDim2.new(1, -10, 0, 76)
 NavList.Position = UDim2.new(0, 5, 0, 6)
 NavList.BackgroundTransparency = 1
 NavList.Parent = Sidebar
@@ -336,11 +390,11 @@ local tabButtons: {[string]: TextButton} = {}
 local function createNavButton(name: string, label: string, order: number)
 	local btn = Instance.new("TextButton")
 	btn.Name = "Nav_" .. name
-	btn.Size = UDim2.new(1, 0, 0, 34)
+	btn.Size = UDim2.new(1, 0, 0, 32)
 	btn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
 	btn.Text = "  " .. label
 	btn.TextColor3 = Color3.fromRGB(185, 182, 210)
-	btn.TextSize = 11
+	btn.TextSize = 10
 	btn.Font = Enum.Font.GothamMedium
 	btn.TextXAlignment = Enum.TextXAlignment.Left
 	btn.LayoutOrder = order
@@ -353,8 +407,8 @@ local function createNavButton(name: string, label: string, order: number)
 end
 
 local SembunyiBtn = Instance.new("TextButton")
-SembunyiBtn.Size = UDim2.new(1, -12, 0, 32)
-SembunyiBtn.Position = UDim2.new(0, 6, 1, -40)
+SembunyiBtn.Size = UDim2.new(1, -10, 0, 28)
+SembunyiBtn.Position = UDim2.new(0, 5, 1, -34)
 SembunyiBtn.BackgroundColor3 = Color3.fromRGB(32, 31, 48)
 SembunyiBtn.Text = "SEMBUNYIKAN"
 SembunyiBtn.TextColor3 = Color3.fromRGB(215, 212, 235)
@@ -375,8 +429,8 @@ end)
 -- ==========================================
 local ContentArea = Instance.new("Frame")
 ContentArea.Name = "ContentArea"
-ContentArea.Size = UDim2.new(1, -152, 1, -58)
-ContentArea.Position = UDim2.new(0, 142, 0, 52)
+ContentArea.Size = UDim2.new(1, -138, 1, -52)
+ContentArea.Position = UDim2.new(0, 130, 0, 46)
 ContentArea.BackgroundColor3 = Color3.fromRGB(20, 19, 30)
 ContentArea.BorderSizePixel = 0
 ContentArea.Parent = MainWindow
@@ -398,37 +452,8 @@ local function switchTab(tabName: string)
 	end
 end
 
-local function createResultBar(parent: GuiObject, yPos: number)
-	local bar = Instance.new("Frame")
-	bar.Size = UDim2.new(1, -24, 0, 10)
-	bar.Position = UDim2.new(0, 12, 0, yPos)
-	bar.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
-	bar.BorderSizePixel = 0
-	bar.Parent = parent
-	Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-
-	local stroke = Instance.new("UIStroke", bar)
-	stroke.Color = Color3.fromRGB(58, 54, 88)
-	stroke.Thickness = 1
-
-	local fill = Instance.new("Frame")
-	fill.Size = UDim2.new(0, 0, 1, 0)
-	fill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
-	fill.BorderSizePixel = 0
-	fill.Parent = bar
-	Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
-
-	return function(success: boolean, ratio: number)
-		local clamped = math.clamp(ratio, 0, 1)
-		fill.BackgroundColor3 = success and Color3.fromRGB(56, 239, 125) or Color3.fromRGB(255, 86, 102)
-		TweenService:Create(fill, TweenInfo.new(0.18), {
-			Size = UDim2.new(clamped, 0, 1, 0),
-		}):Play()
-	end
-end
-
 -- ==========================================
--- HALAMAN 1: UPLOAD ASSET
+-- HALAMAN 1: UPLOAD ASSET (SPOOF/music + 2 CONSOLE)
 -- ==========================================
 local UploadPage = Instance.new("Frame")
 UploadPage.Size = UDim2.fromScale(1, 1)
@@ -437,98 +462,170 @@ UploadPage.Visible = true
 UploadPage.Parent = ContentArea
 tabPages["Upload"] = UploadPage
 
-local UploadTitle = Instance.new("TextLabel")
-UploadTitle.Size = UDim2.new(1, -24, 0, 18)
-UploadTitle.Position = UDim2.new(0, 12, 0, 8)
-UploadTitle.BackgroundTransparency = 1
-UploadTitle.Text = "Upload Asset"
-UploadTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-UploadTitle.TextSize = 14
-UploadTitle.Font = Enum.Font.GothamBold
-UploadTitle.TextXAlignment = Enum.TextXAlignment.Left
-UploadTitle.Parent = UploadPage
+-- Baris kontrol Select All & Refresh
+local ControlBar = Instance.new("Frame")
+ControlBar.Size = UDim2.new(1, -16, 0, 24)
+ControlBar.Position = UDim2.new(0, 8, 0, 6)
+ControlBar.BackgroundTransparency = 1
+ControlBar.Parent = UploadPage
 
-local UploadNameBox = Instance.new("TextBox")
-UploadNameBox.Size = UDim2.new(0.5, -15, 0, 30)
-UploadNameBox.Position = UDim2.new(0, 12, 0, 32)
-UploadNameBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-UploadNameBox.PlaceholderText = "Nama Asset"
-UploadNameBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-UploadNameBox.Text = ""
-UploadNameBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-UploadNameBox.TextSize = 10
-UploadNameBox.Font = Enum.Font.Gotham
-UploadNameBox.Parent = UploadPage
-Instance.new("UICorner", UploadNameBox).CornerRadius = UDim.new(0, 7)
+local SelectAllBtn = Instance.new("TextButton")
+SelectAllBtn.Size = UDim2.new(0, 76, 1, 0)
+SelectAllBtn.Position = UDim2.new(0, 0, 0, 0)
+SelectAllBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
+SelectAllBtn.Text = "Select All"
+SelectAllBtn.TextColor3 = Color3.fromRGB(220, 218, 242)
+SelectAllBtn.TextSize = 9
+SelectAllBtn.Font = Enum.Font.GothamBold
+SelectAllBtn.Parent = ControlBar
+Instance.new("UICorner", SelectAllBtn).CornerRadius = UDim.new(0, 6)
+local SelAllStroke = Instance.new("UIStroke", SelectAllBtn)
+SelAllStroke.Color = Color3.fromRGB(72, 68, 108)
+SelAllStroke.Thickness = 1
 
-local UploadTypeBox = Instance.new("TextBox")
-UploadTypeBox.Size = UDim2.new(0.5, -15, 0, 30)
-UploadTypeBox.Position = UDim2.new(0.5, 3, 0, 32)
-UploadTypeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-UploadTypeBox.PlaceholderText = "Model / Audio / Animation / Decal"
-UploadTypeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-UploadTypeBox.Text = "Model"
-UploadTypeBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-UploadTypeBox.TextSize = 10
-UploadTypeBox.Font = Enum.Font.Gotham
-UploadTypeBox.Parent = UploadPage
-Instance.new("UICorner", UploadTypeBox).CornerRadius = UDim.new(0, 7)
+local RefreshBtn = Instance.new("TextButton")
+RefreshBtn.Size = UDim2.new(0, 64, 1, 0)
+RefreshBtn.Position = UDim2.new(0, 80, 0, 0)
+RefreshBtn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
+RefreshBtn.Text = "Refresh"
+RefreshBtn.TextColor3 = Color3.fromRGB(190, 188, 215)
+RefreshBtn.TextSize = 9
+RefreshBtn.Font = Enum.Font.GothamBold
+RefreshBtn.Parent = ControlBar
+Instance.new("UICorner", RefreshBtn).CornerRadius = UDim.new(0, 6)
 
-local UploadCreatorBox = Instance.new("TextBox")
-UploadCreatorBox.Size = UDim2.new(0.5, -15, 0, 30)
-UploadCreatorBox.Position = UDim2.new(0, 12, 0, 68)
-UploadCreatorBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-UploadCreatorBox.PlaceholderText = "Creator ID"
-UploadCreatorBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-UploadCreatorBox.Text = tostring(LocalPlayer.UserId)
-UploadCreatorBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-UploadCreatorBox.TextSize = 10
-UploadCreatorBox.Font = Enum.Font.Gotham
-UploadCreatorBox.Parent = UploadPage
-Instance.new("UICorner", UploadCreatorBox).CornerRadius = UDim.new(0, 7)
+local UploadBtn = Instance.new("TextButton")
+UploadBtn.Size = UDim2.new(0, 82, 1, 0)
+UploadBtn.Position = UDim2.new(1, -82, 0, 0)
+UploadBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+UploadBtn.Text = "⬆ Upload"
+UploadBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+UploadBtn.TextSize = 9
+UploadBtn.Font = Enum.Font.GothamBold
+UploadBtn.Parent = ControlBar
+Instance.new("UICorner", UploadBtn).CornerRadius = UDim.new(0, 6)
 
-local UploadOwnerModeBox = Instance.new("TextBox")
-UploadOwnerModeBox.Size = UDim2.new(0.5, -15, 0, 30)
-UploadOwnerModeBox.Position = UDim2.new(0.5, 3, 0, 68)
-UploadOwnerModeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-UploadOwnerModeBox.PlaceholderText = "user atau group"
-UploadOwnerModeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-UploadOwnerModeBox.Text = "user"
-UploadOwnerModeBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-UploadOwnerModeBox.TextSize = 10
-UploadOwnerModeBox.Font = Enum.Font.Gotham
-UploadOwnerModeBox.Parent = UploadPage
-Instance.new("UICorner", UploadOwnerModeBox).CornerRadius = UDim.new(0, 7)
+-- List file dari IkyyStudioLite/SPOOF/music (Select Satu / Select All)
+local FileScroll = Instance.new("ScrollingFrame")
+FileScroll.Size = UDim2.new(1, -16, 0, 86)
+FileScroll.Position = UDim2.new(0, 8, 0, 34)
+FileScroll.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+FileScroll.BorderSizePixel = 0
+FileScroll.ScrollBarThickness = 3
+FileScroll.CanvasSize = UDim2.fromOffset(0, 0)
+FileScroll.Parent = UploadPage
+Instance.new("UICorner", FileScroll).CornerRadius = UDim.new(0, 7)
+local FileStroke = Instance.new("UIStroke", FileScroll)
+FileStroke.Color = Color3.fromRGB(58, 54, 88)
+FileStroke.Thickness = 1
 
-local UploadPayloadBox = Instance.new("TextBox")
-UploadPayloadBox.Size = UDim2.new(1, -24, 0, 66)
-UploadPayloadBox.Position = UDim2.new(0, 12, 0, 104)
-UploadPayloadBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-UploadPayloadBox.PlaceholderText = "Path file di workspace atau isi payload"
-UploadPayloadBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-UploadPayloadBox.Text = ""
-UploadPayloadBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-UploadPayloadBox.TextSize = 10
-UploadPayloadBox.Font = Enum.Font.Gotham
-UploadPayloadBox.MultiLine = true
-UploadPayloadBox.TextWrapped = true
-UploadPayloadBox.TextXAlignment = Enum.TextXAlignment.Left
-UploadPayloadBox.TextYAlignment = Enum.TextYAlignment.Top
-UploadPayloadBox.Parent = UploadPage
-Instance.new("UICorner", UploadPayloadBox).CornerRadius = UDim.new(0, 7)
+local FileLayout = Instance.new("UIListLayout")
+FileLayout.Padding = UDim.new(0, 3)
+FileLayout.SortOrder = Enum.SortOrder.LayoutOrder
+FileLayout.Parent = FileScroll
 
-local UploadActionBtn = Instance.new("TextButton")
-UploadActionBtn.Size = UDim2.new(1, -24, 0, 34)
-UploadActionBtn.Position = UDim2.new(0, 12, 0, 176)
-UploadActionBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-UploadActionBtn.Text = "⬆  UPLOAD ASSET"
-UploadActionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-UploadActionBtn.TextSize = 11
-UploadActionBtn.Font = Enum.Font.GothamBold
-UploadActionBtn.Parent = UploadPage
-Instance.new("UICorner", UploadActionBtn).CornerRadius = UDim.new(0, 8)
+local FilePad = Instance.new("UIPadding")
+FilePad.PaddingTop = UDim.new(0, 4)
+FilePad.PaddingBottom = UDim.new(0, 4)
+FilePad.PaddingLeft = UDim.new(0, 4)
+FilePad.PaddingRight = UDim.new(0, 4)
+FilePad.Parent = FileScroll
 
-local setUploadOutcome = createResultBar(UploadPage, 218)
+-- CONSOLE 1: PROSES
+local ProcessHeader = Instance.new("TextLabel")
+ProcessHeader.Size = UDim2.new(1, -16, 0, 12)
+ProcessHeader.Position = UDim2.new(0, 8, 0, 124)
+ProcessHeader.BackgroundTransparency = 1
+ProcessHeader.Text = "Console Proses"
+ProcessHeader.TextColor3 = Color3.fromRGB(155, 152, 184)
+ProcessHeader.TextSize = 9
+ProcessHeader.Font = Enum.Font.GothamBold
+ProcessHeader.TextXAlignment = Enum.TextXAlignment.Left
+ProcessHeader.Parent = UploadPage
+
+local ProcessConsoleScroll = Instance.new("ScrollingFrame")
+ProcessConsoleScroll.Size = UDim2.new(1, -16, 0, 34)
+ProcessConsoleScroll.Position = UDim2.new(0, 8, 0, 137)
+ProcessConsoleScroll.BackgroundColor3 = Color3.fromRGB(11, 10, 18)
+ProcessConsoleScroll.BorderSizePixel = 0
+ProcessConsoleScroll.ScrollBarThickness = 2
+ProcessConsoleScroll.CanvasSize = UDim2.fromOffset(0, 0)
+ProcessConsoleScroll.Parent = UploadPage
+Instance.new("UICorner", ProcessConsoleScroll).CornerRadius = UDim.new(0, 6)
+local ProcStroke = Instance.new("UIStroke", ProcessConsoleScroll)
+ProcStroke.Color = Color3.fromRGB(52, 48, 82)
+ProcStroke.Thickness = 1
+
+local ProcessConsoleText = Instance.new("TextLabel")
+ProcessConsoleText.Size = UDim2.new(1, -10, 0, 0)
+ProcessConsoleText.Position = UDim2.new(0, 5, 0, 4)
+ProcessConsoleText.BackgroundTransparency = 1
+ProcessConsoleText.Text = "Menunggu file dipilih..."
+ProcessConsoleText.TextColor3 = Color3.fromRGB(175, 195, 255)
+ProcessConsoleText.TextSize = 9
+ProcessConsoleText.Font = Enum.Font.Code
+ProcessConsoleText.TextXAlignment = Enum.TextXAlignment.Left
+ProcessConsoleText.TextYAlignment = Enum.TextYAlignment.Top
+ProcessConsoleText.TextWrapped = true
+ProcessConsoleText.AutomaticSize = Enum.AutomaticSize.Y
+ProcessConsoleText.Parent = ProcessConsoleScroll
+
+-- CONSOLE 2: HASIL (BERTUMPUK FORMAT nama : / id : + TOMBOL COPY)
+local ResultHeaderBar = Instance.new("Frame")
+ResultHeaderBar.Size = UDim2.new(1, -16, 0, 15)
+ResultHeaderBar.Position = UDim2.new(0, 8, 0, 174)
+ResultHeaderBar.BackgroundTransparency = 1
+ResultHeaderBar.Parent = UploadPage
+
+local ResultHeader = Instance.new("TextLabel")
+ResultHeader.Size = UDim2.new(1, -54, 1, 0)
+ResultHeader.Position = UDim2.new(0, 0, 0, 0)
+ResultHeader.BackgroundTransparency = 1
+ResultHeader.Text = "Console Hasil"
+ResultHeader.TextColor3 = Color3.fromRGB(155, 152, 184)
+ResultHeader.TextSize = 9
+ResultHeader.Font = Enum.Font.GothamBold
+ResultHeader.TextXAlignment = Enum.TextXAlignment.Left
+ResultHeader.Parent = ResultHeaderBar
+
+local CopyResultBtn = Instance.new("TextButton")
+CopyResultBtn.Name = "CopyResultBtn"
+CopyResultBtn.Size = UDim2.new(0, 50, 1, 0)
+CopyResultBtn.Position = UDim2.new(1, -50, 0, 0)
+CopyResultBtn.BackgroundColor3 = Color3.fromRGB(48, 44, 76)
+CopyResultBtn.Text = "Copy"
+CopyResultBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
+CopyResultBtn.TextSize = 8
+CopyResultBtn.Font = Enum.Font.GothamBold
+CopyResultBtn.Parent = ResultHeaderBar
+Instance.new("UICorner", CopyResultBtn).CornerRadius = UDim.new(0, 4)
+
+local ResultConsoleScroll = Instance.new("ScrollingFrame")
+ResultConsoleScroll.Size = UDim2.new(1, -16, 0, 69)
+ResultConsoleScroll.Position = UDim2.new(0, 8, 0, 191)
+ResultConsoleScroll.BackgroundColor3 = Color3.fromRGB(11, 10, 18)
+ResultConsoleScroll.BorderSizePixel = 0
+ResultConsoleScroll.ScrollBarThickness = 3
+ResultConsoleScroll.CanvasSize = UDim2.fromOffset(0, 0)
+ResultConsoleScroll.Parent = UploadPage
+Instance.new("UICorner", ResultConsoleScroll).CornerRadius = UDim.new(0, 6)
+local ResStroke = Instance.new("UIStroke", ResultConsoleScroll)
+ResStroke.Color = Color3.fromRGB(52, 48, 82)
+ResStroke.Thickness = 1
+
+local ResultConsoleText = Instance.new("TextLabel")
+ResultConsoleText.Size = UDim2.new(1, -10, 0, 0)
+ResultConsoleText.Position = UDim2.new(0, 5, 0, 4)
+ResultConsoleText.BackgroundTransparency = 1
+ResultConsoleText.Text = ""
+ResultConsoleText.TextColor3 = Color3.fromRGB(220, 245, 225)
+ResultConsoleText.TextSize = 9
+ResultConsoleText.Font = Enum.Font.Code
+ResultConsoleText.TextXAlignment = Enum.TextXAlignment.Left
+ResultConsoleText.TextYAlignment = Enum.TextYAlignment.Top
+ResultConsoleText.TextWrapped = true
+ResultConsoleText.AutomaticSize = Enum.AutomaticSize.Y
+ResultConsoleText.Parent = ResultConsoleScroll
 
 -- ==========================================
 -- HALAMAN 2: SETTING (API KEY)
@@ -541,19 +638,19 @@ SettingPage.Parent = ContentArea
 tabPages["Setting"] = SettingPage
 
 local SettingTitle = Instance.new("TextLabel")
-SettingTitle.Size = UDim2.new(1, -24, 0, 18)
-SettingTitle.Position = UDim2.new(0, 12, 0, 8)
+SettingTitle.Size = UDim2.new(1, -20, 0, 18)
+SettingTitle.Position = UDim2.new(0, 10, 0, 8)
 SettingTitle.BackgroundTransparency = 1
 SettingTitle.Text = "Pengaturan API Key"
 SettingTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-SettingTitle.TextSize = 14
+SettingTitle.TextSize = 13
 SettingTitle.Font = Enum.Font.GothamBold
 SettingTitle.TextXAlignment = Enum.TextXAlignment.Left
 SettingTitle.Parent = SettingPage
 
 local ApiKeyBox = Instance.new("TextBox")
-ApiKeyBox.Size = UDim2.new(1, -24, 0, 118)
-ApiKeyBox.Position = UDim2.new(0, 12, 0, 34)
+ApiKeyBox.Size = UDim2.new(1, -20, 0, 150)
+ApiKeyBox.Position = UDim2.new(0, 10, 0, 32)
 ApiKeyBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 ApiKeyBox.Text = CONFIG.ApiKey
 ApiKeyBox.PlaceholderText = "Roblox Open Cloud API Key (x-api-key)..."
@@ -569,8 +666,8 @@ ApiKeyBox.Parent = SettingPage
 Instance.new("UICorner", ApiKeyBox).CornerRadius = UDim.new(0, 7)
 
 local SaveSettingBtn = Instance.new("TextButton")
-SaveSettingBtn.Size = UDim2.new(1, -24, 0, 34)
-SaveSettingBtn.Position = UDim2.new(0, 12, 0, 160)
+SaveSettingBtn.Size = UDim2.new(1, -20, 0, 34)
+SaveSettingBtn.Position = UDim2.new(0, 10, 0, 192)
 SaveSettingBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
 SaveSettingBtn.Text = "💾  SIMPAN"
 SaveSettingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -579,13 +676,10 @@ SaveSettingBtn.Font = Enum.Font.GothamBold
 SaveSettingBtn.Parent = SettingPage
 Instance.new("UICorner", SaveSettingBtn).CornerRadius = UDim.new(0, 8)
 
-local setSettingOutcome = createResultBar(SettingPage, 204)
-
 SaveSettingBtn.MouseButton1Click:Connect(function()
 	local k = trim(ApiKeyBox.Text)
 	CONFIG.ApiKey = k
 	local ok = (k == "") or saveTextFile("apikey.txt", k)
-	setSettingOutcome(ok, ok and 1 or 0)
 	notify("Plugin Studio Lite", ok and "Berhasil disimpan." or "Gagal menyimpan.")
 end)
 
@@ -595,64 +689,217 @@ createNavButton("Setting", "⚙  Setting", 2).MouseButton1Click:Connect(function
 switchTab("Upload")
 
 -- ==========================================
--- LOGIKA UPLOAD ASSET
+-- LOGIKA LIST FILE, SELECT SATU / ALL & 2 CONSOLE
 -- ==========================================
-UploadActionBtn.MouseButton1Click:Connect(function()
+local currentFiles: {{path: string, name: string}} = {}
+local selectedPaths: {[string]: boolean} = {}
+local rowButtons: {[string]: TextButton} = {}
+local resultBlocks: {string} = {}
+
+local function setProcessLog(msg: string)
+	ProcessConsoleText.Text = msg
+	ProcessConsoleScroll.CanvasSize = UDim2.fromOffset(0, ProcessConsoleText.TextBounds.Y + 8)
+	ProcessConsoleScroll.CanvasPosition = Vector2.new(0, math.max(0, ProcessConsoleText.TextBounds.Y - 24))
+end
+
+local function appendResultEntry(nama: string, assetId: string)
+	local entry = "nama : " .. nama .. "\nid : " .. assetId
+	table.insert(resultBlocks, entry)
+	ResultConsoleText.Text = table.concat(resultBlocks, "\n\n")
+	task.defer(function()
+		ResultConsoleScroll.CanvasSize = UDim2.fromOffset(0, ResultConsoleText.TextBounds.Y + 10)
+		ResultConsoleScroll.CanvasPosition = Vector2.new(0, math.max(0, ResultConsoleText.TextBounds.Y - 56))
+	end)
+end
+
+CopyResultBtn.MouseButton1Click:Connect(function()
+	local rawResult = ResultConsoleText.Text
+	if trim(rawResult) == "" then
+		setProcessLog("Tidak ada hasil untuk di-copy")
+		return
+	end
+	local ok = copyToClipboard(rawResult)
+	if ok then
+		CopyResultBtn.Text = "Copied!"
+		setProcessLog("Hasil berhasil di-copy ke clipboard")
+		notify("Console Hasil", "Berhasil di-copy.")
+		task.delay(1.2, function()
+			CopyResultBtn.Text = "Copy"
+		end)
+	else
+		setProcessLog("Gagal copy: executor tidak mendukung clipboard")
+		notify("Console Hasil", "Gagal copy.")
+	end
+end)
+
+local function refreshRowVisuals()
+	for path, btn in pairs(rowButtons) do
+		local isSel = selectedPaths[path] == true
+		btn.BackgroundColor3 = isSel and Color3.fromRGB(64, 52, 120) or Color3.fromRGB(22, 21, 34)
+		btn.TextColor3 = isSel and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 188, 215)
+	end
+end
+
+local function rebuildFileList()
+	for _, child in ipairs(FileScroll:GetChildren()) do
+		if child:IsA("TextButton") or child:IsA("TextLabel") then
+			child:Destroy()
+		end
+	end
+	table.clear(rowButtons)
+
+	currentFiles = getMusicFiles()
+	if #currentFiles == 0 then
+		local emptyLbl = Instance.new("TextLabel")
+		emptyLbl.Size = UDim2.new(1, -8, 0, 24)
+		emptyLbl.BackgroundTransparency = 1
+		emptyLbl.Text = "Kosong: " .. CONFIG.MusicFolder
+		emptyLbl.TextColor3 = Color3.fromRGB(125, 122, 150)
+		emptyLbl.TextSize = 9
+		emptyLbl.Font = Enum.Font.Gotham
+		emptyLbl.TextXAlignment = Enum.TextXAlignment.Left
+		emptyLbl.Parent = FileScroll
+		FileScroll.CanvasSize = UDim2.fromOffset(0, 28)
+		return
+	end
+
+	for idx, item in ipairs(currentFiles) do
+		local row = Instance.new("TextButton")
+		row.Size = UDim2.new(1, -4, 0, 22)
+		row.BackgroundColor3 = Color3.fromRGB(22, 21, 34)
+		row.Text = "  " .. item.name
+		row.TextColor3 = Color3.fromRGB(190, 188, 215)
+		row.TextSize = 9
+		row.Font = Enum.Font.GothamMedium
+		row.TextXAlignment = Enum.TextXAlignment.Left
+		row.LayoutOrder = idx
+		row.AutoButtonColor = false
+		row.Parent = FileScroll
+		Instance.new("UICorner", row).CornerRadius = UDim.new(0, 5)
+
+		rowButtons[item.path] = row
+
+		-- Select Satu (klik toggle satu file)
+		row.MouseButton1Click:Connect(function()
+			selectedPaths[item.path] = not (selectedPaths[item.path] == true)
+			refreshRowVisuals()
+			local count = 0
+			for _, v in pairs(selectedPaths) do
+				if v then count += 1 end
+			end
+			setProcessLog("Dipilih: " .. tostring(count) .. " file")
+		end)
+	end
+
+	refreshRowVisuals()
+	local totalH = (#currentFiles * 25) + 8
+	FileScroll.CanvasSize = UDim2.fromOffset(0, totalH)
+end
+
+-- Select All (toggle pilih semua / batal semua)
+SelectAllBtn.MouseButton1Click:Connect(function()
+	if #currentFiles == 0 then
+		setProcessLog("Tidak ada file di SPOOF/music")
+		return
+	end
+	local allSelected = true
+	for _, item in ipairs(currentFiles) do
+		if not selectedPaths[item.path] then
+			allSelected = false
+			break
+		end
+	end
+	for _, item in ipairs(currentFiles) do
+		selectedPaths[item.path] = not allSelected
+	end
+	refreshRowVisuals()
+	setProcessLog((not allSelected) and ("Select All (" .. tostring(#currentFiles) .. " file)") or "Batal pilih semua")
+end)
+
+RefreshBtn.MouseButton1Click:Connect(function()
+	rebuildFileList()
+	setProcessLog("List diperbarui (" .. tostring(#currentFiles) .. " file)")
+end)
+
+local function extractCreatedId(bodyStr: string): string
+	local idMatch = bodyStr:match('"assetId"%s*:%s*"?(%d+)"?')
+		or bodyStr:match('"id"%s*:%s*"?(%d+)"?')
+		or bodyStr:match('"(%d{6,})"')
+	return idMatch or "-"
+end
+
+local isUploading = false
+UploadBtn.MouseButton1Click:Connect(function()
+	if isUploading then return end
+
 	if trim(CONFIG.ApiKey) == "" then
-		setUploadOutcome(false, 0)
+		setProcessLog("Gagal: API Key belum diatur di Setting")
 		notify("Upload", "Gagal.")
 		return
 	end
 
-	local assetName = trim(UploadNameBox.Text)
-	if assetName == "" then
-		assetName = "IkyyAsset_" .. tostring(os.time())
-	end
-	local assetType = trim(UploadTypeBox.Text)
-	if assetType == "" then
-		assetType = "Model"
-	end
-	local creatorId = trim(UploadCreatorBox.Text)
-	if creatorId == "" then
-		creatorId = tostring(LocalPlayer.UserId)
-	end
-	local isGroup = (trim(UploadOwnerModeBox.Text):lower() == "group")
-
-	local rawPayload = trim(UploadPayloadBox.Text)
-	if rawPayload ~= "" then
-		local loaded = loadTextFile(rawPayload)
-		if loaded then
-			rawPayload = loaded
+	local queue: {{path: string, name: string}} = {}
+	for _, item in ipairs(currentFiles) do
+		if selectedPaths[item.path] then
+			table.insert(queue, item)
 		end
-	else
-		rawPayload = "-- Exported via Ikyy Plugin Studio Lite"
 	end
 
+	if #queue == 0 then
+		setProcessLog("Gagal: Pilih minimal 1 file dulu")
+		notify("Upload", "Gagal.")
+		return
+	end
+
+	isUploading = true
 	task.spawn(function()
-		local creatorTable = isGroup and { groupId = tostring(creatorId) } or { userId = tostring(creatorId) }
-		local res, ok = httpRequest({
-			Url = "https://apis.roblox.com/assets/v1/assets",
-			Method = "POST",
-			Headers = {
-				["x-api-key"] = CONFIG.ApiKey,
-				["Content-Type"] = "application/json",
-			},
-			Body = HttpService:JSONEncode({
-				assetType = assetType,
-				displayName = assetName,
-				description = "Uploaded via Plugin Studio Lite by Ikyy",
-				creationContext = { creator = creatorTable },
-				payload = rawPayload,
-			}),
-		})
+		for i, item in ipairs(queue) do
+			local namaAsset = basenameNoExt(item.name)
+			setProcessLog("[" .. tostring(i) .. "/" .. tostring(#queue) .. "] Uploading: " .. item.name)
 
-		if ok and res then
-			saveTextFile("Uploads/upload_" .. tostring(os.time()) .. ".json", tostring(res.Body or ""))
-			setUploadOutcome(true, 1)
-			notify("Upload", "Berhasil.")
-		else
-			setUploadOutcome(false, 0)
-			notify("Upload", "Gagal.")
+			local content = readRawFile(item.path)
+			if not content then
+				setProcessLog("[" .. tostring(i) .. "/" .. tostring(#queue) .. "] Gagal baca file: " .. item.name)
+				appendResultEntry(namaAsset, "GAGAL")
+			else
+				local res, ok = httpRequest({
+					Url = "https://apis.roblox.com/assets/v1/assets",
+					Method = "POST",
+					Headers = {
+						["x-api-key"] = CONFIG.ApiKey,
+						["Content-Type"] = "application/json",
+					},
+					Body = HttpService:JSONEncode({
+						assetType = "Audio",
+						displayName = namaAsset,
+						description = "Uploaded from SPOOF/music by Ikyy",
+						creationContext = {
+							creator = { userId = tostring(LocalPlayer.UserId) },
+						},
+						payload = content,
+					}),
+				})
+
+				if ok and res then
+					local respBody = tostring(res.Body or "")
+					local newId = extractCreatedId(respBody)
+					saveTextFile("Uploads/upload_" .. namaAsset .. "_" .. tostring(os.time()) .. ".json", respBody)
+					appendResultEntry(namaAsset, newId)
+				else
+					appendResultEntry(namaAsset, "GAGAL")
+				end
+			end
+
+			if i < #queue then
+				task.wait(0.4)
+			end
 		end
+
+		setProcessLog("Selesai (" .. tostring(#queue) .. " file diproses)")
+		notify("Upload", "Selesai.")
+		isUploading = false
 	end)
 end)
+
+ensureFolders()
+rebuildFileList()
