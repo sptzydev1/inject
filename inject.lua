@@ -29,6 +29,7 @@ local CONFIG = {
 	ActiveTab = "Spoof",
 	SpoofFilter = "Auto", -- Auto, Audio, Decal, Model, Anim
 	SessionId = "YGF_0000",
+	UserAgent = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
 }
 
 local WINDOW_SIZE = UDim2.fromOffset(540, 320)
@@ -98,15 +99,21 @@ end
 
 local function loadTextFile(relPath: string): string?
 	if not hasFileIO() then return nil end
-	local fullPath = CONFIG.WorkspaceRoot .. "/" .. relPath
-	local ok, res = pcall(function()
-		if type(isfile) == "function" and isfile(fullPath) then
-			return readfile(fullPath)
+	local cleanRel = relPath:gsub("^/+", "")
+	local candidates = {
+		CONFIG.WorkspaceRoot .. "/" .. cleanRel,
+		cleanRel,
+	}
+	for _, fullPath in ipairs(candidates) do
+		local ok, res = pcall(function()
+			if type(isfile) == "function" and isfile(fullPath) then
+				return readfile(fullPath)
+			end
+			return nil
+		end)
+		if ok and type(res) == "string" then
+			return res
 		end
-		return nil
-	end)
-	if ok and type(res) == "string" then
-		return res
 	end
 	return nil
 end
@@ -124,22 +131,80 @@ local function getHttpFunc()
 	return nil
 end
 
-local function httpRequest(options: {Url: string, Method: string?, Headers: {[string]: string}?, Body: string?})
+-- Wrapper request ala requests.Session di Python
+local function apiRequest(options: {
+	Url: string,
+	Method: string?,
+	Headers: {[string]: string}?,
+	Body: string?,
+	Retries: number?,
+})
 	local reqFn = getHttpFunc()
 	if not reqFn then
 		return nil, false
 	end
-	local ok, res = pcall(reqFn, {
-		Url = options.Url,
-		Method = options.Method or "GET",
-		Headers = options.Headers or {},
-		Body = options.Body,
-	})
-	if not ok or type(res) ~= "table" then
-		return nil, false
+
+	local maxAttempts = math.max(1, options.Retries or 1)
+	local baseHeaders: {[string]: string} = {
+		["User-Agent"] = CONFIG.UserAgent,
+	}
+	if options.Headers then
+		for k, v in pairs(options.Headers) do
+			baseHeaders[k] = v
+		end
 	end
-	local code = tonumber(res.StatusCode) or 0
-	return res, (code >= 200 and code < 300)
+
+	local lastRes = nil
+	local lastOk = false
+
+	for attempt = 1, maxAttempts do
+		local ok, res = pcall(reqFn, {
+			Url = options.Url,
+			Method = options.Method or "GET",
+			Headers = baseHeaders,
+			Body = options.Body,
+		})
+		if ok and type(res) == "table" then
+			lastRes = res
+			local code = tonumber(res.StatusCode) or 0
+			lastOk = (code >= 200 and code < 300)
+			if lastOk or code == 400 or code == 401 or code == 403 or code == 404 then
+				return res, lastOk
+			end
+		end
+		if attempt < maxAttempts then
+			task.wait(0.6)
+		end
+	end
+
+	return lastRes, lastOk
+end
+
+local function getHeaderCaseInsensitive(headers: any, targetKey: string): string?
+	if type(headers) ~= "table" then return nil end
+	local lowerTarget = targetKey:lower()
+	for k, v in pairs(headers) do
+		if type(k) == "string" and k:lower() == lowerTarget then
+			return tostring(v)
+		end
+	end
+	return nil
+end
+
+local function buildMultipartAssetBody(requestJson: string, payloadContent: string, filename: string)
+	local boundary = "----IkyyStudioBoundary" .. tostring(os.time()) .. tostring(math.random(1000, 9999))
+	local parts = {
+		"--" .. boundary .. "\r\n",
+		'Content-Disposition: form-data; name="request"\r\n',
+		"Content-Type: application/json\r\n\r\n",
+		requestJson .. "\r\n",
+		"--" .. boundary .. "\r\n",
+		'Content-Disposition: form-data; name="fileContent"; filename="' .. filename .. '"\r\n',
+		"Content-Type: application/octet-stream\r\n\r\n",
+		payloadContent .. "\r\n",
+		"--" .. boundary .. "--\r\n",
+	}
+	return table.concat(parts), "multipart/form-data; boundary=" .. boundary
 end
 
 local function getUserAvatarAsync(userId: number): string
@@ -994,7 +1059,7 @@ createNavButton("Setting", "⚙  Setting", 4).MouseButton1Click:Connect(function
 switchTab("Spoof")
 
 -- ==========================================
--- LOGIKA EKSEKUSI FITUR (BERHASIL / GAGAL)
+-- LOGIKA EKSEKUSI FITUR (ALA PYTHON WORKFLOW)
 -- ==========================================
 local function parseIds(raw: string): {string}
 	local seen: {[string]: boolean} = {}
@@ -1036,6 +1101,121 @@ local function extractFileNamesFromList(bodyText: string): {string}
 	return names
 end
 
+-- Step Python: ambil & simpan session YGF_\d+ dari halaman tools
+local function fetchAndStoreSession(): string
+	local res, ok = apiRequest({
+		Url = CONFIG.BaseUrl .. "/tools/spoof-audio",
+		Method = "GET",
+		Headers = {
+			["Referer"] = CONFIG.BaseUrl .. "/",
+		},
+		Retries = 2,
+	})
+	if ok and res then
+		local sessMatch = tostring(res.Body or ""):match("YGF_%d+")
+		if sessMatch then
+			CONFIG.SessionId = sessMatch
+			saveTextFile("SPOOF/info/session.txt", CONFIG.SessionId)
+			return CONFIG.SessionId
+		end
+	end
+	return CONFIG.SessionId
+end
+
+-- Step Python: kirim command spoof lalu poll /list-files, /is-ready/<file>, dan /files/<file>
+local function spoofSingleAssetPythonStyle(assetId: string, filterMode: string): boolean
+	local isRbxmMode = (filterMode == "Model" or filterMode == "Anim")
+
+	local _, cmdOk = apiRequest({
+		Url = CONFIG.BaseUrl .. "/send-command",
+		Method = "POST",
+		Headers = {
+			["Content-Type"] = "application/json",
+			["Origin"] = CONFIG.BaseUrl,
+			["Referer"] = CONFIG.BaseUrl .. "/tools/spoof-audio",
+		},
+		Body = HttpService:JSONEncode({
+			id = tostring(assetId),
+			session = CONFIG.SessionId,
+		}),
+		Retries = 2,
+	})
+
+	if not cmdOk then
+		return false
+	end
+
+	local foundFile: string? = nil
+	for _ = 1, 20 do
+		local listRes, listOk = apiRequest({
+			Url = CONFIG.BaseUrl .. "/list-files",
+			Method = "GET",
+			Headers = {
+				["Referer"] = CONFIG.BaseUrl .. "/tools/spoof-audio",
+			},
+		})
+		if listOk and listRes then
+			local candidates = extractFileNamesFromList(tostring(listRes.Body or ""))
+			for _, sname in ipairs(candidates) do
+				if sname:find(assetId, 1, true) then
+					local lowerName = sname:lower()
+					if isRbxmMode and lowerName:sub(-5) == ".rbxm" then
+						foundFile = sname
+						break
+					elseif not isRbxmMode and lowerName:sub(-4) == ".mp3" then
+						foundFile = sname
+						break
+					elseif filterMode == "Auto" then
+						foundFile = sname
+						break
+					end
+				end
+			end
+		end
+		if foundFile then break end
+		task.wait(1.5)
+	end
+
+	if not foundFile then
+		return false
+	end
+
+	local encodedName = HttpService:UrlEncode(foundFile)
+	for _ = 1, 10 do
+		local readyRes, readyOk = apiRequest({
+			Url = CONFIG.BaseUrl .. "/is-ready/" .. encodedName,
+			Method = "GET",
+		})
+		if readyOk and readyRes then
+			local okJson, decoded = pcall(function()
+				return HttpService:JSONDecode(tostring(readyRes.Body or "{}"))
+			end)
+			if okJson and type(decoded) == "table" and decoded.ready == true then
+				break
+			end
+		end
+		task.wait(1.5)
+	end
+
+	local dlRes, dlOk = apiRequest({
+		Url = CONFIG.BaseUrl .. "/files/" .. encodedName .. "?t=" .. tostring(os.time() * 1000),
+		Method = "GET",
+		Headers = {
+			["Referer"] = CONFIG.BaseUrl .. "/tools/spoof-audio",
+		},
+		Retries = 2,
+	})
+
+	if dlOk and dlRes and dlRes.Body and tostring(dlRes.Body) ~= "" then
+		local ext = (foundFile:match("%.[^%.]+$") or (isRbxmMode and ".rbxm" or ".mp3")):lower()
+		local subDir = (ext == ".rbxm") and "SPOOF/animasi/" or "SPOOF/music/"
+		local saved = saveTextFile(subDir .. assetId .. ext, tostring(dlRes.Body))
+		return saved or (not hasFileIO())
+	end
+
+	return false
+end
+
 -- Cek Koneksi
 local isCheckingConn = false
 CekKoneksiBtn.MouseButton1Click:Connect(function()
@@ -1043,25 +1223,17 @@ CekKoneksiBtn.MouseButton1Click:Connect(function()
 	isCheckingConn = true
 	task.spawn(function()
 		switchTab("Spoof")
-		local res, ok = httpRequest({
-			Url = CONFIG.BaseUrl .. "/tools/spoof-audio",
+		local sess = fetchAndStoreSession()
+		local res, ok = apiRequest({
+			Url = CONFIG.BaseUrl .. "/list-files",
 			Method = "GET",
 			Headers = {
-				["User-Agent"] = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 Chrome/122.0.0.0 Mobile Safari/537.36",
+				["Referer"] = CONFIG.BaseUrl .. "/tools/spoof-audio",
 			},
 		})
-		if ok and res then
-			local sessMatch = tostring(res.Body or ""):match("YGF_%d+")
-			if sessMatch then
-				CONFIG.SessionId = sessMatch
-				saveTextFile("SPOOF/info/session.txt", CONFIG.SessionId)
-			end
-			setSpoofOutcome(true, 1)
-			notify("Koneksi", "Berhasil.")
-		else
-			setSpoofOutcome(false, 0)
-			notify("Koneksi", "Gagal.")
-		end
+		local success = ok and res ~= nil and sess ~= nil
+		setSpoofOutcome(success, success and 1 or 0)
+		notify("Koneksi", success and "Berhasil." or "Gagal.")
 		isCheckingConn = false
 	end)
 end)
@@ -1080,86 +1252,20 @@ SpoofNowBtn.MouseButton1Click:Connect(function()
 	isSpoofing = true
 	task.spawn(function()
 		ensureFolders()
+		fetchAndStoreSession()
+
 		local berhasil, gagal = 0, 0
-		local isRbxmMode = (CONFIG.SpoofFilter == "Model" or CONFIG.SpoofFilter == "Anim")
-
 		for i, assetId in ipairs(ids) do
-			local _, cmdOk = httpRequest({
-				Url = CONFIG.BaseUrl .. "/send-command",
-				Method = "POST",
-				Headers = {
-					["Content-Type"] = "application/json",
-					["Origin"] = CONFIG.BaseUrl,
-					["Referer"] = CONFIG.BaseUrl .. "/tools/spoof-audio",
-				},
-				Body = HttpService:JSONEncode({
-					id = assetId,
-					session = CONFIG.SessionId,
-				}),
-			})
-
-			local foundFile: string? = nil
-			if cmdOk then
-				for _ = 1, 15 do
-					local listRes, listOk = httpRequest({ Url = CONFIG.BaseUrl .. "/list-files", Method = "GET" })
-					if listOk and listRes then
-						local candidateFiles = extractFileNamesFromList(tostring(listRes.Body or ""))
-						for _, sname in ipairs(candidateFiles) do
-							if sname:find(assetId, 1, true) then
-								if isRbxmMode and sname:sub(-5):lower() == ".rbxm" then
-									foundFile = sname
-									break
-								elseif not isRbxmMode and sname:sub(-4):lower() == ".mp3" then
-									foundFile = sname
-									break
-								elseif CONFIG.SpoofFilter == "Auto" then
-									foundFile = sname
-									break
-								end
-							end
-						end
-					end
-					if foundFile then break end
-					task.wait(1.5)
-				end
-			end
-
-			local itemSuccess = false
-			if foundFile then
-				local encoded = HttpService:UrlEncode(foundFile)
-				for _ = 1, 8 do
-					local rRes, rOk = httpRequest({ Url = CONFIG.BaseUrl .. "/is-ready/" .. encoded, Method = "GET" })
-					if rOk and rRes then
-						local okR, rJson = pcall(function()
-							return HttpService:JSONDecode(tostring(rRes.Body or "{}"))
-						end)
-						if okR and type(rJson) == "table" and rJson.ready == true then
-							break
-						end
-					end
-					task.wait(1.5)
-				end
-
-				local dlRes, dlOk = httpRequest({
-					Url = CONFIG.BaseUrl .. "/files/" .. encoded .. "?t=" .. tostring(os.time() * 1000),
-					Method = "GET",
-				})
-				if dlOk and dlRes and dlRes.Body and tostring(dlRes.Body) ~= "" then
-					local ext = foundFile:match("%.[^%.]+$") or (isRbxmMode and ".rbxm" or ".mp3")
-					local subDir = (ext:lower() == ".rbxm") and "SPOOF/animasi/" or "SPOOF/music/"
-					local savedOk = saveTextFile(subDir .. assetId .. ext:lower(), tostring(dlRes.Body))
-					itemSuccess = savedOk or (not hasFileIO())
-				end
-			end
-
-			if itemSuccess then
+			local okItem = spoofSingleAssetPythonStyle(assetId, CONFIG.SpoofFilter)
+			if okItem then
 				berhasil += 1
 			else
 				gagal += 1
 			end
-
 			setSpoofOutcome(berhasil > 0 and gagal == 0, i / #ids)
-			task.wait(0.25)
+			if i < #ids then
+				task.wait(0.35)
+			end
 		end
 
 		local allOk = (berhasil > 0 and gagal == 0)
@@ -1169,7 +1275,7 @@ SpoofNowBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
--- Upload Asset
+-- Upload Asset (Multipart ala Python requests files+data, fallback JSON)
 local isUploading = false
 UploadActionBtn.MouseButton1Click:Connect(function()
 	if isUploading then return end
@@ -1184,37 +1290,68 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 	if assetName == "" then assetName = "IkyyAsset_" .. tostring(os.time()) end
 	local assetType = trim(UploadTypeBox.Text)
 	if assetType == "" then assetType = "Model" end
-	local creatorId = trim(UploadCreatorBox.Text):match("%d+") or tostring(LocalPlayer.UserId)
+	local creatorIdNum = tonumber(trim(UploadCreatorBox.Text):match("%d+")) or LocalPlayer.UserId
 	local isGroup = (trim(UploadOwnerModeBox.Text):lower() == "group")
 
-	local rawPayload = trim(UploadPayloadBox.Text)
-	if rawPayload ~= "" then
-		local loaded = loadTextFile(rawPayload)
+	local rawInput = trim(UploadPayloadBox.Text)
+	local payloadData = "-- Exported via Ikyy Plugin Studio Lite"
+	local uploadFilename = assetName:gsub("[^%w_%-]", "_") .. ".lua"
+
+	if rawInput ~= "" then
+		local loaded = loadTextFile(rawInput)
 		if loaded then
-			rawPayload = loaded
+			payloadData = loaded
+			local baseName = rawInput:match("([^/\\]+)$")
+			if baseName and baseName ~= "" then
+				uploadFilename = baseName
+			end
+		else
+			payloadData = rawInput
 		end
-	else
-		rawPayload = "-- Exported via Ikyy Plugin Studio Lite"
 	end
 
 	isUploading = true
 	task.spawn(function()
-		local creatorTable = isGroup and { groupId = tostring(creatorId) } or { userId = tostring(creatorId) }
-		local res, ok = httpRequest({
+		local creatorObj = isGroup and { groupId = creatorIdNum } or { userId = creatorIdNum }
+		local requestPayloadJson = HttpService:JSONEncode({
+			assetType = assetType,
+			displayName = assetName,
+			description = "Uploaded via Plugin Studio Lite by Ikyy",
+			creationContext = {
+				creator = creatorObj,
+			},
+		})
+
+		local multipartBody, contentTypeHeader = buildMultipartAssetBody(requestPayloadJson, payloadData, uploadFilename)
+		local res, ok = apiRequest({
 			Url = "https://apis.roblox.com/assets/v1/assets",
 			Method = "POST",
 			Headers = {
 				["x-api-key"] = apiKey,
-				["Content-Type"] = "application/json",
+				["Content-Type"] = contentTypeHeader,
 			},
-			Body = HttpService:JSONEncode({
-				assetType = assetType,
-				displayName = assetName,
-				description = "Uploaded via Plugin Studio Lite by Ikyy",
-				creationContext = { creator = creatorTable },
-				payload = rawPayload,
-			}),
+			Body = multipartBody,
+			Retries = 2,
 		})
+
+		if not ok then
+			res, ok = apiRequest({
+				Url = "https://apis.roblox.com/assets/v1/assets",
+				Method = "POST",
+				Headers = {
+					["x-api-key"] = apiKey,
+					["Content-Type"] = "application/json",
+				},
+				Body = HttpService:JSONEncode({
+					assetType = assetType,
+					displayName = assetName,
+					description = "Uploaded via Plugin Studio Lite by Ikyy",
+					creationContext = { creator = creatorObj },
+					payload = payloadData,
+				}),
+				Retries = 1,
+			})
+		end
 
 		if ok and res then
 			saveTextFile("Uploads/upload_" .. tostring(os.time()) .. ".json", tostring(res.Body or ""))
@@ -1228,7 +1365,7 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
--- Place Maker
+-- Place Maker (Loop jumlah + X-CSRF-Token retry ala Python)
 local isCreatingPlace = false
 CreatePlaceBtn.MouseButton1Click:Connect(function()
 	if isCreatingPlace then return end
@@ -1255,32 +1392,31 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 			end
 			local jsonBody = HttpService:JSONEncode(bodyTbl)
 
-			local headers: {[string]: string} = {
-				["Cookie"] = ".ROBLOSECURITY=" .. cookieVal,
-				["Content-Type"] = "application/json",
-			}
-			if csrf ~= "" then
-				headers["X-CSRF-TOKEN"] = csrf
+			local function sendCreateRequest(token: string)
+				local hdrs: {[string]: string} = {
+					["Cookie"] = ".ROBLOSECURITY=" .. cookieVal,
+					["Content-Type"] = "application/json",
+					["Origin"] = "https://create.roblox.com",
+					["Referer"] = "https://create.roblox.com/",
+				}
+				if token ~= "" then
+					hdrs["X-CSRF-TOKEN"] = token
+				end
+				return apiRequest({
+					Url = "https://apis.roblox.com/universes/v1/universes/create",
+					Method = "POST",
+					Headers = hdrs,
+					Body = jsonBody,
+					Retries = 1,
+				})
 			end
 
-			local res, ok = httpRequest({
-				Url = "https://apis.roblox.com/universes/v1/universes/create",
-				Method = "POST",
-				Headers = headers,
-				Body = jsonBody,
-			})
-
-			if not ok and res and tonumber(res.StatusCode) == 403 and type(res.Headers) == "table" then
-				local newCsrf = res.Headers["X-CSRF-Token"] or res.Headers["x-csrf-token"]
-				if newCsrf then
-					csrf = tostring(newCsrf)
-					headers["X-CSRF-TOKEN"] = csrf
-					res, ok = httpRequest({
-						Url = "https://apis.roblox.com/universes/v1/universes/create",
-						Method = "POST",
-						Headers = headers,
-						Body = jsonBody,
-					})
+			local res, ok = sendCreateRequest(csrf)
+			if not ok and res and tonumber(res.StatusCode) == 403 then
+				local newCsrf = getHeaderCaseInsensitive(res.Headers, "x-csrf-token")
+				if newCsrf and newCsrf ~= "" then
+					csrf = newCsrf
+					res, ok = sendCreateRequest(csrf)
 				end
 			end
 
@@ -1304,7 +1440,7 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
--- Asset Permissions
+-- Asset Permissions (Batch 50 ID per request ala Python)
 local isGrantingPerm = false
 GrantPermBtn.MouseButton1Click:Connect(function()
 	if isGrantingPerm then return end
@@ -1340,7 +1476,7 @@ GrantPermBtn.MouseButton1Click:Connect(function()
 				end
 			end
 
-			local res, ok = httpRequest({
+			local res, ok = apiRequest({
 				Url = "https://apis.roblox.com/asset-permissions-api/v1/assets/permissions",
 				Method = "PATCH",
 				Headers = {
@@ -1353,6 +1489,7 @@ GrantPermBtn.MouseButton1Click:Connect(function()
 					action = "Use",
 					requests = reqList,
 				}),
+				Retries = 2,
 			})
 
 			if ok and res then
