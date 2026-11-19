@@ -103,6 +103,8 @@ local CONFIG = {
 	JailSpeed = 2.5,
 	JailTargetUserId = 0,
 	JailAnchorLocked = false,
+	JailFarScan = true,
+	PlayerSearchQuery = "",
 }
 
 export type MusicTrack = {
@@ -868,38 +870,49 @@ JailPage.Parent = ContentArea
 tabPages["Jail"] = JailPage
 
 local JailTopRow = Instance.new("Frame")
-JailTopRow.Size = UDim2.new(1, -24, 0, 24)
-JailTopRow.Position = UDim2.new(0, 12, 0, 6)
+JailTopRow.Size = UDim2.new(1, -24, 0, 22)
+JailTopRow.Position = UDim2.new(0, 12, 0, 5)
 JailTopRow.BackgroundTransparency = 1
 JailTopRow.Parent = JailPage
 
 local JailSwitchBtn = Instance.new("TextButton")
-JailSwitchBtn.Size = UDim2.new(0.56, -4, 1, 0)
+JailSwitchBtn.Size = UDim2.new(0.36, -3, 1, 0)
 JailSwitchBtn.Position = UDim2.new(0, 0, 0, 0)
 JailSwitchBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 50)
 JailSwitchBtn.Text = "⚡ JAIL: OFF"
 JailSwitchBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-JailSwitchBtn.TextSize = 9
+JailSwitchBtn.TextSize = 8
 JailSwitchBtn.Font = Enum.Font.GothamBold
 JailSwitchBtn.Parent = JailTopRow
 Instance.new("UICorner", JailSwitchBtn).CornerRadius = UDim.new(0, 6)
 
+local JailFarScanBtn = Instance.new("TextButton")
+JailFarScanBtn.Size = UDim2.new(0.32, -3, 1, 0)
+JailFarScanBtn.Position = UDim2.new(0.36, 2, 0, 0)
+JailFarScanBtn.BackgroundColor3 = Color3.fromRGB(52, 46, 86)
+JailFarScanBtn.Text = "📡 Far Scan: ON"
+JailFarScanBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+JailFarScanBtn.TextSize = 8
+JailFarScanBtn.Font = Enum.Font.GothamBold
+JailFarScanBtn.Parent = JailTopRow
+Instance.new("UICorner", JailFarScanBtn).CornerRadius = UDim.new(0, 6)
+
 local JailAnchorLockBtn = Instance.new("TextButton")
-JailAnchorLockBtn.Size = UDim2.new(0.44, -4, 1, 0)
-JailAnchorLockBtn.Position = UDim2.new(0.56, 4, 0, 0)
+JailAnchorLockBtn.Size = UDim2.new(0.32, -2, 1, 0)
+JailAnchorLockBtn.Position = UDim2.new(0.68, 2, 0, 0)
 JailAnchorLockBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
-JailAnchorLockBtn.Text = "🔒 Anchor Lock: OFF"
+JailAnchorLockBtn.Text = "🔒 Anchor: OFF"
 JailAnchorLockBtn.TextColor3 = Color3.fromRGB(220, 218, 245)
-JailAnchorLockBtn.TextSize = 9
+JailAnchorLockBtn.TextSize = 8
 JailAnchorLockBtn.Font = Enum.Font.GothamBold
 JailAnchorLockBtn.Parent = JailTopRow
 Instance.new("UICorner", JailAnchorLockBtn).CornerRadius = UDim.new(0, 6)
 
 local JailStatusLabel = Instance.new("TextLabel")
-JailStatusLabel.Size = UDim2.new(1, -24, 0, 12)
-JailStatusLabel.Position = UDim2.new(0, 12, 0, 32)
+JailStatusLabel.Size = UDim2.new(1, -24, 0, 11)
+JailStatusLabel.Position = UDim2.new(0, 12, 0, 29)
 JailStatusLabel.BackgroundTransparency = 1
-JailStatusLabel.Text = "Scan: 0 unanchored part • Mode: OrbitHead"
+JailStatusLabel.Text = "Scan: 0 part • Far(600s) • Mode: OrbitHead"
 JailStatusLabel.TextColor3 = Color3.fromRGB(150, 146, 182)
 JailStatusLabel.TextSize = 8
 JailStatusLabel.Font = Enum.Font.GothamMedium
@@ -908,8 +921,8 @@ JailStatusLabel.Parent = JailPage
 
 -- Slider Speed (0.5x - 6.0x, default 2.5x)
 local JailSpeedRow = Instance.new("Frame")
-JailSpeedRow.Size = UDim2.new(1, -24, 0, 18)
-JailSpeedRow.Position = UDim2.new(0, 12, 0, 46)
+JailSpeedRow.Size = UDim2.new(1, -24, 0, 16)
+JailSpeedRow.Position = UDim2.new(0, 12, 0, 41)
 JailSpeedRow.BackgroundTransparency = 1
 JailSpeedRow.Parent = JailPage
 
@@ -918,7 +931,7 @@ JailSpeedLabel.Size = UDim2.new(0, 84, 1, 0)
 JailSpeedLabel.BackgroundTransparency = 1
 JailSpeedLabel.Text = "🚀 Speed: 2.5x"
 JailSpeedLabel.TextColor3 = Color3.fromRGB(205, 202, 230)
-JailSpeedLabel.TextSize = 9
+JailSpeedLabel.TextSize = 8
 JailSpeedLabel.Font = Enum.Font.GothamBold
 JailSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
 JailSpeedLabel.Parent = JailSpeedRow
@@ -947,16 +960,16 @@ JailSpeedKnob.AutoButtonColor = false
 JailSpeedKnob.Parent = JailSpeedBg
 Instance.new("UICorner", JailSpeedKnob).CornerRadius = UDim.new(1, 0)
 
--- Pilihan Mode Akses (OrbitHead, ShakePart, GravityThrow, PullToTarget, RopeBreak, AttackFall, CarryPart)
+-- Pilihan Mode Akses
 local JailModeGrid = Instance.new("Frame")
-JailModeGrid.Size = UDim2.new(1, -24, 0, 48)
-JailModeGrid.Position = UDim2.new(0, 12, 0, 67)
+JailModeGrid.Size = UDim2.new(1, -24, 0, 44)
+JailModeGrid.Position = UDim2.new(0, 12, 0, 59)
 JailModeGrid.BackgroundTransparency = 1
 JailModeGrid.Parent = JailPage
 
 local JailModeLayout = Instance.new("UIGridLayout")
-JailModeLayout.CellSize = UDim2.new(0.25, -4, 0, 22)
-JailModeLayout.CellPadding = UDim2.fromOffset(4, 4)
+JailModeLayout.CellSize = UDim2.new(0.25, -4, 0, 20)
+JailModeLayout.CellPadding = UDim2.fromOffset(4, 3)
 JailModeLayout.SortOrder = Enum.SortOrder.LayoutOrder
 JailModeLayout.Parent = JailModeGrid
 
@@ -988,19 +1001,19 @@ for idx, m in ipairs(JAIL_MODES) do
 	end)
 end
 
--- List Pilihan User (Target Player)
+-- Header Target + Refresh + Search Player
 local JailTargetHeader = Instance.new("Frame")
-JailTargetHeader.Size = UDim2.new(1, -24, 0, 16)
-JailTargetHeader.Position = UDim2.new(0, 12, 0, 120)
+JailTargetHeader.Size = UDim2.new(1, -24, 0, 15)
+JailTargetHeader.Position = UDim2.new(0, 12, 0, 106)
 JailTargetHeader.BackgroundTransparency = 1
 JailTargetHeader.Parent = JailPage
 
 local JailTargetTitle = Instance.new("TextLabel")
 JailTargetTitle.Size = UDim2.new(0.75, 0, 1, 0)
 JailTargetTitle.BackgroundTransparency = 1
-JailTargetTitle.Text = "👤 Target User (Gravity Throw / Pull Target)"
+JailTargetTitle.Text = "👤 Target User (Throw / Pull)"
 JailTargetTitle.TextColor3 = Color3.fromRGB(205, 202, 230)
-JailTargetTitle.TextSize = 9
+JailTargetTitle.TextSize = 8
 JailTargetTitle.Font = Enum.Font.GothamBold
 JailTargetTitle.TextXAlignment = Enum.TextXAlignment.Left
 JailTargetTitle.Parent = JailTargetHeader
@@ -1016,9 +1029,33 @@ RefreshUsersBtn.Font = Enum.Font.GothamBold
 RefreshUsersBtn.Parent = JailTargetHeader
 Instance.new("UICorner", RefreshUsersBtn).CornerRadius = UDim.new(0, 5)
 
+local PlayerSearchBox = Instance.new("TextBox")
+PlayerSearchBox.Name = "PlayerSearchBox"
+PlayerSearchBox.Size = UDim2.new(1, -24, 0, 20)
+PlayerSearchBox.Position = UDim2.new(0, 12, 0, 123)
+PlayerSearchBox.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
+PlayerSearchBox.PlaceholderText = "🔍 Cari player (display / @username)..."
+PlayerSearchBox.PlaceholderColor3 = Color3.fromRGB(125, 122, 152)
+PlayerSearchBox.Text = ""
+PlayerSearchBox.TextColor3 = Color3.fromRGB(245, 245, 255)
+PlayerSearchBox.TextSize = 8
+PlayerSearchBox.Font = Enum.Font.GothamMedium
+PlayerSearchBox.ClearTextOnFocus = false
+PlayerSearchBox.TextXAlignment = Enum.TextXAlignment.Left
+PlayerSearchBox.Parent = JailPage
+Instance.new("UICorner", PlayerSearchBox).CornerRadius = UDim.new(0, 6)
+local SearchStroke = Instance.new("UIStroke", PlayerSearchBox)
+SearchStroke.Color = Color3.fromRGB(56, 52, 86)
+SearchStroke.Thickness = 1
+
+local PlayerSearchPad = Instance.new("UIPadding")
+PlayerSearchPad.PaddingLeft = UDim.new(0, 6)
+PlayerSearchPad.PaddingRight = UDim.new(0, 6)
+PlayerSearchPad.Parent = PlayerSearchBox
+
 local UserListScroll = Instance.new("ScrollingFrame")
-UserListScroll.Size = UDim2.new(1, -24, 0, 114)
-UserListScroll.Position = UDim2.new(0, 12, 0, 139)
+UserListScroll.Size = UDim2.new(1, -24, 0, 110)
+UserListScroll.Position = UDim2.new(0, 12, 0, 146)
 UserListScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
 UserListScroll.BorderSizePixel = 0
 UserListScroll.ScrollBarThickness = 3
@@ -1046,6 +1083,8 @@ UserListPad.Parent = UserListScroll
 local scannedUnanchoredParts: {BasePart} = {}
 local activeAttackedParts: {[BasePart]: boolean} = {}
 local lockedAnchoredParts: {[BasePart]: boolean} = {}
+local throwCycleClock = 0
+local throwPulseIndex = 0
 
 local function getCharacterRoot(player: Player?): BasePart?
 	local plr = player or LocalPlayer
@@ -1109,22 +1148,43 @@ local function detachPartFromReturnPull(part: BasePart)
 	end)
 end
 
+local function getSelectedTargetPlayer(): Player?
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr.UserId == CONFIG.JailTargetUserId and plr ~= LocalPlayer then
+			return plr
+		end
+	end
+	return nil
+end
+
 local function scanUnanchoredParts()
 	local found: {BasePart} = {}
 	local root = getCharacterRoot(LocalPlayer)
+	local targetPlr = getSelectedTargetPlayer()
+	local targetRoot = getCharacterRoot(targetPlr)
 	local originPos = root and root.Position or Vector3.zero
+	local targetPos = targetRoot and targetRoot.Position or originPos
+
+	local maxDist = CONFIG.JailFarScan and 600 or 140
+	local maxParts = CONFIG.JailFarScan and 120 or 48
 
 	for _, desc in ipairs(workspace:GetDescendants()) do
 		if desc:IsA("BasePart") and not desc.Anchored and not isDescendantOfAnyCharacter(desc) then
-			table.insert(found, desc)
-			if #found >= 48 then
-				break
+			local distSelf = (desc.Position - originPos).Magnitude
+			local distTarget = (desc.Position - targetPos).Magnitude
+			if math.min(distSelf, distTarget) <= maxDist then
+				table.insert(found, desc)
+				if #found >= maxParts then
+					break
+				end
 			end
 		end
 	end
 
 	table.sort(found, function(a: BasePart, b: BasePart): boolean
-		return (a.Position - originPos).Magnitude < (b.Position - originPos).Magnitude
+		local da = math.min((a.Position - originPos).Magnitude, (a.Position - targetPos).Magnitude)
+		local db = math.min((b.Position - originPos).Magnitude, (b.Position - targetPos).Magnitude)
+		return da < db
 	end)
 
 	scannedUnanchoredParts = found
@@ -1197,10 +1257,15 @@ local function renderUserList()
 		end
 	end
 
+	local q = string.lower(string.match(CONFIG.PlayerSearchQuery, "^%s*(.-)%s*$") or "")
 	local others: {Player} = {}
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= LocalPlayer then
-			table.insert(others, plr)
+			local hayName = string.lower(plr.Name)
+			local hayDisp = string.lower(plr.DisplayName)
+			if q == "" or string.find(hayName, q, 1, true) ~= nil or string.find(hayDisp, q, 1, true) ~= nil then
+				table.insert(others, plr)
+			end
 		end
 	end
 
@@ -1212,7 +1277,7 @@ local function renderUserList()
 		local emptyBtn = Instance.new("TextButton")
 		emptyBtn.Size = UDim2.new(1, -4, 0, 22)
 		emptyBtn.BackgroundColor3 = Color3.fromRGB(22, 21, 34)
-		emptyBtn.Text = "  Tidak ada player lain di server"
+		emptyBtn.Text = q ~= "" and ("  Tidak cocok: \"" .. CONFIG.PlayerSearchQuery .. "\"") or "  Tidak ada player lain di server"
 		emptyBtn.TextColor3 = Color3.fromRGB(165, 162, 190)
 		emptyBtn.TextSize = 8
 		emptyBtn.Font = fontPreset.font
@@ -1267,11 +1332,24 @@ JailSwitchBtn.MouseButton1Click:Connect(function()
 	applyThemeAndFont()
 end)
 
+JailFarScanBtn.MouseButton1Click:Connect(function()
+	CONFIG.JailFarScan = not CONFIG.JailFarScan
+	if CONFIG.JailEnabled then
+		scanUnanchoredParts()
+	end
+	applyThemeAndFont()
+end)
+
 JailAnchorLockBtn.MouseButton1Click:Connect(function()
 	setAnchorLock(not CONFIG.JailAnchorLocked)
 end)
 
 RefreshUsersBtn.MouseButton1Click:Connect(function()
+	renderUserList()
+end)
+
+PlayerSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+	CONFIG.PlayerSearchQuery = PlayerSearchBox.Text
 	renderUserList()
 end)
 
@@ -1328,15 +1406,6 @@ do
 	local jailClock = 0
 	local scanAccum = 0
 
-	local function getSelectedTargetPlayer(): Player?
-		for _, plr in ipairs(Players:GetPlayers()) do
-			if plr.UserId == CONFIG.JailTargetUserId and plr ~= LocalPlayer then
-				return plr
-			end
-		end
-		return nil
-	end
-
 	RunService.Heartbeat:Connect(function(dt: number)
 		jailClock += dt
 		if not CONFIG.JailEnabled then
@@ -1354,6 +1423,13 @@ do
 		local targetRoot = getCharacterRoot(targetPlr) or myRoot
 		local speed = CONFIG.JailSpeed
 		local activeCount = #scannedUnanchoredParts
+
+		local throwInterval = math.max(0.14, 0.42 / math.max(0.5, speed))
+		throwCycleClock += dt
+		if throwCycleClock >= throwInterval then
+			throwCycleClock -= throwInterval
+			throwPulseIndex += 1
+		end
 
 		for i, part in ipairs(scannedUnanchoredParts) do
 			if part and part.Parent and part:IsA("BasePart") and not part.Anchored then
@@ -1380,11 +1456,26 @@ do
 					part.AssemblyLinearVelocity = shakeVec
 					part.AssemblyAngularVelocity = Vector3.new(26 * speed, -24 * speed, 28 * speed)
 				elseif mode == "GravityThrow" then
-					local anchorPos = targetRoot and targetRoot.Position or Vector3.zero
-					local toTarget = (anchorPos + Vector3.new(0, 2.5, 0)) - part.Position
-					local dir = toTarget.Magnitude > 0.05 and toTarget.Unit or Vector3.new(0, 1, 0)
-					part.AssemblyLinearVelocity = (dir * (48 * speed)) + Vector3.new(0, 18 * speed, 0)
-					part.AssemblyAngularVelocity = Vector3.new(18 * speed, 18 * speed, 18 * speed)
+					-- Langsung lempar dari posisi part saat ini ke target berulang-ulang (tidak ditarik ke user dulu)
+					local aimBase = targetRoot and targetRoot.Position or Vector3.zero
+					local spreadPhase = (throwPulseIndex + i) * 1.35
+					local aimJitter = Vector3.new(
+						math.cos(spreadPhase) * 2.4,
+						1.5 + ((throwPulseIndex + i) % 3) * 1.4,
+						math.sin(spreadPhase) * 2.4
+					)
+					local toTarget = (aimBase + aimJitter) - part.Position
+					local dist = toTarget.Magnitude
+					local dir = dist > 0.05 and toTarget.Unit or Vector3.new(0, 1, 0)
+					local throwSpeed = math.clamp(dist * 3.8 * speed, 55 * speed, 165 * speed)
+					local arcBoost = 16 * speed
+					local reThrowWave = math.sin((jailClock * 11 * speed) + i + throwPulseIndex) * 14 * speed
+					part.AssemblyLinearVelocity = (dir * throwSpeed) + Vector3.new(reThrowWave, arcBoost, -reThrowWave)
+					part.AssemblyAngularVelocity = Vector3.new(
+						28 * speed * ((i % 2 == 0) and 1 or -1),
+						24 * speed,
+						28 * speed
+					)
 				elseif mode == "PullToTarget" then
 					local anchorPos = targetRoot and targetRoot.Position or Vector3.zero
 					local angle = jailClock * (2.2 * speed) + (i * 0.7)
@@ -1422,7 +1513,8 @@ do
 		end
 
 		local targetName = targetPlr and ("@" .. targetPlr.Name) or "Self"
-		JailStatusLabel.Text = string.format("ON • %d part • %s • Target: %s", activeCount, CONFIG.JailMode, targetName)
+		local scanTag = CONFIG.JailFarScan and "Far" or "Near"
+		JailStatusLabel.Text = string.format("ON • %d part • %s • %s • %s", activeCount, scanTag, CONFIG.JailMode, targetName)
 	end)
 end
 
@@ -1476,7 +1568,7 @@ AboutText.Text = table.concat({
 	"",
 	"Fitur Aktif:",
 	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
-	"• JAIL        : Akses fisika unanchored part (Orbit, Shake, Throw, Pull, Rope, Fall, Carry, Anchor Lock).",
+	"• JAIL        : Akses fisika unanchored part (Orbit, Shake, Throw, Pull, Rope, Fall, Carry, Far Scan, Search Player).",
 	"• Settings    : Pengaturan warna tema GUI dan pilihan font secara langsung.",
 	"• About       : Informasi kreator dan versi tools.",
 }, "\n")
@@ -1641,11 +1733,15 @@ applyThemeAndFont = function()
 	JailSwitchBtn.BackgroundColor3 = CONFIG.JailEnabled and theme.accent or Color3.fromRGB(34, 32, 50)
 	JailSwitchBtn.Text = CONFIG.JailEnabled and "⚡ JAIL: ON" or "⚡ JAIL: OFF"
 
+	JailFarScanBtn.BackgroundColor3 = CONFIG.JailFarScan and theme.accentSoft or Color3.fromRGB(32, 30, 48)
+	JailFarScanBtn.Text = CONFIG.JailFarScan and "📡 Far Scan: ON" or "📡 Far Scan: OFF"
+
 	JailAnchorLockBtn.BackgroundColor3 = CONFIG.JailAnchorLocked and theme.accentSoft or Color3.fromRGB(32, 30, 48)
-	JailAnchorLockBtn.Text = CONFIG.JailAnchorLocked and "🔒 Anchor Lock: ON" or "🔒 Anchor Lock: OFF"
+	JailAnchorLockBtn.Text = CONFIG.JailAnchorLocked and "🔒 Anchor: ON" or "🔒 Anchor: OFF"
 
 	if not CONFIG.JailEnabled then
-		JailStatusLabel.Text = string.format("OFF • Released/Fall • Mode: %s", CONFIG.JailMode)
+		local scanTag = CONFIG.JailFarScan and "Far" or "Near"
+		JailStatusLabel.Text = string.format("OFF • %s • Mode: %s", scanTag, CONFIG.JailMode)
 	end
 
 	for modeId, mBtn in pairs(modeButtons) do
@@ -1673,11 +1769,13 @@ applyThemeAndFont = function()
 	PlayPauseBtn.Font = fontPreset.boldFont
 	NextTrackBtn.Font = fontPreset.boldFont
 	JailSwitchBtn.Font = fontPreset.boldFont
+	JailFarScanBtn.Font = fontPreset.boldFont
 	JailAnchorLockBtn.Font = fontPreset.boldFont
 	JailStatusLabel.Font = fontPreset.font
 	JailSpeedLabel.Font = fontPreset.boldFont
 	JailTargetTitle.Font = fontPreset.boldFont
 	RefreshUsersBtn.Font = fontPreset.boldFont
+	PlayerSearchBox.Font = fontPreset.font
 	AboutTitle.Font = fontPreset.boldFont
 	SettingsTitle.Font = fontPreset.boldFont
 	ColorSectionLabel.Font = fontPreset.boldFont
