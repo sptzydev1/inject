@@ -36,6 +36,41 @@ local function trim(s: string?): string
 	return s:match("^%s*(.-)%s*$") or ""
 end
 
+local function toHex(raw: string): string
+	local parts = table.create(#raw)
+	for i = 1, #raw do
+		parts[i] = string.format("%02x", string.byte(raw, i))
+	end
+	return table.concat(parts)
+end
+
+local function safeJsonEncode(tbl: {[string]: any}): (string?, string?)
+	local ok, encoded = pcall(function()
+		return HttpService:JSONEncode(tbl)
+	end)
+	if ok and type(encoded) == "string" then
+		return encoded, nil
+	end
+
+	-- Fallback jika payload biner mengandung byte non-UTF8
+	if type(tbl.payload) == "string" then
+		local copyTbl: {[string]: any} = {}
+		for k, v in pairs(tbl) do
+			copyTbl[k] = v
+		end
+		copyTbl.payloadEncoding = "hex"
+		copyTbl.payload = toHex(tbl.payload)
+		local ok2, encoded2 = pcall(function()
+			return HttpService:JSONEncode(copyTbl)
+		end)
+		if ok2 and type(encoded2) == "string" then
+			return encoded2, nil
+		end
+	end
+
+	return nil, tostring(encoded)
+end
+
 local function notify(title: string, text: string)
 	pcall(function()
 		StarterGui:SetCore("SendNotification", {
@@ -862,31 +897,38 @@ UploadBtn.MouseButton1Click:Connect(function()
 				setProcessLog("[" .. tostring(i) .. "/" .. tostring(#queue) .. "] Gagal baca file: " .. item.name)
 				appendResultEntry(namaAsset, "GAGAL")
 			else
-				local res, ok = httpRequest({
-					Url = "https://apis.roblox.com/assets/v1/assets",
-					Method = "POST",
-					Headers = {
-						["x-api-key"] = CONFIG.ApiKey,
-						["Content-Type"] = "application/json",
+				local jsonBody, encErr = safeJsonEncode({
+					assetType = "Audio",
+					displayName = namaAsset,
+					description = "Uploaded from SPOOF/music by Ikyy",
+					creationContext = {
+						creator = { userId = tostring(LocalPlayer.UserId) },
 					},
-					Body = HttpService:JSONEncode({
-						assetType = "Audio",
-						displayName = namaAsset,
-						description = "Uploaded from SPOOF/music by Ikyy",
-						creationContext = {
-							creator = { userId = tostring(LocalPlayer.UserId) },
-						},
-						payload = content,
-					}),
+					payload = content,
 				})
 
-				if ok and res then
-					local respBody = tostring(res.Body or "")
-					local newId = extractCreatedId(respBody)
-					saveTextFile("Uploads/upload_" .. namaAsset .. "_" .. tostring(os.time()) .. ".json", respBody)
-					appendResultEntry(namaAsset, newId)
-				else
+				if not jsonBody then
+					setProcessLog("[" .. tostring(i) .. "/" .. tostring(#queue) .. "] JSON Error: " .. tostring(encErr))
 					appendResultEntry(namaAsset, "GAGAL")
+				else
+					local res, ok = httpRequest({
+						Url = "https://apis.roblox.com/assets/v1/assets",
+						Method = "POST",
+						Headers = {
+							["x-api-key"] = CONFIG.ApiKey,
+							["Content-Type"] = "application/json",
+						},
+						Body = jsonBody,
+					})
+
+					if ok and res then
+						local respBody = tostring(res.Body or "")
+						local newId = extractCreatedId(respBody)
+						saveTextFile("Uploads/upload_" .. namaAsset .. "_" .. tostring(os.time()) .. ".json", respBody)
+						appendResultEntry(namaAsset, newId)
+					else
+						appendResultEntry(namaAsset, "GAGAL")
+					end
 				end
 			end
 
