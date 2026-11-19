@@ -31,44 +31,23 @@ local WINDOW_POS = UDim2.new(0.5, -270, 0.5, -160)
 local ICON_SIZE = UDim2.fromOffset(42, 42)
 local ICON_POS = UDim2.new(0.5, -21, 0.08, 0)
 
+local AUDIO_MIME_BY_EXT: {[string]: string} = {
+	[".mp3"] = "audio/mpeg",
+	[".ogg"] = "audio/ogg",
+	[".wav"] = "audio/wav",
+	[".flac"] = "audio/flac",
+}
+
+local USER_AGENTS = {
+	"Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Mobile Safari/537.36",
+	"Mozilla/5.0 (Linux; Android 11; SM-A515F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+	"Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Mobile Safari/537.36",
+	"Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
+}
+
 local function trim(s: string?): string
 	if type(s) ~= "string" then return "" end
 	return s:match("^%s*(.-)%s*$") or ""
-end
-
-local function toHex(raw: string): string
-	local parts = table.create(#raw)
-	for i = 1, #raw do
-		parts[i] = string.format("%02x", string.byte(raw, i))
-	end
-	return table.concat(parts)
-end
-
-local function safeJsonEncode(tbl: {[string]: any}): (string?, string?)
-	local ok, encoded = pcall(function()
-		return HttpService:JSONEncode(tbl)
-	end)
-	if ok and type(encoded) == "string" then
-		return encoded, nil
-	end
-
-	-- Fallback jika payload biner mengandung byte non-UTF8
-	if type(tbl.payload) == "string" then
-		local copyTbl: {[string]: any} = {}
-		for k, v in pairs(tbl) do
-			copyTbl[k] = v
-		end
-		copyTbl.payloadEncoding = "hex"
-		copyTbl.payload = toHex(tbl.payload)
-		local ok2, encoded2 = pcall(function()
-			return HttpService:JSONEncode(copyTbl)
-		end)
-		if ok2 and type(encoded2) == "string" then
-			return encoded2, nil
-		end
-	end
-
-	return nil, tostring(encoded)
 end
 
 local function notify(title: string, text: string)
@@ -156,6 +135,17 @@ local function basenameNoExt(pathOrName: string): string
 	return clean ~= "" and clean or fileOnly
 end
 
+local function detectAudioContentType(fileName: string): string
+	local ext = fileName:match("(%.%w+)$")
+	if ext then
+		local mime = AUDIO_MIME_BY_EXT[ext:lower()]
+		if mime then
+			return mime
+		end
+	end
+	return "audio/mpeg"
+end
+
 local function getMusicFiles(): {{path: string, name: string}}
 	ensureFolders()
 	local result: {{path: string, name: string}} = {}
@@ -215,6 +205,168 @@ local function httpRequest(options: {Url: string, Method: string?, Headers: {[st
 	end
 	local code = tonumber(res.StatusCode) or 0
 	return res, (code >= 200 and code < 300)
+end
+
+local function safeJsonDecode(raw: string?): {[string]: any}?
+	if type(raw) ~= "string" or trim(raw) == "" then
+		return nil
+	end
+	local ok, decoded = pcall(function()
+		return HttpService:JSONDecode(raw)
+	end)
+	if ok and type(decoded) == "table" then
+		return decoded
+	end
+	return nil
+end
+
+local function buildMultipartAudioBody(
+	metadataJson: string,
+	fileName: string,
+	contentType: string,
+	fileBytes: string
+): (string, string)
+	local boundary = "----IkyyStudioLiteBoundary" .. tostring(HttpService:GenerateGUID(false)):gsub("-", "")
+	local crlf = "\r\n"
+
+	local partRequest = table.concat({
+		"--" .. boundary,
+		'Content-Disposition: form-data; name="request"',
+		"Content-Type: application/json",
+		"",
+		metadataJson,
+	}, crlf)
+
+	local partFileHeader = table.concat({
+		"--" .. boundary,
+		'Content-Disposition: form-data; name="fileContent"; filename="' .. fileName:gsub('"', "_") .. '"',
+		"Content-Type: " .. contentType,
+		"",
+		"",
+	}, crlf)
+
+	local closing = crlf .. "--" .. boundary .. "--" .. crlf
+	local body = partRequest .. crlf .. partFileHeader .. fileBytes .. closing
+	return body, "multipart/form-data; boundary=" .. boundary
+end
+
+local function uploadRobloxAsset(
+	apiKey: string,
+	fileName: string,
+	contentType: string,
+	fileBytes: string,
+	assetName: string,
+	assetDesc: string,
+	creatorId: number
+): ({[string]: any}?, boolean)
+	if #fileBytes == 0 then
+		return { error = "File kosong (0 bytes)" }, false
+	end
+
+	local safeDisplayName = string.sub(assetName, 1, 50)
+	local safeDesc = string.sub(
+		assetDesc ~= "" and assetDesc or ("Uploaded from SPOOF/music by Ikyy (" .. assetName .. ")"),
+		1,
+		1000
+	)
+
+	local metadata = {
+		assetType = "Audio",
+		displayName = safeDisplayName,
+		description = safeDesc,
+		creationContext = {
+			creator = {
+				userId = tostring(creatorId),
+			},
+		},
+	}
+
+	local okJson, metadataJson = pcall(function()
+		return HttpService:JSONEncode(metadata)
+	end)
+	if not okJson or type(metadataJson) ~= "string" then
+		return { error = "Gagal encode metadata JSON" }, false
+	end
+
+	local body, multipartType = buildMultipartAudioBody(metadataJson, fileName, contentType, fileBytes)
+	local ua = USER_AGENTS[math.random(1, #USER_AGENTS)]
+
+	local res, ok = httpRequest({
+		Url = "https://apis.roblox.com/assets/v1/assets",
+		Method = "POST",
+		Headers = {
+			["x-api-key"] = apiKey,
+			["Content-Type"] = multipartType,
+			["User-Agent"] = ua,
+		},
+		Body = body,
+	})
+
+	if not res then
+		return { error = "Koneksi gagal / executor tidak mendukung HTTP request" }, false
+	end
+
+	local decoded = safeJsonDecode(tostring(res.Body or ""))
+	if ok then
+		return decoded or { raw = tostring(res.Body or "") }, true
+	end
+	return decoded or { statusCode = tonumber(res.StatusCode) or 0, raw = tostring(res.Body or "") }, false
+end
+
+local function checkOperationStatus(apiKey: string, operationPath: string): {[string]: any}?
+	if trim(operationPath) == "" then
+		return nil
+	end
+	local cleanOp = operationPath:gsub("^/", "")
+	local url = string.find(cleanOp, "^assets/v1/", 1, false)
+		and ("https://apis.roblox.com/" .. cleanOp)
+		or ("https://apis.roblox.com/assets/v1/" .. cleanOp)
+
+	local res, ok = httpRequest({
+		Url = url,
+		Method = "GET",
+		Headers = {
+			["x-api-key"] = apiKey,
+		},
+	})
+	if ok and res then
+		return safeJsonDecode(tostring(res.Body or ""))
+	end
+	return nil
+end
+
+local function resolveUploadedAssetId(apiKey: string, uploadData: {[string]: any}?, maxPolls: number, pollInterval: number): string?
+	if type(uploadData) ~= "table" then
+		return nil
+	end
+
+	if uploadData.assetId ~= nil then
+		local directId = tostring(uploadData.assetId)
+		if directId:match("^%d+$") then
+			return directId
+		end
+	end
+
+	local opPath = uploadData.path or uploadData.operationId
+	if type(opPath) ~= "string" or trim(opPath) == "" then
+		return nil
+	end
+
+	for _ = 1, maxPolls do
+		task.wait(pollInterval)
+		local statusData = checkOperationStatus(apiKey, opPath)
+		if type(statusData) == "table" and statusData.done == true then
+			local resp = statusData.response
+			if type(resp) == "table" and resp.assetId ~= nil then
+				return tostring(resp.assetId)
+			end
+			if statusData.assetId ~= nil then
+				return tostring(statusData.assetId)
+			end
+		end
+	end
+
+	return nil
 end
 
 local function getUserAvatarAsync(userId: number): string
@@ -856,13 +1008,6 @@ RefreshBtn.MouseButton1Click:Connect(function()
 	setProcessLog("List diperbarui (" .. tostring(#currentFiles) .. " file)")
 end)
 
-local function extractCreatedId(bodyStr: string): string
-	local idMatch = bodyStr:match('"assetId"%s*:%s*"?(%d+)"?')
-		or bodyStr:match('"id"%s*:%s*"?(%d+)"?')
-		or bodyStr:match('"(%d{6,})"')
-	return idMatch or "-"
-end
-
 local isUploading = false
 UploadBtn.MouseButton1Click:Connect(function()
 	if isUploading then return end
@@ -888,53 +1033,66 @@ UploadBtn.MouseButton1Click:Connect(function()
 
 	isUploading = true
 	task.spawn(function()
+		local reportRows: {{[string]: any}} = {}
+
 		for i, item in ipairs(queue) do
 			local namaAsset = basenameNoExt(item.name)
+			local cType = detectAudioContentType(item.name)
 			setProcessLog("[" .. tostring(i) .. "/" .. tostring(#queue) .. "] Uploading: " .. item.name)
 
-			local content = readRawFile(item.path)
-			if not content then
+			local fileBytes = readRawFile(item.path)
+			if not fileBytes then
 				setProcessLog("[" .. tostring(i) .. "/" .. tostring(#queue) .. "] Gagal baca file: " .. item.name)
-				appendResultEntry(namaAsset, "GAGAL")
-			else
-				local jsonBody, encErr = safeJsonEncode({
-					assetType = "Audio",
-					displayName = namaAsset,
-					description = "Uploaded from SPOOF/music by Ikyy",
-					creationContext = {
-						creator = { userId = tostring(LocalPlayer.UserId) },
-					},
-					payload = content,
+				appendResultEntry(namaAsset, "FAILED")
+				table.insert(reportRows, {
+					["nama audio"] = namaAsset,
+					["id audio"] = "FAILED",
+					file = item.name,
+					status = "FAILED",
 				})
+			else
+				local uploadRes, ok = uploadRobloxAsset(
+					CONFIG.ApiKey,
+					item.name,
+					cType,
+					fileBytes,
+					namaAsset,
+					"",
+					LocalPlayer.UserId
+				)
 
-				if not jsonBody then
-					setProcessLog("[" .. tostring(i) .. "/" .. tostring(#queue) .. "] JSON Error: " .. tostring(encErr))
-					appendResultEntry(namaAsset, "GAGAL")
-				else
-					local res, ok = httpRequest({
-						Url = "https://apis.roblox.com/assets/v1/assets",
-						Method = "POST",
-						Headers = {
-							["x-api-key"] = CONFIG.ApiKey,
-							["Content-Type"] = "application/json",
-						},
-						Body = jsonBody,
-					})
+				local finalId: string? = nil
+				local statusLabel = "FAILED"
 
-					if ok and res then
-						local respBody = tostring(res.Body or "")
-						local newId = extractCreatedId(respBody)
-						saveTextFile("Uploads/upload_" .. namaAsset .. "_" .. tostring(os.time()) .. ".json", respBody)
-						appendResultEntry(namaAsset, newId)
+				if ok and uploadRes then
+					setProcessLog("[" .. tostring(i) .. "/" .. tostring(#queue) .. "] Polling status: " .. namaAsset)
+					finalId = resolveUploadedAssetId(CONFIG.ApiKey, uploadRes, 12, 2.5)
+					if finalId then
+						statusLabel = "SUCCESS"
 					else
-						appendResultEntry(namaAsset, "GAGAL")
+						statusLabel = "PENDING_OR_FAILED"
 					end
 				end
+
+				appendResultEntry(namaAsset, finalId or "FAILED")
+				table.insert(reportRows, {
+					["nama audio"] = namaAsset,
+					["id audio"] = finalId or "FAILED",
+					file = item.name,
+					status = statusLabel,
+				})
 			end
 
 			if i < #queue then
-				task.wait(0.4)
+				task.wait(0.5)
 			end
+		end
+
+		local okEncode, jsonReport = pcall(function()
+			return HttpService:JSONEncode(reportRows)
+		end)
+		if okEncode and type(jsonReport) == "string" then
+			saveTextFile("Uploads/hasil_upload_audio_" .. tostring(os.time()) .. ".json", jsonReport)
 		end
 
 		setProcessLog("Selesai (" .. tostring(#queue) .. " file diproses)")
