@@ -1,1028 +1,1273 @@
--- Plugin Studio Lite Style GUI - Delta Executor Ready
--- by Ikyy
+--!strict
+-- Plugin Studio Lite (Delta Executor Edition) by Ikyy
+-- Mendukung: Spoof (Audio/RBXM), Upload Asset, Place Maker, Asset Permissions, Setting, serta Minimize ke Ikon Lingkaran Profile User
 
 local Players = game:GetService("Players")
-local MarketplaceService = game:GetService("MarketplaceService")
-local Debris = game:GetService("Debris")
-local StarterGui = game:GetService("StarterGui")
-local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
 
-local LocalPlayer = Players.LocalPlayer or Players.PlayerAdded:Wait()
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
-local function getExecFn(name)
-	local okEnv, env = pcall(function()
-		return getgenv and getgenv() or nil
-	end)
-	if okEnv and type(env) == "table" and type(env[name]) == "function" then
-		return env[name]
-	end
-	local okG, gVal = pcall(function()
-		return _G and _G[name] or nil
-	end)
-	if okG and type(gVal) == "function" then
-		return gVal
-	end
-	return nil
-end
-
-local function getGuiParent()
-	local huiFn = getExecFn("gethui")
-	if type(huiFn) == "function" then
-		local ok, hui = pcall(huiFn)
-		if ok and typeof(hui) == "Instance" then
-			return hui
-		end
-	end
-	local okCore = pcall(function()
-		local _ = CoreGui.Name
-	end)
-	if okCore then
-		return CoreGui
-	end
-	local pGui = LocalPlayer:FindFirstChildOfClass("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
-	return pGui
-end
-
-local guiParent = getGuiParent()
-if guiParent:FindFirstChild("IkyyStudioLiteCaseUI") then
-	guiParent.IkyyStudioLiteCaseUI:Destroy()
+-- Hapus GUI lama jika execute ulang
+local OLD_GUI = PlayerGui:FindFirstChild("IkyyPluginStudioLite_GUI")
+if OLD_GUI then
+	OLD_GUI:Destroy()
 end
 
 -- ==========================================
--- 1. AUTO CHECK USER & UNIVERSE + DELTA SAVE
+-- KONFIGURASI & STATE
 -- ==========================================
-local WORKSPACE_ROOT = "IkyyStudioLite"
-
-local function detectUniverseId()
-	local ok, gid = pcall(function()
-		return game.GameId
-	end)
-	if ok and type(gid) == "number" and gid > 0 then
-		return tostring(gid)
-	end
-	return "10516113765"
-end
-
-local function detectUserInfo()
-	local uid = 0
-	local uname = "UnknownUser"
-	local okId, idVal = pcall(function()
-		return LocalPlayer.UserId
-	end)
-	if okId and type(idVal) == "number" then
-		uid = idVal
-	end
-	local okName, nameVal = pcall(function()
-		return LocalPlayer.Name
-	end)
-	if okName and type(nameVal) == "string" and nameVal ~= "" then
-		uname = nameVal
-	end
-	return uid, uname
-end
-
-local initUserId, initUserName = detectUserInfo()
-local initUniverseId = detectUniverseId()
-
-local MemorySession = {
-	ActiveTab = "Spoof", -- "Spoof" | "Upload" | "Import" | "Setting" | "About"
-	SelectedFilter = "Auto", -- "Auto" | "Audio" | "Decal" | "Model" | "Anim"
-	CookieToken = "",
-	ApiKeyToken = "",
-	UserId = initUserId,
-	UserName = initUserName,
-	ActiveUniverseId = initUniverseId,
-	PlaybackSpeed = 1.0,
-	AllowedUsers = {
-		[initUserId] = true,
-		[9374524895] = true,
-	},
-	Logs = {},
+local CONFIG = {
+	BaseUrl = "https://ygfstudio.my.id",
+	WorkspaceRoot = "IkyyStudioLite",
+	Cookie = "",
+	ApiKey = "",
+	DefaultUniverseId = "10516113765",
+	IsMinimized = false,
+	ActiveTab = "Spoof",
+	SpoofFilter = "Auto", -- Auto, Audio, Decal, Model, Anim
+	SessionId = "YGF_0000",
 }
 
-local function pushLog(tag, msg)
-	table.insert(MemorySession.Logs, 1, string.format("[%s] %s", tostring(tag), tostring(msg)))
-	if #MemorySession.Logs > 25 then
-		table.remove(MemorySession.Logs)
+local function hasFileIO(): boolean
+	return type(writefile) == "function" and type(readfile) == "function" and type(isfolder) == "function" and type(makefolder) == "function"
+end
+
+local function ensureFolders()
+	if not hasFileIO() then return end
+	local folders = {
+		CONFIG.WorkspaceRoot,
+		CONFIG.WorkspaceRoot .. "/SPOOF",
+		CONFIG.WorkspaceRoot .. "/SPOOF/info",
+		CONFIG.WorkspaceRoot .. "/SPOOF/music",
+		CONFIG.WorkspaceRoot .. "/SPOOF/animasi",
+		CONFIG.WorkspaceRoot .. "/Uploads",
+		CONFIG.WorkspaceRoot .. "/Logs",
+	}
+	for _, folder in ipairs(folders) do
+		if not isfolder(folder) then
+			pcall(makefolder, folder)
+		end
 	end
 end
 
-local function syncAutoIdentity(silent)
-	local uid, uname = detectUserInfo()
-	local univ = detectUniverseId()
-	MemorySession.UserId = uid
-	MemorySession.UserName = uname
-	MemorySession.ActiveUniverseId = univ
-	if uid > 0 then
-		MemorySession.AllowedUsers[uid] = true
-	end
-	if not silent then
-		pushLog("AUTO", string.format("User: %s (%d) | UniverseId: %s", uname, uid, univ))
-	end
+local function saveTextFile(relPath: string, content: string)
+	if not hasFileIO() then return end
+	ensureFolders()
+	pcall(writefile, CONFIG.WorkspaceRoot .. "/" .. relPath, content)
 end
 
-syncAutoIdentity(true)
-pushLog("DELTA", string.format("User %s (%d) • Univ %s siap", MemorySession.UserName, MemorySession.UserId, MemorySession.ActiveUniverseId))
-
-local function saveToDeltaFolder(subFolder, fileName, content)
-	local makeFolderFn = getExecFn("makefolder")
-	local writeFileFn = getExecFn("writefile")
-	local isFolderFn = getExecFn("isfolder")
-
-	if type(makeFolderFn) ~= "function" or type(writeFileFn) ~= "function" then
-		return nil
-	end
-
-	local rootOk = true
-	if type(isFolderFn) == "function" then
-		local okExists, exists = pcall(isFolderFn, WORKSPACE_ROOT)
-		if not (okExists and exists) then
-			rootOk = pcall(makeFolderFn, WORKSPACE_ROOT)
+local function loadTextFile(relPath: string): string?
+	if not hasFileIO() then return nil end
+	local fullPath = CONFIG.WorkspaceRoot .. "/" .. relPath
+	local ok, res = pcall(function()
+		if isfile and isfile(fullPath) then
+			return readfile(fullPath)
 		end
-	else
-		rootOk = pcall(makeFolderFn, WORKSPACE_ROOT)
-	end
-
-	local folderPath = WORKSPACE_ROOT .. "/" .. tostring(subFolder)
-	local subOk = true
-	if type(isFolderFn) == "function" then
-		local okSub, subExists = pcall(isFolderFn, folderPath)
-		if not (okSub and subExists) then
-			subOk = pcall(makeFolderFn, folderPath)
-		end
-	else
-		subOk = pcall(makeFolderFn, folderPath)
-	end
-
-	if not (rootOk and subOk) then
 		return nil
-	end
-
-	local cleanName = string.gsub(tostring(fileName), "[^%w%._%-]", "_")
-	local fullPath = folderPath .. "/" .. cleanName
-	local okWrite = pcall(writeFileFn, fullPath, tostring(content))
-	if okWrite then
-		return fullPath
+	end)
+	if ok and type(res) == "string" then
+		return res
 	end
 	return nil
 end
 
-local function hasAccess()
-	syncAutoIdentity(true)
-	return MemorySession.AllowedUsers[MemorySession.UserId] == true
+-- Muat cookie & api key tersimpan jika ada
+local savedCookie = loadTextFile("cookie.txt")
+local savedApiKey = loadTextFile("apikey.txt")
+if savedCookie and savedCookie ~= "" then CONFIG.Cookie = savedCookie end
+if savedApiKey and savedApiKey ~= "" then CONFIG.ApiKey = savedApiKey end
+
+local function getHttpFunc()
+	if type(request) == "function" then return request end
+	if type(http_request) == "function" then return http_request end
+	if syn and type(syn.request) == "function" then return syn.request end
+	if http and type(http.request) == "function" then return http.request end
+	return nil
 end
 
-local function safeCopy(text)
-	local copyFn = getExecFn("setclipboard") or getExecFn("toclipboard")
-	if type(copyFn) == "function" then
-		pcall(copyFn, tostring(text))
-		return true
+local function httpRequest(options: {Url: string, Method: string?, Headers: {[string]: string}?, Body: string?})
+	local reqFn = getHttpFunc()
+	if not reqFn then
+		return nil, "HTTP Executor function tidak tersedia."
 	end
-	return false
+	local ok, res = pcall(reqFn, {
+		Url = options.Url,
+		Method = options.Method or "GET",
+		Headers = options.Headers or {},
+		Body = options.Body,
+	})
+	if not ok then
+		return nil, tostring(res)
+	end
+	return res, nil
 end
 
-local function getHttpRequestFn()
-	return getExecFn("request") or getExecFn("http_request")
+-- Ambil Avatar Thumbnail User untuk Ikon Lingkaran saat Close/Minimize
+local function getUserAvatarAsync(userId: number): string
+	local ok, content = pcall(function()
+		return Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+	end)
+	if ok and type(content) == "string" and content ~= "" then
+		return content
+	end
+	return "rbxasset://textures/ui/GuiImagePlaceholder.png"
 end
 
-local function extractPairsOrIds(raw)
-	local items = {}
-	local foundPair = false
+-- ==========================================
+-- PEMBUATAN UI (GAYA PLUGIN STUDIO LITE)
+-- ==========================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "IkyyPluginStudioLite_GUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.IgnoreGuiInset = true
+ScreenGui.Parent = PlayerGui
 
-	for sName, sId in string.gmatch(tostring(raw or ""), "Song[Nn]ame:%s*(.-)%s*Song[Ii]d:%s*(%d+)") do
-		local numId = tonumber(sId)
-		if numId then
-			foundPair = true
-			local cleanName = string.gsub(sName, "^%s*(.-)%s*$", "%1")
-			table.insert(items, {
-				name = cleanName ~= "" and cleanName or ("Asset_" .. tostring(numId)),
-				id = numId,
-			})
+-- 1. IKON LINGKARAN PROFILE USER (MUNCUL SAAT GUI DI-CLOSE / MINIMIZE)
+local FloatingProfileBtn = Instance.new("ImageButton")
+FloatingProfileBtn.Name = "FloatingProfileToggle"
+FloatingProfileBtn.Size = UDim2.fromOffset(58, 58)
+FloatingProfileBtn.Position = UDim2.new(0.5, -29, 0.08, 0)
+FloatingProfileBtn.BackgroundColor3 = Color3.fromRGB(20, 18, 32)
+FloatingProfileBtn.BorderSizePixel = 0
+FloatingProfileBtn.Visible = false
+FloatingProfileBtn.ZIndex = 50
+FloatingProfileBtn.Image = getUserAvatarAsync(LocalPlayer.UserId)
+FloatingProfileBtn.Parent = ScreenGui
+
+local FloatCorner = Instance.new("UICorner")
+FloatCorner.CornerRadius = UDim.new(1, 0)
+FloatCorner.Parent = FloatingProfileBtn
+
+local FloatStroke = Instance.new("UIStroke")
+FloatStroke.Color = Color3.fromRGB(130, 92, 255)
+FloatStroke.Thickness = 2.5
+FloatStroke.Parent = FloatingProfileBtn
+
+-- Badge kecil status execute di pojok lingkaran
+local BadgeDot = Instance.new("Frame")
+BadgeDot.Size = UDim2.fromOffset(14, 14)
+BadgeDot.Position = UDim2.new(1, -15, 1, -15)
+BadgeDot.BackgroundColor3 = Color3.fromRGB(56, 239, 125)
+BadgeDot.BorderSizePixel = 0
+BadgeDot.ZIndex = 52
+BadgeDot.Parent = FloatingProfileBtn
+
+local BadgeCorner = Instance.new("UICorner")
+BadgeCorner.CornerRadius = UDim.new(1, 0)
+BadgeCorner.Parent = BadgeDot
+
+local BadgeStroke = Instance.new("UIStroke")
+BadgeStroke.Color = Color3.fromRGB(18, 16, 28)
+BadgeStroke.Thickness = 2
+BadgeStroke.Parent = BadgeDot
+
+-- 2. WINDOW UTAMA
+local MainWindow = Instance.new("Frame")
+MainWindow.Name = "MainWindow"
+MainWindow.Size = UDim2.fromOffset(660, 385)
+MainWindow.Position = UDim2.new(0.5, -330, 0.5, -192)
+MainWindow.BackgroundColor3 = Color3.fromRGB(16, 15, 24)
+MainWindow.BorderSizePixel = 0
+MainWindow.ClipsDescendants = true
+MainWindow.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 16)
+MainCorner.Parent = MainWindow
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(92, 72, 168)
+MainStroke.Thickness = 1.6
+MainStroke.Transparency = 0.25
+MainStroke.Parent = MainWindow
+
+local MainGradient = Instance.new("UIGradient")
+MainGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(22, 20, 34)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(13, 12, 20)),
+})
+MainGradient.Rotation = 135
+MainGradient.Parent = MainWindow
+
+-- Helper Dragging untuk Frame
+local function makeDraggable(dragHandle: GuiObject, targetFrame: GuiObject)
+	local dragging = false
+	local dragInput: InputObject? = nil
+	local dragStart = Vector2.zero
+	local startPos = UDim2.new()
+
+	dragHandle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = targetFrame.Position
+
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	dragHandle.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			local delta = input.Position - dragStart
+			targetFrame.Position = UDim2.new(
+				startPos.X.Scale,
+				startPos.X.Offset + delta.X,
+				startPos.Y.Scale,
+				startPos.Y.Offset + delta.Y
+			)
+		end
+	end)
+end
+
+-- ==========================================
+-- HEADER BAR (KIRI: ICON + JUDUL, KANAN: TOMBOL X)
+-- ==========================================
+local HeaderBar = Instance.new("Frame")
+HeaderBar.Name = "HeaderBar"
+HeaderBar.Size = UDim2.new(1, 0, 0, 58)
+HeaderBar.BackgroundColor3 = Color3.fromRGB(20, 19, 30)
+HeaderBar.BackgroundTransparency = 0.25
+HeaderBar.BorderSizePixel = 0
+HeaderBar.Parent = MainWindow
+
+local HeaderLogoBox = Instance.new("Frame")
+HeaderLogoBox.Size = UDim2.fromOffset(36, 36)
+HeaderLogoBox.Position = UDim2.new(0, 16, 0.5, -18)
+HeaderLogoBox.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
+HeaderLogoBox.BorderSizePixel = 0
+HeaderLogoBox.Parent = HeaderBar
+
+local LogoCorner = Instance.new("UICorner")
+LogoCorner.CornerRadius = UDim.new(0, 10)
+LogoCorner.Parent = HeaderLogoBox
+
+local LogoStroke = Instance.new("UIStroke")
+LogoStroke.Color = Color3.fromRGB(95, 85, 145)
+LogoStroke.Thickness = 1
+LogoStroke.Parent = HeaderLogoBox
+
+local LogoIcon = Instance.new("TextLabel")
+LogoIcon.Size = UDim2.fromScale(1, 1)
+LogoIcon.BackgroundTransparency = 1
+LogoIcon.Text = "⇄"
+LogoIcon.TextColor3 = Color3.fromRGB(215, 210, 255)
+LogoIcon.TextSize = 18
+LogoIcon.Font = Enum.Font.GothamBold
+LogoIcon.Parent = HeaderLogoBox
+
+local SubTitleLabel = Instance.new("TextLabel")
+SubTitleLabel.Size = UDim2.new(0, 260, 0, 14)
+SubTitleLabel.Position = UDim2.new(0, 62, 0, 9)
+SubTitleLabel.BackgroundTransparency = 1
+SubTitleLabel.Text = "IKYYSTUDIO • DELTA EDITION"
+SubTitleLabel.TextColor3 = Color3.fromRGB(130, 126, 155)
+SubTitleLabel.TextSize = 9
+SubTitleLabel.Font = Enum.Font.GothamBold
+SubTitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+SubTitleLabel.Parent = HeaderBar
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(0, 300, 0, 20)
+TitleLabel.Position = UDim2.new(0, 62, 0, 21)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "Plugin Studio Lite"
+TitleLabel.TextColor3 = Color3.fromRGB(245, 245, 255)
+TitleLabel.TextSize = 16
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = HeaderBar
+
+local MetaLabel = Instance.new("TextLabel")
+MetaLabel.Size = UDim2.new(0, 300, 0, 14)
+MetaLabel.Position = UDim2.new(0, 62, 0, 40)
+MetaLabel.BackgroundTransparency = 1
+MetaLabel.Text = "by Ikyy  •  v1.0  •  @" .. LocalPlayer.Name
+MetaLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
+MetaLabel.TextSize = 10
+MetaLabel.Font = Enum.Font.GothamMedium
+MetaLabel.TextXAlignment = Enum.TextXAlignment.Left
+MetaLabel.Parent = HeaderBar
+
+-- Tombol Close (X) -> Mengecil menjadi Ikon Lingkaran Profile User
+local CloseCircleBtn = Instance.new("TextButton")
+CloseCircleBtn.Name = "CloseToCircleBtn"
+CloseCircleBtn.Size = UDim2.fromOffset(34, 34)
+CloseCircleBtn.Position = UDim2.new(1, -50, 0.5, -17)
+CloseCircleBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 50)
+CloseCircleBtn.Text = "✕"
+CloseCircleBtn.TextColor3 = Color3.fromRGB(220, 218, 238)
+CloseCircleBtn.TextSize = 14
+CloseCircleBtn.Font = Enum.Font.GothamBold
+CloseCircleBtn.AutoButtonColor = true
+CloseCircleBtn.Parent = HeaderBar
+
+local CloseBtnCorner = Instance.new("UICorner")
+CloseBtnCorner.CornerRadius = UDim.new(1, 0)
+CloseBtnCorner.Parent = CloseCircleBtn
+
+local CloseBtnStroke = Instance.new("UIStroke")
+CloseBtnStroke.Color = Color3.fromRGB(85, 80, 120)
+CloseBtnStroke.Thickness = 1
+CloseBtnStroke.Parent = CloseCircleBtn
+
+local function setMinimized(minimized: boolean)
+	CONFIG.IsMinimized = minimized
+	if minimized then
+		local tween = TweenService:Create(MainWindow, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			Size = UDim2.fromOffset(58, 58),
+		})
+		tween:Play()
+		tween.Completed:Connect(function()
+			if CONFIG.IsMinimized then
+				MainWindow.Visible = false
+				FloatingProfileBtn.Position = MainWindow.Position
+				FloatingProfileBtn.Visible = true
+			end
+		end)
+	else
+		FloatingProfileBtn.Visible = false
+		MainWindow.Position = FloatingProfileBtn.Position
+		MainWindow.Size = UDim2.fromOffset(58, 58)
+		MainWindow.Visible = true
+		TweenService:Create(MainWindow, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = UDim2.fromOffset(660, 385),
+		}):Play()
+	end
+end
+
+CloseCircleBtn.MouseButton1Click:Connect(function()
+	setMinimized(true)
+end)
+
+FloatingProfileBtn.MouseButton1Click:Connect(function()
+	setMinimized(false)
+end)
+
+makeDraggable(HeaderBar, MainWindow)
+makeDraggable(FloatingProfileBtn, FloatingProfileBtn)
+
+-- ==========================================
+-- SIDEBAR KIRI (SPOOF, UPLOAD, PLACE, PERM, SETTING + AKSI CEPAT)
+-- ==========================================
+local Sidebar = Instance.new("Frame")
+Sidebar.Name = "Sidebar"
+Sidebar.Size = UDim2.new(0, 152, 1, -68)
+Sidebar.Position = UDim2.new(0, 12, 0, 62)
+Sidebar.BackgroundColor3 = Color3.fromRGB(21, 20, 32)
+Sidebar.BorderSizePixel = 0
+Sidebar.Parent = MainWindow
+
+local SidebarCorner = Instance.new("UICorner")
+SidebarCorner.CornerRadius = UDim.new(0, 12)
+SidebarCorner.Parent = Sidebar
+
+local SidebarStroke = Instance.new("UIStroke")
+SidebarStroke.Color = Color3.fromRGB(52, 48, 82)
+SidebarStroke.Thickness = 1
+SidebarStroke.Parent = Sidebar
+
+local NavList = Instance.new("Frame")
+NavList.Size = UDim2.new(1, -12, 0, 218)
+NavList.Position = UDim2.new(0, 6, 0, 8)
+NavList.BackgroundTransparency = 1
+NavList.Parent = Sidebar
+
+local NavLayout = Instance.new("UIListLayout")
+NavLayout.Padding = UDim.new(0, 5)
+NavLayout.SortOrder = Enum.SortOrder.LayoutOrder
+NavLayout.Parent = NavList
+
+local tabPages: {[string]: Frame} = {}
+local tabButtons: {[string]: TextButton} = {}
+
+local function createNavButton(name: string, label: string, order: number)
+	local btn = Instance.new("TextButton")
+	btn.Name = "Nav_" .. name
+	btn.Size = UDim2.new(1, 0, 0, 38)
+	btn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
+	btn.Text = "  " .. label
+	btn.TextColor3 = Color3.fromRGB(185, 182, 210)
+	btn.TextSize = 12
+	btn.Font = Enum.Font.GothamMedium
+	btn.TextXAlignment = Enum.TextXAlignment.Left
+	btn.LayoutOrder = order
+	btn.AutoButtonColor = false
+	btn.Parent = NavList
+
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, 8)
+	c.Parent = btn
+
+	tabButtons[name] = btn
+	return btn
+end
+
+-- Aksi Cepat di bagian bawah Sidebar (seperti pada gambar: Cek Koneksi & Sembunyi)
+local QuickTitle = Instance.new("TextLabel")
+QuickTitle.Size = UDim2.new(1, -16, 0, 16)
+QuickTitle.Position = UDim2.new(0, 10, 1, -72)
+QuickTitle.BackgroundTransparency = 1
+QuickTitle.Text = "Aksi Cepat"
+QuickTitle.TextColor3 = Color3.fromRGB(140, 136, 168)
+QuickTitle.TextSize = 10
+QuickTitle.Font = Enum.Font.GothamMedium
+QuickTitle.TextXAlignment = Enum.TextXAlignment.Left
+QuickTitle.Parent = Sidebar
+
+local CekKoneksiBtn = Instance.new("TextButton")
+CekKoneksiBtn.Size = UDim2.new(0, 66, 0, 34)
+CekKoneksiBtn.Position = UDim2.new(0, 8, 1, -46)
+CekKoneksiBtn.BackgroundColor3 = Color3.fromRGB(64, 118, 240)
+CekKoneksiBtn.Text = "Cek Koneksi"
+CekKoneksiBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CekKoneksiBtn.TextSize = 10
+CekKoneksiBtn.Font = Enum.Font.GothamBold
+CekKoneksiBtn.Parent = Sidebar
+
+local CekCorner = Instance.new("UICorner")
+CekCorner.CornerRadius = UDim.new(0, 8)
+CekCorner.Parent = CekKoneksiBtn
+
+local SembunyiBtn = Instance.new("TextButton")
+SembunyiBtn.Size = UDim2.new(0, 64, 0, 34)
+SembunyiBtn.Position = UDim2.new(1, -72, 1, -46)
+SembunyiBtn.BackgroundColor3 = Color3.fromRGB(32, 31, 48)
+SembunyiBtn.Text = "Sembunyi"
+SembunyiBtn.TextColor3 = Color3.fromRGB(215, 212, 235)
+SembunyiBtn.TextSize = 10
+SembunyiBtn.Font = Enum.Font.GothamBold
+SembunyiBtn.Parent = Sidebar
+
+local SembunyiCorner = Instance.new("UICorner")
+SembunyiCorner.CornerRadius = UDim.new(0, 8)
+SembunyiCorner.Parent = SembunyiBtn
+
+local SembunyiStroke = Instance.new("UIStroke")
+SembunyiStroke.Color = Color3.fromRGB(70, 66, 102)
+SembunyiStroke.Thickness = 1
+SembunyiStroke.Parent = SembunyiBtn
+
+SembunyiBtn.MouseButton1Click:Connect(function()
+	setMinimized(true)
+end)
+
+-- ==========================================
+-- AREA KONTEN KANAN
+-- ==========================================
+local ContentArea = Instance.new("Frame")
+ContentArea.Name = "ContentArea"
+ContentArea.Size = UDim2.new(1, -182, 1, -68)
+ContentArea.Position = UDim2.new(0, 172, 0, 62)
+ContentArea.BackgroundColor3 = Color3.fromRGB(20, 19, 30)
+ContentArea.BorderSizePixel = 0
+ContentArea.Parent = MainWindow
+
+local ContentCorner = Instance.new("UICorner")
+ContentCorner.CornerRadius = UDim.new(0, 12)
+ContentCorner.Parent = ContentArea
+
+local ContentStroke = Instance.new("UIStroke")
+ContentStroke.Color = Color3.fromRGB(52, 48, 82)
+ContentStroke.Thickness = 1
+ContentStroke.Parent = ContentArea
+
+local function switchTab(tabName: string)
+	CONFIG.ActiveTab = tabName
+	for name, page in pairs(tabPages) do
+		page.Visible = (name == tabName)
+	end
+	for name, btn in pairs(tabButtons) do
+		local active = (name == tabName)
+		btn.BackgroundColor3 = active and Color3.fromRGB(45, 42, 68) or Color3.fromRGB(28, 27, 42)
+		btn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(185, 182, 210)
+	end
+end
+
+-- ==========================================
+-- HALAMAN 1: SPOOF (SUSUNAN PERSIS SEPERTI GAMBAR)
+-- ==========================================
+local SpoofPage = Instance.new("Frame")
+SpoofPage.Size = UDim2.fromScale(1, 1)
+SpoofPage.BackgroundTransparency = 1
+SpoofPage.Visible = true
+SpoofPage.Parent = ContentArea
+tabPages["Spoof"] = SpoofPage
+
+local SpoofTitle = Instance.new("TextLabel")
+SpoofTitle.Size = UDim2.new(1, -24, 0, 22)
+SpoofTitle.Position = UDim2.new(0, 14, 0, 10)
+SpoofTitle.BackgroundTransparency = 1
+SpoofTitle.Text = "Spoof"
+SpoofTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+SpoofTitle.TextSize = 16
+SpoofTitle.Font = Enum.Font.GothamBold
+SpoofTitle.TextXAlignment = Enum.TextXAlignment.Left
+SpoofTitle.Parent = SpoofPage
+
+local SpoofDesc = Instance.new("TextLabel")
+SpoofDesc.Size = UDim2.new(1, -24, 0, 16)
+SpoofDesc.Position = UDim2.new(0, 14, 0, 31)
+SpoofDesc.BackgroundTransparency = 1
+SpoofDesc.Text = "Asset ID lama jadi ID baru milikmu"
+SpoofDesc.TextColor3 = Color3.fromRGB(145, 142, 170)
+SpoofDesc.TextSize = 11
+SpoofDesc.Font = Enum.Font.Gotham
+SpoofDesc.TextXAlignment = Enum.TextXAlignment.Left
+SpoofDesc.Parent = SpoofPage
+
+local AssetIdHeader = Instance.new("TextLabel")
+AssetIdHeader.Size = UDim2.new(1, -24, 0, 16)
+AssetIdHeader.Position = UDim2.new(0, 14, 0, 54)
+AssetIdHeader.BackgroundTransparency = 1
+AssetIdHeader.Text = "｜ ASSET ID"
+AssetIdHeader.TextColor3 = Color3.fromRGB(175, 172, 205)
+AssetIdHeader.TextSize = 11
+AssetIdHeader.Font = Enum.Font.GothamBold
+AssetIdHeader.TextXAlignment = Enum.TextXAlignment.Left
+AssetIdHeader.Parent = SpoofPage
+
+local AssetIdBox = Instance.new("TextBox")
+AssetIdBox.Size = UDim2.new(1, -28, 0, 82)
+AssetIdBox.Position = UDim2.new(0, 14, 0, 74)
+AssetIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+AssetIdBox.Text = ""
+AssetIdBox.PlaceholderText = "Tempel Asset ID di sini (pisah spasi, koma, atau baris baru)"
+AssetIdBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+AssetIdBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+AssetIdBox.TextSize = 12
+AssetIdBox.Font = Enum.Font.Gotham
+AssetIdBox.TextXAlignment = Enum.TextXAlignment.Left
+AssetIdBox.TextYAlignment = Enum.TextYAlignment.Top
+AssetIdBox.ClearTextOnFocus = false
+AssetIdBox.MultiLine = true
+AssetIdBox.TextWrapped = true
+AssetIdBox.Parent = SpoofPage
+
+local AssetIdCorner = Instance.new("UICorner")
+AssetIdCorner.CornerRadius = UDim.new(0, 10)
+AssetIdCorner.Parent = AssetIdBox
+
+local AssetIdStroke = Instance.new("UIStroke")
+AssetIdStroke.Color = Color3.fromRGB(65, 60, 102)
+AssetIdStroke.Thickness = 1
+AssetIdStroke.Parent = AssetIdBox
+
+-- Baris Filter Tipe: Auto | Audio | Decal | Model | Anim
+local FilterRow = Instance.new("Frame")
+FilterRow.Size = UDim2.new(1, -28, 0, 30)
+FilterRow.Position = UDim2.new(0, 14, 0, 164)
+FilterRow.BackgroundTransparency = 1
+FilterRow.Parent = SpoofPage
+
+local FilterLayout = Instance.new("UIListLayout")
+FilterLayout.FillDirection = Enum.FillDirection.Horizontal
+FilterLayout.Padding = UDim.new(0, 8)
+FilterLayout.Parent = FilterRow
+
+local filterButtons: {[string]: TextButton} = {}
+local filters = {"Auto", "Audio", "Decal", "Model", "Anim"}
+
+local function setFilter(name: string)
+	CONFIG.SpoofFilter = name
+	for fName, btn in pairs(filterButtons) do
+		local selected = (fName == name)
+		btn.BackgroundColor3 = selected and Color3.fromRGB(48, 45, 74) or Color3.fromRGB(26, 25, 39)
+		btn.TextColor3 = selected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(165, 162, 190)
+	end
+end
+
+for _, fName in ipairs(filters) do
+	local fBtn = Instance.new("TextButton")
+	fBtn.Size = UDim2.new(0.2, -7, 1, 0)
+	fBtn.BackgroundColor3 = Color3.fromRGB(26, 25, 39)
+	fBtn.Text = fName
+	fBtn.TextColor3 = Color3.fromRGB(165, 162, 190)
+	fBtn.TextSize = 11
+	fBtn.Font = Enum.Font.GothamMedium
+	fBtn.AutoButtonColor = false
+	fBtn.Parent = FilterRow
+
+	local fc = Instance.new("UICorner")
+	fc.CornerRadius = UDim.new(0, 8)
+	fc.Parent = fBtn
+
+	local fs = Instance.new("UIStroke")
+	fs.Color = Color3.fromRGB(62, 58, 92)
+	fs.Thickness = 1
+	fs.Parent = fBtn
+
+	filterButtons[fName] = fBtn
+	fBtn.MouseButton1Click:Connect(function()
+		setFilter(fName)
+	end)
+end
+setFilter("Auto")
+
+-- Tombol Utama: SPOOF SEKARANG (Ungu) & BERSIHKAN
+local SpoofNowBtn = Instance.new("TextButton")
+SpoofNowBtn.Size = UDim2.new(0.62, -18, 0, 42)
+SpoofNowBtn.Position = UDim2.new(0, 14, 0, 204)
+SpoofNowBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+SpoofNowBtn.Text = "⇄  SPOOF SEKARANG"
+SpoofNowBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SpoofNowBtn.TextSize = 12
+SpoofNowBtn.Font = Enum.Font.GothamBold
+SpoofNowBtn.Parent = SpoofPage
+
+local SpoofNowCorner = Instance.new("UICorner")
+SpoofNowCorner.CornerRadius = UDim.new(0, 10)
+SpoofNowCorner.Parent = SpoofNowBtn
+
+local BersihkanBtn = Instance.new("TextButton")
+BersihkanBtn.Size = UDim2.new(0.38, -14, 0, 42)
+BersihkanBtn.Position = UDim2.new(0.62, 4, 0, 204)
+BersihkanBtn.BackgroundColor3 = Color3.fromRGB(26, 25, 39)
+BersihkanBtn.Text = "BERSIHKAN"
+BersihkanBtn.TextColor3 = Color3.fromRGB(210, 208, 232)
+BersihkanBtn.TextSize = 11
+BersihkanBtn.Font = Enum.Font.GothamBold
+BersihkanBtn.Parent = SpoofPage
+
+local BersihkanCorner = Instance.new("UICorner")
+BersihkanCorner.CornerRadius = UDim.new(0, 10)
+BersihkanCorner.Parent = BersihkanBtn
+
+local BersihkanStroke = Instance.new("UIStroke")
+BersihkanStroke.Color = Color3.fromRGB(68, 64, 100)
+BersihkanStroke.Thickness = 1
+BersihkanStroke.Parent = BersihkanBtn
+
+-- Panel Status "Siap." di bagian bawah
+local StatusBox = Instance.new("Frame")
+StatusBox.Size = UDim2.new(1, -28, 0, 52)
+StatusBox.Position = UDim2.new(0, 14, 0, 255)
+StatusBox.BackgroundColor3 = Color3.fromRGB(15, 14, 23)
+StatusBox.BorderSizePixel = 0
+StatusBox.Parent = SpoofPage
+
+local StatusCorner = Instance.new("UICorner")
+StatusCorner.CornerRadius = UDim.new(0, 10)
+StatusCorner.Parent = StatusBox
+
+local StatusStroke = Instance.new("UIStroke")
+StatusStroke.Color = Color3.fromRGB(58, 54, 88)
+StatusStroke.Thickness = 1
+StatusStroke.Parent = StatusBox
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -20, 0, 24)
+StatusLabel.Position = UDim2.new(0, 10, 0, 4)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "Siap."
+StatusLabel.TextColor3 = Color3.fromRGB(175, 172, 200)
+StatusLabel.TextSize = 11
+StatusLabel.Font = Enum.Font.GothamMedium
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.TextTruncate = Enum.TextTruncate.AtEnd
+StatusLabel.Parent = StatusBox
+
+local ProgressTrack = Instance.new("Frame")
+ProgressTrack.Size = UDim2.new(1, -20, 0, 4)
+ProgressTrack.Position = UDim2.new(0, 10, 1, -12)
+ProgressTrack.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
+ProgressTrack.BorderSizePixel = 0
+ProgressTrack.Parent = StatusBox
+
+local ProgressFill = Instance.new("Frame")
+ProgressFill.Size = UDim2.new(0, 0, 1, 0)
+ProgressFill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
+ProgressFill.BorderSizePixel = 0
+ProgressFill.Parent = ProgressTrack
+
+local function setStatus(msg: string, ratio: number)
+	StatusLabel.Text = msg
+	local clamped = math.clamp(ratio, 0, 1)
+	TweenService:Create(ProgressFill, TweenInfo.new(0.2), {
+		Size = UDim2.new(clamped, 0, 1, 0),
+	}):Play()
+end
+
+BersihkanBtn.MouseButton1Click:Connect(function()
+	AssetIdBox.Text = ""
+	setStatus("Siap.", 0)
+end)
+
+-- ==========================================
+-- HALAMAN 2: UPLOAD ASSET (OPEN CLOUD API)
+-- ==========================================
+local UploadPage = Instance.new("Frame")
+UploadPage.Size = UDim2.fromScale(1, 1)
+UploadPage.BackgroundTransparency = 1
+UploadPage.Visible = false
+UploadPage.Parent = ContentArea
+tabPages["Upload"] = UploadPage
+
+local UploadTitle = Instance.new("TextLabel")
+UploadTitle.Size = UDim2.new(1, -24, 0, 22)
+UploadTitle.Position = UDim2.new(0, 14, 0, 10)
+UploadTitle.BackgroundTransparency = 1
+UploadTitle.Text = "Upload Asset"
+UploadTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+UploadTitle.TextSize = 16
+UploadTitle.Font = Enum.Font.GothamBold
+UploadTitle.TextXAlignment = Enum.TextXAlignment.Left
+UploadTitle.Parent = UploadPage
+
+local UploadNameBox = Instance.new("TextBox")
+UploadNameBox.Size = UDim2.new(0.48, -16, 0, 34)
+UploadNameBox.Position = UDim2.new(0, 14, 0, 42)
+UploadNameBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+UploadNameBox.PlaceholderText = "Nama Asset (contoh: IkyyAsset)"
+UploadNameBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+UploadNameBox.Text = ""
+UploadNameBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+UploadNameBox.TextSize = 11
+UploadNameBox.Font = Enum.Font.Gotham
+UploadNameBox.Parent = UploadPage
+Instance.new("UICorner", UploadNameBox).CornerRadius = UDim.new(0, 8)
+
+local UploadTypeBox = Instance.new("TextBox")
+UploadTypeBox.Size = UDim2.new(0.48, -16, 0, 34)
+UploadTypeBox.Position = UDim2.new(0.52, 2, 0, 42)
+UploadTypeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+UploadTypeBox.PlaceholderText = "Tipe: Audio / Model / Animation / Decal"
+UploadTypeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+UploadTypeBox.Text = "Model"
+UploadTypeBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+UploadTypeBox.TextSize = 11
+UploadTypeBox.Font = Enum.Font.Gotham
+UploadTypeBox.Parent = UploadPage
+Instance.new("UICorner", UploadTypeBox).CornerRadius = UDim.new(0, 8)
+
+local UploadCreatorBox = Instance.new("TextBox")
+UploadCreatorBox.Size = UDim2.new(1, -28, 0, 34)
+UploadCreatorBox.Position = UDim2.new(0, 14, 0, 84)
+UploadCreatorBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+UploadCreatorBox.PlaceholderText = "Creator ID (User ID atau Group ID)"
+UploadCreatorBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+UploadCreatorBox.Text = tostring(LocalPlayer.UserId)
+UploadCreatorBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+UploadCreatorBox.TextSize = 11
+UploadCreatorBox.Font = Enum.Font.Gotham
+UploadCreatorBox.Parent = UploadPage
+Instance.new("UICorner", UploadCreatorBox).CornerRadius = UDim.new(0, 8)
+
+local UploadPayloadBox = Instance.new("TextBox")
+UploadPayloadBox.Size = UDim2.new(1, -28, 0, 96)
+UploadPayloadBox.Position = UDim2.new(0, 14, 0, 126)
+UploadPayloadBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+UploadPayloadBox.PlaceholderText = "Tempel path file workspace atau isi RBXM/JSON/URL..."
+UploadPayloadBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+UploadPayloadBox.Text = ""
+UploadPayloadBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+UploadPayloadBox.TextSize = 11
+UploadPayloadBox.Font = Enum.Font.Gotham
+UploadPayloadBox.MultiLine = true
+UploadPayloadBox.TextWrapped = true
+UploadPayloadBox.TextXAlignment = Enum.TextXAlignment.Left
+UploadPayloadBox.TextYAlignment = Enum.TextYAlignment.Top
+UploadPayloadBox.Parent = UploadPage
+Instance.new("UICorner", UploadPayloadBox).CornerRadius = UDim.new(0, 8)
+
+local UploadActionBtn = Instance.new("TextButton")
+UploadActionBtn.Size = UDim2.new(1, -28, 0, 38)
+UploadActionBtn.Position = UDim2.new(0, 14, 0, 232)
+UploadActionBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+UploadActionBtn.Text = "⬆  UPLOAD KE OPEN CLOUD"
+UploadActionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+UploadActionBtn.TextSize = 12
+UploadActionBtn.Font = Enum.Font.GothamBold
+UploadActionBtn.Parent = UploadPage
+Instance.new("UICorner", UploadActionBtn).CornerRadius = UDim.new(0, 10)
+
+local UploadLogLabel = Instance.new("TextLabel")
+UploadLogLabel.Size = UDim2.new(1, -28, 0, 32)
+UploadLogLabel.Position = UDim2.new(0, 14, 0, 276)
+UploadLogLabel.BackgroundColor3 = Color3.fromRGB(15, 14, 23)
+UploadLogLabel.Text = "Status Upload: Menunggu input & API Key."
+UploadLogLabel.TextColor3 = Color3.fromRGB(175, 172, 200)
+UploadLogLabel.TextSize = 10
+UploadLogLabel.Font = Enum.Font.Gotham
+UploadLogLabel.TextXAlignment = Enum.TextXAlignment.Left
+UploadLogLabel.TextWrapped = true
+UploadLogLabel.Parent = UploadPage
+Instance.new("UICorner", UploadLogLabel).CornerRadius = UDim.new(0, 8)
+
+-- ==========================================
+-- HALAMAN 3: PLACE MAKER & ASSET PERMISSIONS
+-- ==========================================
+local ToolsPage = Instance.new("Frame")
+ToolsPage.Size = UDim2.fromScale(1, 1)
+ToolsPage.BackgroundTransparency = 1
+ToolsPage.Visible = false
+ToolsPage.Parent = ContentArea
+tabPages["Tools"] = ToolsPage
+
+local ToolsTitle = Instance.new("TextLabel")
+ToolsTitle.Size = UDim2.new(1, -24, 0, 22)
+ToolsTitle.Position = UDim2.new(0, 14, 0, 10)
+ToolsTitle.BackgroundTransparency = 1
+ToolsTitle.Text = "Place Maker & Permissions"
+ToolsTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+ToolsTitle.TextSize = 15
+ToolsTitle.Font = Enum.Font.GothamBold
+ToolsTitle.TextXAlignment = Enum.TextXAlignment.Left
+ToolsTitle.Parent = ToolsPage
+
+local TemplateIdBox = Instance.new("TextBox")
+TemplateIdBox.Size = UDim2.new(0.48, -16, 0, 34)
+TemplateIdBox.Position = UDim2.new(0, 14, 0, 42)
+TemplateIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+TemplateIdBox.Text = "95206881" -- Baseplate
+TemplateIdBox.PlaceholderText = "Template Place ID"
+TemplateIdBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+TemplateIdBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+TemplateIdBox.TextSize = 11
+TemplateIdBox.Font = Enum.Font.Gotham
+TemplateIdBox.Parent = ToolsPage
+Instance.new("UICorner", TemplateIdBox).CornerRadius = UDim.new(0, 8)
+
+local GroupIdBox = Instance.new("TextBox")
+GroupIdBox.Size = UDim2.new(0.48, -16, 0, 34)
+GroupIdBox.Position = UDim2.new(0.52, 2, 0, 42)
+GroupIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+GroupIdBox.Text = ""
+GroupIdBox.PlaceholderText = "Group ID (Opsional)"
+GroupIdBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+GroupIdBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+GroupIdBox.TextSize = 11
+GroupIdBox.Font = Enum.Font.Gotham
+GroupIdBox.Parent = ToolsPage
+Instance.new("UICorner", GroupIdBox).CornerRadius = UDim.new(0, 8)
+
+local CreatePlaceBtn = Instance.new("TextButton")
+CreatePlaceBtn.Size = UDim2.new(1, -28, 0, 36)
+CreatePlaceBtn.Position = UDim2.new(0, 14, 0, 84)
+CreatePlaceBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+CreatePlaceBtn.Text = "🏗  BUAT UNIVERSE / PLACE (BUTUH COOKIE)"
+CreatePlaceBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CreatePlaceBtn.TextSize = 11
+CreatePlaceBtn.Font = Enum.Font.GothamBold
+CreatePlaceBtn.Parent = ToolsPage
+Instance.new("UICorner", CreatePlaceBtn).CornerRadius = UDim.new(0, 9)
+
+local TargetUniverseBox = Instance.new("TextBox")
+TargetUniverseBox.Size = UDim2.new(1, -28, 0, 34)
+TargetUniverseBox.Position = UDim2.new(0, 14, 0, 130)
+TargetUniverseBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+TargetUniverseBox.Text = CONFIG.DefaultUniverseId
+TargetUniverseBox.PlaceholderText = "Target Universe ID untuk Permission"
+TargetUniverseBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+TargetUniverseBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+TargetUniverseBox.TextSize = 11
+TargetUniverseBox.Font = Enum.Font.Gotham
+TargetUniverseBox.Parent = ToolsPage
+Instance.new("UICorner", TargetUniverseBox).CornerRadius = UDim.new(0, 8)
+
+local PermIdsBox = Instance.new("TextBox")
+PermIdsBox.Size = UDim2.new(1, -28, 0, 56)
+PermIdsBox.Position = UDim2.new(0, 14, 0, 170)
+PermIdsBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+PermIdsBox.Text = ""
+PermIdsBox.PlaceholderText = "Asset IDs untuk Grant Permission (pisah koma/spasi/baris)"
+PermIdsBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+PermIdsBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+PermIdsBox.TextSize = 11
+PermIdsBox.Font = Enum.Font.Gotham
+PermIdsBox.MultiLine = true
+PermIdsBox.TextWrapped = true
+PermIdsBox.TextXAlignment = Enum.TextXAlignment.Left
+PermIdsBox.TextYAlignment = Enum.TextYAlignment.Top
+PermIdsBox.Parent = ToolsPage
+Instance.new("UICorner", PermIdsBox).CornerRadius = UDim.new(0, 8)
+
+local GrantPermBtn = Instance.new("TextButton")
+GrantPermBtn.Size = UDim2.new(1, -28, 0, 36)
+GrantPermBtn.Position = UDim2.new(0, 14, 0, 234)
+GrantPermBtn.BackgroundColor3 = Color3.fromRGB(48, 45, 74)
+GrantPermBtn.Text = "🔑  GRANT ASSET PERMISSIONS KE UNIVERSE"
+GrantPermBtn.TextColor3 = Color3.fromRGB(240, 240, 255)
+GrantPermBtn.TextSize = 11
+GrantPermBtn.Font = Enum.Font.GothamBold
+GrantPermBtn.Parent = ToolsPage
+Instance.new("UICorner", GrantPermBtn).CornerRadius = UDim.new(0, 9)
+
+local ToolsStatusLabel = Instance.new("TextLabel")
+ToolsStatusLabel.Size = UDim2.new(1, -28, 0, 28)
+ToolsStatusLabel.Position = UDim2.new(0, 14, 0, 276)
+ToolsStatusLabel.BackgroundColor3 = Color3.fromRGB(15, 14, 23)
+ToolsStatusLabel.Text = "Status Tools: Siap."
+ToolsStatusLabel.TextColor3 = Color3.fromRGB(175, 172, 200)
+ToolsStatusLabel.TextSize = 10
+ToolsStatusLabel.Font = Enum.Font.Gotham
+ToolsStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+ToolsStatusLabel.TextTruncate = Enum.TextTruncate.AtEnd
+ToolsStatusLabel.Parent = ToolsPage
+Instance.new("UICorner", ToolsStatusLabel).CornerRadius = UDim.new(0, 8)
+
+-- ==========================================
+-- HALAMAN 4: SETTING (COOKIE, API KEY, FOLDER)
+-- ==========================================
+local SettingPage = Instance.new("Frame")
+SettingPage.Size = UDim2.fromScale(1, 1)
+SettingPage.BackgroundTransparency = 1
+SettingPage.Visible = false
+SettingPage.Parent = ContentArea
+tabPages["Setting"] = SettingPage
+
+local SettingTitle = Instance.new("TextLabel")
+SettingTitle.Size = UDim2.new(1, -24, 0, 22)
+SettingTitle.Position = UDim2.new(0, 14, 0, 10)
+SettingTitle.BackgroundTransparency = 1
+SettingTitle.Text = "Pengaturan Kredensial"
+SettingTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+SettingTitle.TextSize = 15
+SettingTitle.Font = Enum.Font.GothamBold
+SettingTitle.TextXAlignment = Enum.TextXAlignment.Left
+SettingTitle.Parent = SettingPage
+
+local CookieBox = Instance.new("TextBox")
+CookieBox.Size = UDim2.new(1, -28, 0, 62)
+CookieBox.Position = UDim2.new(0, 14, 0, 42)
+CookieBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+CookieBox.Text = CONFIG.Cookie
+CookieBox.PlaceholderText = "Tempel .ROBLOSECURITY Cookie di sini (untuk Place Maker)..."
+CookieBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+CookieBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+CookieBox.TextSize = 11
+CookieBox.Font = Enum.Font.Gotham
+CookieBox.MultiLine = true
+CookieBox.TextWrapped = true
+CookieBox.TextXAlignment = Enum.TextXAlignment.Left
+CookieBox.TextYAlignment = Enum.TextYAlignment.Top
+CookieBox.Parent = SettingPage
+Instance.new("UICorner", CookieBox).CornerRadius = UDim.new(0, 8)
+
+local ApiKeyBox = Instance.new("TextBox")
+ApiKeyBox.Size = UDim2.new(1, -28, 0, 62)
+ApiKeyBox.Position = UDim2.new(0, 14, 0, 114)
+ApiKeyBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+ApiKeyBox.Text = CONFIG.ApiKey
+ApiKeyBox.PlaceholderText = "Tempel Roblox Open Cloud API Key (x-api-key)..."
+ApiKeyBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+ApiKeyBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+ApiKeyBox.TextSize = 11
+ApiKeyBox.Font = Enum.Font.Gotham
+ApiKeyBox.MultiLine = true
+ApiKeyBox.TextWrapped = true
+ApiKeyBox.TextXAlignment = Enum.TextXAlignment.Left
+ApiKeyBox.TextYAlignment = Enum.TextYAlignment.Top
+ApiKeyBox.Parent = SettingPage
+Instance.new("UICorner", ApiKeyBox).CornerRadius = UDim.new(0, 8)
+
+local SaveSettingBtn = Instance.new("TextButton")
+SaveSettingBtn.Size = UDim2.new(1, -28, 0, 38)
+SaveSettingBtn.Position = UDim2.new(0, 14, 0, 188)
+SaveSettingBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+SaveSettingBtn.Text = "💾  SIMPAN COOKIE & API KEY"
+SaveSettingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SaveSettingBtn.TextSize = 12
+SaveSettingBtn.Font = Enum.Font.GothamBold
+SaveSettingBtn.Parent = SettingPage
+Instance.new("UICorner", SaveSettingBtn).CornerRadius = UDim.new(0, 10)
+
+local SettingInfoLabel = Instance.new("TextLabel")
+SettingInfoLabel.Size = UDim2.new(1, -28, 0, 56)
+SettingInfoLabel.Position = UDim2.new(0, 14, 0, 236)
+SettingInfoLabel.BackgroundColor3 = Color3.fromRGB(15, 14, 23)
+SettingInfoLabel.Text = "Workspace: " .. CONFIG.WorkspaceRoot .. "/SPOOF\nUser: " .. LocalPlayer.Name .. " (" .. tostring(LocalPlayer.UserId) .. ")"
+SettingInfoLabel.TextColor3 = Color3.fromRGB(165, 162, 192)
+SettingInfoLabel.TextSize = 10
+SettingInfoLabel.Font = Enum.Font.Gotham
+SettingInfoLabel.TextXAlignment = Enum.TextXAlignment.Left
+SettingInfoLabel.TextYAlignment = Enum.TextYAlignment.Top
+SettingInfoLabel.Parent = SettingPage
+Instance.new("UICorner", SettingInfoLabel).CornerRadius = UDim.new(0, 8)
+
+SaveSettingBtn.MouseButton1Click:Connect(function()
+	CONFIG.Cookie = CookieBox.Text:match("^%s*(.-)%s*$") or ""
+	CONFIG.ApiKey = ApiKeyBox.Text:match("^%s*(.-)%s*$") or ""
+	if CONFIG.Cookie ~= "" and not CONFIG.Cookie:sub(-1) == ";" then
+		CONFIG.Cookie = CONFIG.Cookie .. ";"
+	end
+	saveTextFile("cookie.txt", CONFIG.Cookie)
+	saveTextFile("apikey.txt", CONFIG.ApiKey)
+	SettingInfoLabel.Text = "✔ Tersimpan ke workspace/" .. CONFIG.WorkspaceRoot .. "\nCookie: " .. (CONFIG.Cookie ~= "" and "Terisi" or "Kosong") .. " | API Key: " .. (CONFIG.ApiKey ~= "" and "Terisi" or "Kosong")
+end)
+
+-- Buat tombol navigasi Sidebar
+createNavButton("Spoof", "⇄  Spoof", 1).MouseButton1Click:Connect(function() switchTab("Spoof") end)
+createNavButton("Upload", "⬆  Upload", 2).MouseButton1Click:Connect(function() switchTab("Upload") end)
+createNavButton("Tools", "🛠  Place & Perm", 3).MouseButton1Click:Connect(function() switchTab("Tools") end)
+createNavButton("Setting", "⚙  Setting", 4).MouseButton1Click:Connect(function() switchTab("Setting") end)
+switchTab("Spoof")
+
+-- ==========================================
+-- LOGIKA EKSEKUSI FITUR
+-- ==========================================
+local function parseIds(raw: string): {string}
+	local seen: {[string]: boolean} = {}
+	local out: {string} = {}
+	for digits in raw:gmatch("%d{6,}") do
+		if not seen[digits] then
+			seen[digits] = true
+			table.insert(out, digits)
 		end
 	end
+	return out
+end
 
-	if not foundPair then
-		local seen = {}
-		for token in string.gmatch(tostring(raw or ""), "%d+") do
-			local numId = tonumber(token)
-			if numId and not seen[numId] then
-				seen[numId] = true
-				table.insert(items, {
-					name = "Asset_" .. tostring(numId),
-					id = numId,
+-- Cek Koneksi
+CekKoneksiBtn.MouseButton1Click:Connect(function()
+	task.spawn(function()
+		switchTab("Spoof")
+		setStatus("Memeriksa koneksi ke ygfstudio.my.id & Roblox API...", 0.25)
+		local res, err = httpRequest({
+			Url = CONFIG.BaseUrl .. "/tools/spoof-audio",
+			Method = "GET",
+			Headers = { ["User-Agent"] = "Mozilla/5.0 (Android 13; Mobile) DeltaExecutor/1.0" },
+		})
+		if res and res.StatusCode == 200 then
+			local sessMatch = tostring(res.Body or ""):match("YGF_%d+")
+			if sessMatch then
+				CONFIG.SessionId = sessMatch
+				saveTextFile("SPOOF/info/session.txt", CONFIG.SessionId)
+			end
+			setStatus("✔ Terhubung! Session: " .. CONFIG.SessionId, 1)
+		else
+			setStatus("⚠ Koneksi terbatas / Offline (" .. tostring(err or (res and res.StatusCode) or "N/A") .. ")", 0.1)
+		end
+	end)
+end)
+
+-- Eksekusi Spoof
+local isSpoofing = false
+SpoofNowBtn.MouseButton1Click:Connect(function()
+	if isSpoofing then return end
+	local ids = parseIds(AssetIdBox.Text)
+	if #ids == 0 then
+		setStatus("❌ Masukkan minimal 1 Asset ID yang valid!", 0)
+		return
+	end
+
+	isSpoofing = true
+	task.spawn(function()
+		ensureFolders()
+		local berhasil, gagal = 0, 0
+		local isRbxmMode = (CONFIG.SpoofFilter == "Model" or CONFIG.SpoofFilter == "Anim")
+
+		for i, assetId in ipairs(ids) do
+			setStatus(string.format("[%d/%d] Spoof ID %s (%s)...", i, #ids, assetId, CONFIG.SpoofFilter), (i - 1) / #ids)
+
+			-- Kirim command ke ygfstudio.my.id
+			local cmdRes = httpRequest({
+				Url = CONFIG.BaseUrl .. "/send-command",
+				Method = "POST",
+				Headers = {
+					["Content-Type"] = "application/json",
+					["Origin"] = CONFIG.BaseUrl,
+				},
+				Body = HttpService:JSONEncode({
+					id = assetId,
+					session = CONFIG.SessionId,
+				}),
+			})
+
+			local foundFile: string? = nil
+			if cmdRes and (cmdRes.StatusCode == 200 or cmdRes.StatusCode == 201) then
+				for _ = 1, 10 do
+					local listRes = httpRequest({ Url = CONFIG.BaseUrl .. "/list-files", Method = "GET" })
+					if listRes and listRes.StatusCode == 200 then
+						local okJson, decoded = pcall(function()
+							return HttpService:JSONDecode(tostring(listRes.Body or "{}"))
+						end)
+						if okJson and type(decoded) == "table" and type(decoded.files) == "table" then
+							for _, fname in ipairs(decoded.files) do
+								if tostring(fname):find(assetId, 1, true) then
+									foundFile = tostring(fname)
+									break
+								end
+							end
+						end
+					end
+					if foundFile then break end
+					task.wait(1.5)
+				end
+			end
+
+			if foundFile then
+				local dlRes = httpRequest({
+					Url = CONFIG.BaseUrl .. "/files/" .. HttpService:UrlEncode(foundFile) .. "?t=" .. tostring(os.time() * 1000),
+					Method = "GET",
+				})
+				if dlRes and dlRes.StatusCode == 200 and dlRes.Body then
+					local subDir = isRbxmMode and "SPOOF/animasi/" or "SPOOF/music/"
+					local ext = isRbxmMode and ".rbxm" or ".mp3"
+					saveTextFile(subDir .. assetId .. ext, tostring(dlRes.Body))
+					berhasil += 1
+				else
+					gagal += 1
+				end
+			else
+				-- Catat log percobaan ke workspace agar tetap terdokumentasi di executor
+				saveTextFile("SPOOF/info/log_" .. assetId .. ".txt", "AssetId: " .. assetId .. " | Filter: " .. CONFIG.SpoofFilter .. " | Session: " .. CONFIG.SessionId)
+				gagal += 1
+			end
+
+			setStatus(string.format("[%d/%d] Selesai ID %s (✔ %d | ❌ %d)", i, #ids, assetId, berhasil, gagal), i / #ids)
+			task.wait(0.35)
+		end
+
+		setStatus(string.format("Selesai! Berhasil: %d | Gagal: %d (Folder: %s/SPOOF)", berhasil, gagal, CONFIG.WorkspaceRoot), 1)
+		isSpoofing = false
+	end)
+end)
+
+-- Upload ke Open Cloud API
+UploadActionBtn.MouseButton1Click:Connect(function()
+	if CONFIG.ApiKey == "" then
+		UploadLogLabel.Text = "❌ Isi API Key terlebih dahulu di tab Setting!"
+		return
+	end
+	local assetName = UploadNameBox.Text ~= "" and UploadNameBox.Text or ("IkyyAsset_" .. tostring(os.time()))
+	local assetType = UploadTypeBox.Text ~= "" and UploadTypeBox.Text or "Model"
+	local creatorId = UploadCreatorBox.Text ~= "" and UploadCreatorBox.Text or tostring(LocalPlayer.UserId)
+	local payloadContent = UploadPayloadBox.Text ~= "" and UploadPayloadBox.Text or "-- Exported via Ikyy Plugin Studio Lite"
+
+	task.spawn(function()
+		UploadLogLabel.Text = "⏳ Mengirim request ke Roblox Open Cloud Assets API..."
+		local res, err = httpRequest({
+			Url = "https://apis.roblox.com/assets/v1/assets",
+			Method = "POST",
+			Headers = {
+				["x-api-key"] = CONFIG.ApiKey,
+				["Content-Type"] = "application/json",
+			},
+			Body = HttpService:JSONEncode({
+				assetType = assetType,
+				displayName = assetName,
+				description = "Uploaded via Plugin Studio Lite by Ikyy",
+				creationContext = {
+					creator = { userId = tostring(creatorId) },
+				},
+				payload = payloadContent,
+			}),
+		})
+		if res then
+			saveTextFile("Uploads/upload_" .. tostring(os.time()) .. ".json", tostring(res.Body or ""))
+			UploadLogLabel.Text = "✔ HTTP " .. tostring(res.StatusCode) .. " — Log disimpan ke " .. CONFIG.WorkspaceRoot .. "/Uploads"
+		else
+			UploadLogLabel.Text = "❌ Gagal upload: " .. tostring(err)
+		end
+	end)
+end)
+
+-- Buat Universe / Place
+CreatePlaceBtn.MouseButton1Click:Connect(function()
+	if CONFIG.Cookie == "" then
+		ToolsStatusLabel.Text = "❌ Masukkan Cookie (.ROBLOSECURITY) di tab Setting!"
+		return
+	end
+	local tplId = tonumber(TemplateIdBox.Text) or 95206881
+	local grpId = tonumber(GroupIdBox.Text)
+
+	task.spawn(function()
+		ToolsStatusLabel.Text = "⏳ Membuat Universe dengan Template " .. tostring(tplId) .. "..."
+		local bodyTable: {[string]: any} = { templatePlaceId = tplId }
+		if grpId and grpId > 0 then
+			bodyTable.groupId = grpId
+		end
+		local jsonBody = HttpService:JSONEncode(bodyTable)
+
+		local res, err = httpRequest({
+			Url = "https://apis.roblox.com/universes/v1/universes/create",
+			Method = "POST",
+			Headers = {
+				["Cookie"] = ".ROBLOSECURITY=" .. CONFIG.Cookie,
+				["Content-Type"] = "application/json",
+			},
+			Body = jsonBody,
+		})
+
+		if res and res.StatusCode == 403 and res.Headers then
+			local csrf = res.Headers["X-CSRF-Token"] or res.Headers["x-csrf-token"]
+			if csrf then
+				res, err = httpRequest({
+					Url = "https://apis.roblox.com/universes/v1/universes/create",
+					Method = "POST",
+					Headers = {
+						["Cookie"] = ".ROBLOSECURITY=" .. CONFIG.Cookie,
+						["Content-Type"] = "application/json",
+						["X-CSRF-TOKEN"] = csrf,
+					},
+					Body = jsonBody,
 				})
 			end
 		end
-	end
 
-	return items
-end
-
-local function fetchAssetDetails(assetId)
-	local ok, info = pcall(function()
-		return MarketplaceService:GetProductInfoAsync(assetId)
-	end)
-	if ok and info then
-		return {
-			Name = info.Name or ("Asset_" .. tostring(assetId)),
-			Creator = (info.Creator and info.Creator.Name) or "Unknown Creator",
-			CreatorId = (info.Creator and tostring(info.Creator.CreatorTargetId)) or "N/A",
-			AssetTypeId = info.AssetTypeId or 0,
-			Created = info.Created or "N/A",
-			Updated = info.Updated or "N/A",
-		}
-	end
-	return {
-		Name = "Asset_" .. tostring(assetId),
-		Creator = "Unknown Creator",
-		CreatorId = "N/A",
-		AssetTypeId = 0,
-		Created = "N/A",
-		Updated = "N/A",
-	}
-end
-
--- ==========================================
--- 2. FUNGSI FITUR (SATUAN, MASSAL & ABOUT)
--- ==========================================
-
-local function executeSpoofFeature(rawInput, filterMode)
-	syncAutoIdentity(true)
-	local targets = extractPairsOrIds(rawInput)
-	if #targets == 0 then
-		pushLog("SPOOF", "Target ID atau format SongName/SongId tidak valid.")
-		return
-	end
-
-	local isAnimMode = (filterMode == "Anim")
-	local reportLines = {}
-
-	for _, item in ipairs(targets) do
-		local details = fetchAssetDetails(item.id)
-		local finalName = (item.name ~= "Asset_" .. tostring(item.id)) and item.name or details.Name
-
-		if not isAnimMode then
-			local sound = Instance.new("Sound")
-			sound.Name = "SpoofAudio_" .. tostring(item.id)
-			sound.SoundId = "rbxassetid://" .. tostring(item.id)
-			sound.PlaybackSpeed = MemorySession.PlaybackSpeed
-			sound.Volume = 0.6
-			sound.Parent = workspace
-			sound:Play()
-			Debris:AddItem(sound, 15)
-		elseif LocalPlayer.Character then
-			local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-			local animator = hum and hum:FindFirstChildOfClass("Animator")
-			if animator then
-				local anim = Instance.new("Animation")
-				anim.AnimationId = "rbxassetid://" .. tostring(item.id)
-				pcall(function()
-					local track = animator:LoadAnimation(anim)
-					track:AdjustSpeed(MemorySession.PlaybackSpeed)
-					track:Play()
-				end)
-			end
-		end
-
-		local line = string.format(
-			"%s | ID:%d | Kreator:%s (%s) | User:%s (%d) | Univ:%s",
-			finalName,
-			item.id,
-			details.Creator,
-			details.CreatorId,
-			MemorySession.UserName,
-			MemorySession.UserId,
-			MemorySession.ActiveUniverseId
-		)
-		table.insert(reportLines, line)
-	end
-
-	local packed = table.concat(reportLines, "\n")
-	local savedPath = saveToDeltaFolder("spoof", string.format("spoof_%d.txt", math.floor(os.clock() * 100)), packed)
-
-	if #targets == 1 then
-		pushLog("SATUAN", reportLines[1] .. (savedPath and (" -> " .. savedPath) or ""))
-	else
-		safeCopy(packed)
-		pushLog("MASSAL", string.format(
-			"Spoof %d aset selesai%s",
-			#targets,
-			savedPath and (" -> " .. savedPath) or " (disalin ke clipboard)"
-		))
-	end
-end
-
-local function executeUploadFeature(rawInput, filterMode)
-	if not hasAccess() then
-		pushLog("DENIED", "Akses upload ditolak untuk UserId " .. tostring(MemorySession.UserId))
-		return
-	end
-
-	local targets = extractPairsOrIds(rawInput)
-	if #targets == 0 then
-		pushLog("UPLOAD", "Masukkan Asset ID / target aset untuk diproses.")
-		return
-	end
-
-	local assetKind = (filterMode == "Auto") and "Asset" or filterMode
-	local hasApi = (MemorySession.ApiKeyToken ~= "")
-	local summary = {}
-
-	for _, item in ipairs(targets) do
-		local details = fetchAssetDetails(item.id)
-		table.insert(summary, string.format(
-			"[%s] %s (%d) - User:%d - Univ:%s - API:%s",
-			assetKind,
-			details.Name,
-			item.id,
-			MemorySession.UserId,
-			MemorySession.ActiveUniverseId,
-			hasApi and "SET" or "MEM"
-		))
-		task.wait(0.1)
-	end
-
-	local packed = table.concat(summary, "\n")
-	local savedPath = saveToDeltaFolder("upload", string.format("upload_%s_%d.txt", assetKind, math.floor(os.clock() * 100)), packed)
-
-	if #targets == 1 then
-		pushLog("UPLOAD", summary[1] .. (savedPath and (" -> " .. savedPath) or ""))
-	else
-		safeCopy(packed)
-		pushLog("MASSAL", string.format(
-			"Upload %s (%d item)%s",
-			assetKind,
-			#targets,
-			savedPath and (" -> " .. savedPath) or " • disalin"
-		))
-	end
-end
-
-local function executeImportFeature(rawInput)
-	if not hasAccess() then
-		pushLog("DENIED", "Akses import ditolak untuk UserId " .. tostring(MemorySession.UserId))
-		return
-	end
-
-	local targets = extractPairsOrIds(rawInput)
-	local firstNum = targets[1] and targets[1].id or nil
-
-	if firstNum and firstNum >= 1 and firstNum <= 20 and string.len(tostring(firstNum)) <= 2 then
-		local createdCount = 0
-		for i = 1, firstNum do
-			local part = Instance.new("Part")
-			part.Name = "PlaceTemplate_" .. tostring(i)
-			part.Size = Vector3.new(6, 1, 6)
-			part.Anchored = true
-			part.Position = LocalPlayer.Character and LocalPlayer.Character:GetPivot().Position + Vector3.new(i * 8, 0, 0) or Vector3.new(i * 8, 5, 0)
-			part.Parent = workspace
-			createdCount += 1
-			if i < firstNum then
-				task.wait(0.25)
-			end
-		end
-		local savedPath = saveToDeltaFolder("import", "place_slots.txt", string.format(
-			"User=%s (%d)\nUniverseId=%s\nCreatedSlots=%d/%d",
-			MemorySession.UserName,
-			MemorySession.UserId,
-			MemorySession.ActiveUniverseId,
-			createdCount,
-			firstNum
-		))
-		pushLog("PLACE", string.format("Pembuatan Place: %d/%d slot%s", createdCount, firstNum, savedPath and (" -> " .. savedPath) or ""))
-		return
-	end
-
-	local universeId = (firstNum and tostring(firstNum)) or MemorySession.ActiveUniverseId
-	MemorySession.ActiveUniverseId = universeId
-
-	local permIds = {}
-	for idx = 2, #targets do
-		table.insert(permIds, targets[idx].id)
-	end
-	if #permIds == 0 and firstNum then
-		table.insert(permIds, firstNum)
-	end
-
-	if #permIds > 1 then
-		local listStr = {}
-		for _, pid in ipairs(permIds) do
-			table.insert(listStr, tostring(pid))
-		end
-		local csvIds = table.concat(listStr, ",")
-		safeCopy(csvIds)
-		local savedPath = saveToDeltaFolder("import", string.format("perm_%s.txt", universeId), csvIds)
-		pushLog("PERM", string.format(
-			"Batch permission %d ID -> Universe %s%s",
-			#permIds,
-			universeId,
-			savedPath and (" -> " .. savedPath) or " (disalin)"
-		))
-	elseif #permIds == 1 then
-		pushLog("PERM", string.format("Permission ID %d -> Universe %s siap", permIds[1], universeId))
-	else
-		pushLog("PERM", "Target Universe ID otomatis: " .. universeId)
-	end
-end
-
-local function executeSettingFeature(rawInput, guiRef)
-	syncAutoIdentity(true)
-	local trimmed = string.gsub(tostring(rawInput or ""), "^%s*(.-)%s*$", "%1")
-	local lower = string.lower(trimmed)
-
-	if lower == "exit" or lower == "keluar" then
-		table.clear(MemorySession.Logs)
-		guiRef:Destroy()
-		return
-	end
-
-	if string.sub(trimmed, 1, 10) == "_|WARNING:" or string.len(trimmed) > 80 then
-		MemorySession.CookieToken = trimmed
-		pushLog("COOKIE", "Cookie tersimpan di sesi memori (" .. tostring(MemorySession.UserId) .. ")")
-		return
-	end
-
-	if string.sub(lower, 1, 4) == "key_" or string.sub(lower, 1, 7) == "rblxkey" then
-		MemorySession.ApiKeyToken = trimmed
-		pushLog("APIKEY", "Open Cloud API Key tersimpan di sesi memori")
-		return
-	end
-
-	local numVal = tonumber(trimmed)
-	if numVal then
-		if numVal > 0 and numVal <= 10 and string.find(trimmed, "%.", 1, false) then
-			MemorySession.PlaybackSpeed = numVal
-			pushLog("SPEED", string.format("PlaybackSpeed diatur ke %.2f", numVal))
+		if res then
+			saveTextFile("Logs/place_" .. tostring(os.time()) .. ".json", tostring(res.Body or ""))
+			ToolsStatusLabel.Text = "✔ Place response HTTP " .. tostring(res.StatusCode)
 		else
-			MemorySession.ActiveUniverseId = tostring(math.floor(numVal))
-			pushLog("UNIVERSE", "ActiveUniverseId diatur ke " .. MemorySession.ActiveUniverseId)
+			ToolsStatusLabel.Text = "❌ Gagal membuat Place: " .. tostring(err)
 		end
+	end)
+end)
+
+-- Grant Asset Permissions
+GrantPermBtn.MouseButton1Click:Connect(function()
+	if CONFIG.ApiKey == "" then
+		ToolsStatusLabel.Text = "❌ Isi API Key di tab Setting terlebih dahulu!"
+		return
+	end
+	local univId = TargetUniverseBox.Text:match("%d+")
+	local ids = parseIds(PermIdsBox.Text)
+	if not univId or #ids == 0 then
+		ToolsStatusLabel.Text = "❌ Masukkan Universe ID dan minimal 1 Asset ID!"
 		return
 	end
 
-	if trimmed ~= "" then
-		MemorySession.ApiKeyToken = trimmed
-		pushLog("SESSION", "Token/Key sesi diperbarui di memori")
-	else
-		pushLog("SETTING", string.format(
-			"User:%s(%d) | Univ:%s | Speed:%.2f",
-			MemorySession.UserName,
-			MemorySession.UserId,
-			MemorySession.ActiveUniverseId,
-			MemorySession.PlaybackSpeed
-		))
-	end
-end
+	task.spawn(function()
+		ToolsStatusLabel.Text = "⏳ Mengirim permission untuk " .. tostring(#ids) .. " asset ke Universe " .. univId .. "..."
+		local reqList = {}
+		for _, aid in ipairs(ids) do
+			table.insert(reqList, { assetId = tonumber(aid) })
+		end
 
-local function buildAboutText()
-	syncAutoIdentity(true)
-	return table.concat({
-		"Creator    : Ikyy (sptzyy / IkyyXD)",
-		"Tools      : Plugin Studio Lite (Delta Executor)",
-		string.format("User       : %s (%d)", MemorySession.UserName, MemorySession.UserId),
-		string.format("UniverseId : %s", MemorySession.ActiveUniverseId),
-		"Folder     : " .. WORKSPACE_ROOT .. "/<fitur>",
-	}, "\n")
-end
+		local res, err = httpRequest({
+			Url = "https://apis.roblox.com/asset-permissions-api/v1/assets/permissions",
+			Method = "PATCH",
+			Headers = {
+				["x-api-key"] = CONFIG.ApiKey,
+				["Content-Type"] = "application/json",
+			},
+			Body = HttpService:JSONEncode({
+				subjectType = "Universe",
+				subjectId = tostring(univId),
+				action = "Use",
+				requests = reqList,
+			}),
+		})
 
-local function executeAboutFeature()
-	local fullInfo = buildAboutText()
-	local savedPath = saveToDeltaFolder("about", "about_ikyy.txt", fullInfo)
-	local copied = safeCopy(fullInfo)
-	pushLog("ABOUT", string.format(
-		"User:%d | Univ:%s by Ikyy%s",
-		MemorySession.UserId,
-		MemorySession.ActiveUniverseId,
-		savedPath and (" -> " .. savedPath) or (copied and " [Disalin]" or "")
-	))
-end
-
--- ==========================================
--- 3. GUI LAYOUT (STRUKTUR SEPERTI GAMBAR)
--- ==========================================
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "IkyyStudioLiteCaseUI"
-screenGui.ResetOnSpawn = false
-screenGui.IgnoreGuiInset = true
-screenGui.Parent = guiParent[span_1](start_span)[span_1](end_span)
-
-local restoreBtn = Instance.new("TextButton")
-restoreBtn.Name = "RestoreButton"
-restoreBtn.Size = UDim2.new(0, 126, 0, 32)
-restoreBtn.Position = UDim2.new(0, 14, 0, 88)
-restoreBtn.BackgroundColor3 = Color3.fromRGB(20, 18, 32)
-restoreBtn.TextColor3 = Color3.fromRGB(230, 225, 255)
-restoreBtn.Font = Enum.Font.GothamBold
-restoreBtn.TextSize = 12
-restoreBtn.Text = "⇄ Studio Lite"
-restoreBtn.Visible = false
-restoreBtn.Parent = screenGui
-
-local restoreCorner = Instance.new("UICorner")
-restoreCorner.CornerRadius = UDim.new(0, 8)
-restoreCorner.Parent = restoreBtn
-
-local restoreStroke = Instance.new("UIStroke")
-restoreStroke.Color = Color3.fromRGB(130, 92, 255)
-restoreStroke.Thickness = 1.3
-restoreStroke.Parent = restoreBtn
-
-local mainFrame = Instance.new("Frame")
-mainFrame.Name = "MainWindow"
-mainFrame.Size = UDim2.new(0, 560, 0, 330)
-mainFrame.Position = UDim2.new(0.5, -280, 0.5, -165)
-mainFrame.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
-mainFrame.BackgroundTransparency = 0.08
-mainFrame.BorderSizePixel = 0
-mainFrame.Active = true
-mainFrame.Draggable = true
-mainFrame.Parent = screenGui[span_2](start_span)[span_2](end_span)
-
-local cornerMain = Instance.new("UICorner")
-cornerMain.CornerRadius = UDim.new(0, 14)
-cornerMain.Parent = mainFrame
-
-local strokeMain = Instance.new("UIStroke")
-strokeMain.Color = Color3.fromRGB(125, 88, 255)
-strokeMain.Thickness = 1.6
-strokeMain.Transparency = 0.25
-strokeMain.Parent = mainFrame
-
--- Header Kiri Atas
-local badgeFrame = Instance.new("Frame")
-badgeFrame.Size = UDim2.new(0, 34, 0, 34)
-badgeFrame.Position = UDim2.new(0, 16, 0, 14)
-badgeFrame.BackgroundColor3 = Color3.fromRGB(28, 25, 44)
-badgeFrame.BorderSizePixel = 0
-badgeFrame.Parent = mainFrame[span_3](start_span)[span_3](end_span)
-
-local badgeCorner = Instance.new("UICorner")
-badgeCorner.CornerRadius = UDim.new(0, 8)
-badgeCorner.Parent = badgeFrame
-
-local badgeIcon = Instance.new("TextLabel")
-badgeIcon.Size = UDim2.new(1, 0, 1, 0)
-badgeIcon.BackgroundTransparency = 1
-badgeIcon.Font = Enum.Font.GothamBold
-badgeIcon.TextSize = 15
-badgeIcon.TextColor3 = Color3.fromRGB(185, 165, 255)
-badgeIcon.Text = "⇄"
-badgeIcon.Parent = badgeFrame[span_4](start_span)[span_4](end_span)
-
-local titleLabel = Instance.new("TextLabel")
-titleLabel.Size = UDim2.new(0, 280, 0, 20)
-titleLabel.Position = UDim2.new(0, 58, 0, 12)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Font = Enum.Font.GothamBold
-titleLabel.TextSize = 14
-titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-titleLabel.TextColor3 = Color3.fromRGB(245, 244, 255)
-titleLabel.Text = "Plugin Studio Lite"
-titleLabel.Parent = mainFrame[span_5](start_span)[span_5](end_span)
-
-local subLabel = Instance.new("TextLabel")
-subLabel.Size = UDim2.new(0, 340, 0, 16)
-subLabel.Position = UDim2.new(0, 58, 0, 32)
-subLabel.BackgroundTransparency = 1
-subLabel.Font = Enum.Font.Gotham
-subLabel.TextSize = 11
-subLabel.TextXAlignment = Enum.TextXAlignment.Left
-subLabel.TextColor3 = Color3.fromRGB(135, 130, 160)
-subLabel.Text = string.format("by Ikyy • Univ:%s • UID:%d", MemorySession.ActiveUniverseId, MemorySession.UserId)
-subLabel.Parent = mainFrame[span_6](start_span)[span_6](end_span)
-
-local closeBtn = Instance.new("TextButton")
-closeBtn.Size = UDim2.new(0, 30, 0, 30)
-closeBtn.Position = UDim2.new(1, -46, 0, 16)
-closeBtn.BackgroundColor3 = Color3.fromRGB(26, 24, 38)
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 13
-closeBtn.TextColor3 = Color3.fromRGB(210, 205, 230)
-closeBtn.Text = "✕"
-closeBtn.Parent = mainFrame[span_7](start_span)[span_7](end_span)
-
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(1, 0)
-closeCorner.Parent = closeBtn
-
-local closeStroke = Instance.new("UIStroke")
-closeStroke.Color = Color3.fromRGB(65, 60, 90)
-closeStroke.Thickness = 1
-closeStroke.Parent = closeBtn
-
--- Sidebar Kiri
-local sidebar = Instance.new("Frame")
-sidebar.Size = UDim2.new(0, 145, 1, -74)
-sidebar.Position = UDim2.new(0, 16, 0, 58)
-sidebar.BackgroundColor3 = Color3.fromRGB(18, 17, 28)
-sidebar.BorderSizePixel = 0
-sidebar.Parent = mainFrame[span_8](start_span)[span_8](end_span)
-
-local sideCorner = Instance.new("UICorner")
-sideCorner.CornerRadius = UDim.new(0, 10)
-sideCorner.Parent = sidebar
-
-local sideStroke = Instance.new("UIStroke")
-sideStroke.Color = Color3.fromRGB(36, 33, 54)
-sideStroke.Thickness = 1
-sideStroke.Parent = sidebar
-
--- Panel Konten Kanan
-local contentPanel = Instance.new("Frame")
-contentPanel.Size = UDim2.new(1, -185, 1, -74)
-contentPanel.Position = UDim2.new(0, 169, 0, 58)
-contentPanel.BackgroundColor3 = Color3.fromRGB(18, 17, 28)
-contentPanel.BorderSizePixel = 0
-contentPanel.Parent = mainFrame[span_9](start_span)[span_9](end_span)
-
-local panelCorner = Instance.new("UICorner")
-panelCorner.CornerRadius = UDim.new(0, 10)
-panelCorner.Parent = contentPanel
-
-local panelStroke = Instance.new("UIStroke")
-panelStroke.Color = Color3.fromRGB(36, 33, 54)
-panelStroke.Thickness = 1
-panelStroke.Parent = contentPanel
-
-local featureTitle = Instance.new("TextLabel")
-featureTitle.Size = UDim2.new(1, -28, 0, 22)
-featureTitle.Position = UDim2.new(0, 14, 0, 10)
-featureTitle.BackgroundTransparency = 1
-featureTitle.Font = Enum.Font.GothamBold
-featureTitle.TextSize = 15
-featureTitle.TextXAlignment = Enum.TextXAlignment.Left
-featureTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-featureTitle.Text = "Spoof"
-featureTitle.Parent = contentPanel[span_10](start_span)[span_10](end_span)
-
-local featureDesc = Instance.new("TextLabel")
-featureDesc.Size = UDim2.new(1, -28, 0, 16)
-featureDesc.Position = UDim2.new(0, 14, 0, 32)
-featureDesc.BackgroundTransparency = 1
-featureDesc.Font = Enum.Font.Gotham
-featureDesc.TextSize = 11
-featureDesc.TextXAlignment = Enum.TextXAlignment.Left
-featureDesc.TextColor3 = Color3.fromRGB(130, 126, 155)
-featureDesc.Text = "Downloader Spoof Audio / RBXM (save ke folder Delta)"
-featureDesc.Parent = contentPanel[span_11](start_span)[span_11](end_span)
-
-local inputLabel = Instance.new("TextLabel")
-inputLabel.Size = UDim2.new(1, -28, 0, 16)
-inputLabel.Position = UDim2.new(0, 14, 0, 54)
-inputLabel.BackgroundTransparency = 1
-inputLabel.Font = Enum.Font.GothamBold
-inputLabel.TextSize = 10
-inputLabel.TextXAlignment = Enum.TextXAlignment.Left
-inputLabel.TextColor3 = Color3.fromRGB(135, 110, 255)
-inputLabel.Text = "ASSET ID"
-inputLabel.Parent = contentPanel[span_12](start_span)[span_12](end_span)
-
-local inputBox = Instance.new("TextBox")
-inputBox.Size = UDim2.new(1, -28, 0, 74)
-inputBox.Position = UDim2.new(0, 14, 0, 72)
-inputBox.BackgroundColor3 = Color3.fromRGB(11, 10, 18)
-inputBox.BorderSizePixel = 0
-inputBox.Font = Enum.Font.Code
-inputBox.TextSize = 11
-inputBox.TextColor3 = Color3.fromRGB(240, 240, 255)
-inputBox.PlaceholderColor3 = Color3.fromRGB(95, 92, 118)
-inputBox.PlaceholderText = "Tempel Asset ID di sini (pisah spasi, koma, atau baris baru)"
-inputBox.Text = ""
-inputBox.MultiLine = true
-inputBox.ClearTextOnFocus = false
-inputBox.TextXAlignment = Enum.TextXAlignment.Left
-inputBox.TextYAlignment = Enum.TextTop
-inputBox.TextWrapped = true
-inputBox.Parent = contentPanel[span_13](start_span)[span_13](end_span)
-
-local inputCorner = Instance.new("UICorner")
-inputCorner.CornerRadius = UDim.new(0, 8)
-inputCorner.Parent = inputBox
-
-local inputStroke = Instance.new("UIStroke")
-inputStroke.Color = Color3.fromRGB(45, 42, 68)
-inputStroke.Thickness = 1
-inputStroke.Parent = inputBox
-
--- Filter Chip Row
-local chipRow = Instance.new("Frame")
-chipRow.Size = UDim2.new(1, -28, 0, 26)
-chipRow.Position = UDim2.new(0, 14, 0, 154)
-chipRow.BackgroundTransparency = 1
-chipRow.Parent = contentPanel[span_14](start_span)[span_14](end_span)
-
-local chipLayout = Instance.new("UIListLayout")
-chipLayout.FillDirection = Enum.FillDirection.Horizontal
-chipLayout.Padding = UDim.new(0, 6)
-chipLayout.Parent = chipRow
-
-local chipNames = { "Auto", "Audio", "Decal", "Model", "Anim" }[span_15](start_span)[span_15](end_span)
-local chipButtons = {}
-
-local function refreshChips()
-	for _, cname in ipairs(chipNames) do
-		local btn = chipButtons[cname]
-		local active = (MemorySession.SelectedFilter == cname)
-		btn.BackgroundColor3 = active and Color3.fromRGB(48, 42, 78) or Color3.fromRGB(24, 23, 36)
-		btn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(155, 152, 180)
-	end
-end
-
-for _, cname in ipairs(chipNames) do
-	local cBtn = Instance.new("TextButton")
-	cBtn.Size = UDim2.new(0, 62, 1, 0)
-	cBtn.BackgroundColor3 = Color3.fromRGB(24, 23, 36)
-	cBtn.BorderSizePixel = 0
-	cBtn.Font = Enum.Font.GothamMedium
-	cBtn.TextSize = 11
-	cBtn.Text = cname
-	cBtn.Parent = chipRow
-
-	local cCorner = Instance.new("UICorner")
-	cCorner.CornerRadius = UDim.new(0, 6)
-	cCorner.Parent = cBtn
-
-	local cStroke = Instance.new("UIStroke")
-	cStroke.Color = Color3.fromRGB(58, 54, 86)
-	cStroke.Thickness = 1
-	cStroke.Parent = cBtn
-
-	chipButtons[cname] = cBtn
-	cBtn.MouseButton1Click:Connect(function()
-		MemorySession.SelectedFilter = cname
-		refreshChips()
-		pushLog("FILTER", "Filter aktif: " .. cname)
+		if res then
+			saveTextFile("Logs/perm_" .. tostring(os.time()) .. ".json", tostring(res.Body or ""))
+			ToolsStatusLabel.Text = "✔ Permission HTTP " .. tostring(res.StatusCode) .. " untuk " .. tostring(#ids) .. " ID"
+		else
+			ToolsStatusLabel.Text = "❌ Gagal permission: " .. tostring(err)
+		end
 	end)
-end
-refreshChips()
-
-local actionBtn = Instance.new("TextButton")
-actionBtn.Size = UDim2.new(0, 215, 0, 34)
-actionBtn.Position = UDim2.new(0, 14, 0, 188)
-actionBtn.BackgroundColor3 = Color3.fromRGB(115, 92, 245)
-actionBtn.BorderSizePixel = 0
-actionBtn.Font = Enum.Font.GothamBold
-actionBtn.TextSize = 11
-actionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-actionBtn.Text = "⇄  SPOOF SEKARANG"
-actionBtn.Parent = contentPanel[span_16](start_span)[span_16](end_span)
-
-local actionCorner = Instance.new("UICorner")
-actionCorner.CornerRadius = UDim.new(0, 8)
-actionCorner.Parent = actionBtn
-
-local clearBtn = Instance.new("TextButton")
-clearBtn.Size = UDim2.new(0, 128, 0, 34)
-clearBtn.Position = UDim2.new(0, 237, 0, 188)
-clearBtn.BackgroundColor3 = Color3.fromRGB(25, 24, 38)
-clearBtn.BorderSizePixel = 0
-clearBtn.Font = Enum.Font.GothamBold
-clearBtn.TextSize = 11
-clearBtn.TextColor3 = Color3.fromRGB(215, 212, 235)
-clearBtn.Text = "BERSIHKAN"
-clearBtn.Parent = contentPanel[span_17](start_span)[span_17](end_span)
-
-local clearCorner = Instance.new("UICorner")
-clearCorner.CornerRadius = UDim.new(0, 8)
-clearCorner.Parent = clearBtn
-
-local clearStroke = Instance.new("UIStroke")
-clearStroke.Color = Color3.fromRGB(58, 54, 86)
-clearStroke.Thickness = 1
-clearStroke.Parent = clearBtn
-
-local logBox = Instance.new("TextLabel")
-logBox.Size = UDim2.new(1, -28, 0, 22)
-logBox.Position = UDim2.new(0, 14, 0, 228)
-logBox.BackgroundColor3 = Color3.fromRGB(11, 10, 18)
-logBox.BorderSizePixel = 0
-logBox.Font = Enum.Font.Code
-logBox.TextSize = 11
-logBox.TextXAlignment = Enum.TextXAlignment.Left
-logBox.TextColor3 = Color3.fromRGB(190, 245, 255)
-logBox.Text = "  " .. (MemorySession.Logs[1] or "Siap.")
-logBox.Parent = contentPanel[span_18](start_span)[span_18](end_span)
-
-local logCorner = Instance.new("UICorner")
-logCorner.CornerRadius = UDim.new(0, 6)
-logCorner.Parent = logBox
-
-local function refreshLogs()
-	syncAutoIdentity(true)
-	subLabel.Text = string.format("by Ikyy • Univ:%s • UID:%d", MemorySession.ActiveUniverseId, MemorySession.UserId)
-	if #MemorySession.Logs == 0 then
-		logBox.Text = "  Siap."
-	else
-		logBox.Text = "  " .. MemorySession.Logs[1]
-	end
-end
-
--- ==========================================
--- 4. SIDEBAR NAVIGASI & AKSI CEPAT
--- ==========================================
-local tabMeta = {
-	Spoof = {
-		title = "Spoof",
-		desc = "Downloader Spoof Audio / RBXM (save ke folder Delta)",
-		label = "ASSET ID",
-		placeholder = "Tempel Asset ID atau format SongName: ... SongId: ...",
-		btnText = "⇄  SPOOF SEKARANG",
-		editable = true,
-	},
-	Upload = {
-		title = "Upload",
-		desc = "Pengunggah Aset & Decal (save ke folder Delta/upload)",
-		label = "ASSET ID",
-		placeholder = "Masukkan Asset ID (satuan atau massal, pisah koma/spasi)",
-		btnText = "↑  UPLOAD SEKARANG",
-		editable = true,
-	},
-	Import = {
-		title = "Import",
-		desc = "Pembuat Place (1-20) & Asset Permissions (Universe otomatis)",
-		label = "JUMLAH PLACE / UNIVERSE ID",
-		placeholder = "Kosongkan untuk pakai UniverseId otomatis, atau isi jumlah/ID",
-		btnText = "↓  IMPORT SEKARANG",
-		editable = true,
-	},
-	Setting = {
-		title = "Setting",
-		desc = "Set Cookie / API Key / Speed / Universe / Exit",
-		label = "COOKIE / API KEY / SPEED / UNIVERSE",
-		placeholder = "Tempel Cookie, API Key, Speed (misal 1.25), Universe ID, atau 'exit'",
-		btnText = "⚙  SIMPAN SESI",
-		editable = true,
-	},
-	About = {
-		title = "About",
-		desc = "Tentang Creator Ikyy • Auto Cek User & UniverseId",
-		label = "CREATOR & AUTO DETECT INFO",
-		placeholder = "",
-		btnText = "💾  SAVE & SALIN INFO",
-		editable = false,
-	},
-}
-
-local navOrder = { "Spoof", "Upload", "Import", "Setting", "About" }
-local navButtons = {}
-
-local function selectTab(name)
-	syncAutoIdentity(true)
-	MemorySession.ActiveTab = name
-	local info = tabMeta[name]
-	featureTitle.Text = info.title
-	featureDesc.Text = info.desc
-	inputLabel.Text = info.label
-	inputBox.PlaceholderText = info.placeholder
-	actionBtn.Text = info.btnText
-	inputBox.TextEditable = info.editable
-
-	if name == "About" then
-		inputBox.Text = buildAboutText()
-	elseif string.find(inputBox.Text, "Creator    : Ikyy", 1, true) then
-		inputBox.Text = ""
-	end
-
-	for tName, btn in pairs(navButtons) do
-		local isAct = (tName == name)
-		btn.BackgroundColor3 = isAct and Color3.fromRGB(46, 40, 76) or Color3.fromRGB(18, 17, 28)
-		btn.TextColor3 = isAct and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(165, 162, 188)
-	end
-	refreshLogs()
-end
-
-for i, name in ipairs(navOrder) do
-	local nBtn = Instance.new("TextButton")
-	nBtn.Size = UDim2.new(1, -16, 0, 28)
-	nBtn.Position = UDim2.new(0, 8, 0, 6 + (i - 1) * 31)
-	nBtn.BackgroundColor3 = Color3.fromRGB(18, 17, 28)
-	nBtn.BorderSizePixel = 0
-	nBtn.Font = Enum.Font.GothamMedium
-	nBtn.TextSize = 12
-	nBtn.TextXAlignment = Enum.TextXAlignment.Left
-	nBtn.Text = "   " .. name
-	nBtn.Parent = sidebar[span_19](start_span)[span_19](end_span)
-
-	local nCorner = Instance.new("UICorner")
-	nCorner.CornerRadius = UDim.new(0, 7)
-	nCorner.Parent = nBtn
-
-	navButtons[name] = nBtn
-	nBtn.MouseButton1Click:Connect(function()
-		selectTab(name)
-	end)
-end
-
-local quickLabel = Instance.new("TextLabel")
-quickLabel.Size = UDim2.new(1, -16, 0, 14)
-quickLabel.Position = UDim2.new(0, 10, 1, -66)
-quickLabel.BackgroundTransparency = 1
-quickLabel.Font = Enum.Font.Gotham
-quickLabel.TextSize = 10
-quickLabel.TextXAlignment = Enum.TextXAlignment.Left
-quickLabel.TextColor3 = Color3.fromRGB(125, 122, 150)
-quickLabel.Text = "Aksi Cepat"
-quickLabel.Parent = sidebar[span_20](start_span)[span_20](end_span)
-
-local cekBtn = Instance.new("TextButton")
-cekBtn.Size = UDim2.new(0, 62, 0, 30)
-cekBtn.Position = UDim2.new(0, 8, 1, -46)
-cekBtn.BackgroundColor3 = Color3.fromRGB(36, 105, 235)
-cekBtn.BorderSizePixel = 0
-cekBtn.Font = Enum.Font.GothamBold
-cekBtn.TextSize = 10
-cekBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-cekBtn.Text = "Cek\nKoneksi"
-cekBtn.Parent = sidebar[span_21](start_span)[span_21](end_span)
-
-local cekCorner = Instance.new("UICorner")
-cekCorner.CornerRadius = UDim.new(0, 7)
-cekCorner.Parent = cekBtn
-
-local hideBtn = Instance.new("TextButton")
-hideBtn.Size = UDim2.new(0, 62, 0, 30)
-hideBtn.Position = UDim2.new(0, 75, 1, -46)
-hideBtn.BackgroundColor3 = Color3.fromRGB(26, 25, 38)
-hideBtn.BorderSizePixel = 0
-hideBtn.Font = Enum.Font.GothamBold
-hideBtn.TextSize = 10
-hideBtn.TextColor3 = Color3.fromRGB(210, 208, 228)
-hideBtn.Text = "Sembunyi"
-hideBtn.Parent = sidebar[span_22](start_span)[span_22](end_span)
-
-local hideCorner = Instance.new("UICorner")
-hideCorner.CornerRadius = UDim.new(0, 7)
-hideCorner.Parent = hideBtn
-
-local hideStroke = Instance.new("UIStroke")
-hideStroke.Color = Color3.fromRGB(55, 52, 80)
-hideStroke.Thickness = 1
-hideStroke.Parent = hideBtn
-
--- ==========================================
--- 5. EVENT HANDLER
--- ==========================================
-actionBtn.MouseButton1Click:Connect(function()
-	local tab = MemorySession.ActiveTab
-	if tab == "Spoof" then
-		executeSpoofFeature(inputBox.Text, MemorySession.SelectedFilter)
-	elseif tab == "Upload" then
-		executeUploadFeature(inputBox.Text, MemorySession.SelectedFilter)
-	elseif tab == "Import" then
-		executeImportFeature(inputBox.Text)
-	elseif tab == "Setting" then
-		executeSettingFeature(inputBox.Text, screenGui)
-	elseif tab == "About" then
-		executeAboutFeature()
-	end
-	refreshLogs()
-	if MemorySession.ActiveTab == "About" then
-		inputBox.Text = buildAboutText()
-	end
-end)
-
-clearBtn.MouseButton1Click:Connect(function()
-	if MemorySession.ActiveTab ~= "About" then
-		inputBox.Text = ""
-	end
-	table.clear(MemorySession.Logs)
-	refreshLogs()
-end)
-
-cekBtn.MouseButton1Click:Connect(function()
-	syncAutoIdentity(true)
-	local reqFn = getHttpRequestFn()
-	local netStatus = (type(reqFn) == "function") and "HTTP:OK" or "HTTP:LOCAL"
-	local details = fetchAssetDetails(1848354536)
-	if details and details.Name ~= "Asset_1848354536" then
-		pushLog("AUTO", string.format("User:%s(%d) | Univ:%s | %s", MemorySession.UserName, MemorySession.UserId, MemorySession.ActiveUniverseId, netStatus))
-	else
-		pushLog("AUTO", string.format("User:%s(%d) | Univ:%s", MemorySession.UserName, MemorySession.UserId, MemorySession.ActiveUniverseId))
-	end
-	refreshLogs()
-end)
-
-hideBtn.MouseButton1Click:Connect(function()
-	mainFrame.Visible = false
-	restoreBtn.Visible = true
-end)
-
-restoreBtn.MouseButton1Click:Connect(function()
-	mainFrame.Visible = true
-	restoreBtn.Visible = false
-end)
-
-closeBtn.MouseButton1Click:Connect(function()
-	table.clear(MemorySession.Logs)
-	screenGui:Destroy()
-end)
-
-selectTab("Spoof")
-
-pcall(function()
-	StarterGui:SetCore("SendNotification", {
-		Title = "Plugin Studio Lite (Delta)",
-		Text = string.format("User:%d • Univ:%s • by Ikyy", MemorySession.UserId, MemorySession.ActiveUniverseId),
-		Duration = 4,
-	})
 end)
