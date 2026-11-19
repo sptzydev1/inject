@@ -474,27 +474,104 @@ local function parseTxtEntries(content: string, forceKind: "auto" | "audio" | "r
 	return entries
 end
 
--- Lookup playback/playbackspeed dari file TXT untuk pencocokan upload massal
-local function buildTxtPlaybackLookup(): {[string]: number}
-	local lookup: {[string]: number} = {}
-	local txtFiles = scanFilesByPrefix({ "TXT/", "SPOOF/" }, ".txt")
-	for _, relPath in ipairs(txtFiles) do
-		local raw = loadTextFile(relPath)
-		if raw and trim(raw) ~= "" then
-			local parsed = parseTxtEntries(raw, "auto")
-			for _, e in ipairs(parsed) do
-				local pb = e.playbackSpeed or 1.0
-				local cleanNameKey = sanitizeFileName(e.name):lower()
-				if cleanNameKey ~= "" and lookup[cleanNameKey] == nil then
-					lookup[cleanNameKey] = pb
-				end
-				if e.id ~= "" and lookup[e.id:lower()] == nil then
-					lookup[e.id:lower()] = pb
-				end
-			end
+-- Ambil data playback / playbackspeed dari file TXT yang diproses
+local function extractPlaybackFromTxtFiles(targetFiles: {string}): {
+	byName: {[string]: {key: string, value: number}},
+	byId: {[string]: {key: string, value: number}},
+	orderedList: {{key: string, value: number}},
+}
+	local byName: {[string]: {key: string, value: number}} = {}
+	local byId: {[string]: {key: string, value: number}} = {}
+	local orderedList: {{key: string, value: number}} = {}
+
+	local txtCandidates: {string} = {}
+	local seenTxt: {[string]: boolean} = {}
+	local function addTxt(p: string)
+		local norm = normalizeWorkspaceRelPath(p)
+		if norm:lower():sub(-4) == ".txt" and not seenTxt[norm] then
+			seenTxt[norm] = true
+			table.insert(txtCandidates, norm)
 		end
 	end
-	return lookup
+
+	for _, tf in ipairs(targetFiles) do
+		addTxt(tf)
+	end
+	for _, tf in ipairs(scanFilesByPrefix({ "TXT/", "SPOOF/" }, ".txt")) do
+		addTxt(tf)
+	end
+
+	for _, relPath in ipairs(txtCandidates) do
+		local raw = loadTextFile(relPath)
+		if raw and trim(raw) ~= "" then
+			-- Cek nama field asli di TXT (playbackspeed atau playback)
+			local fieldKey = raw:match("[Pp][Ll][Aa][Yy][Bb][Aa][Cc][Kk][Ss][Pp][Ee][Ee][Dd]") and "playbackspeed" or "playback"
+
+			for block in raw:gmatch("{(.-)}%s*,?") do
+				local sName = block:match('%["SongName"%]%s*=%s*"(.-)"') or block:match("%[%\"SongName\"%]%s*=%s*'(.-)'")
+				local pbNum = tonumber(block:match('%["PlaybackSpeed"%]%s*=%s*([%d%.]+)'))
+				if pbNum then
+					local rec = { key = fieldKey, value = pbNum }
+					table.insert(orderedList, rec)
+					if sName then
+						byName[sanitizeFileName(sName):lower()] = rec
+					end
+					for sid in block:gmatch("(%d+)") do
+						if #sid >= 4 then
+							byId[sid] = rec
+						end
+					end
+				end
+			end
+
+			local curName: string? = nil
+			local curId: string? = nil
+			local curRec: {key: string, value: number}? = nil
+			local function flushRec()
+				if curRec then
+					table.insert(orderedList, curRec)
+					if curName and trim(curName) ~= "" then
+						byName[sanitizeFileName(curName):lower()] = curRec
+					end
+					if curId and curId ~= "" then
+						byId[curId] = curRec
+					end
+				end
+				curName = nil
+				curId = nil
+				curRec = nil
+			end
+
+			for rawLine in (raw .. "\n"):gmatch("(.-)\r?\n") do
+				local line = trim(rawLine)
+				if line == "" then
+					flushRec()
+				else
+					local nVal = line:match("^[Nn][Aa][Mm][Aa]%s*:%s*(.+)$") or line:match("^[Ss][Oo][Nn][Gg]%s*[Nn][Aa][Mm][Ee]%s*:%s*(.+)$")
+					local iVal = line:match("^[Ss][Oo][Nn][Gg]%s*[Ii][Dd]%s*:%s*(%d+)") or line:match("^[Ii][Dd]%s*:%s*(%d+)")
+					local psVal = line:match("^[Pp][Ll][Aa][Yy][Bb][Aa][Cc][Kk][Ss][Pp][Ee][Ee][Dd]%s*:%s*([%d%.]+)")
+					local pbVal = line:match("^[Pp][Ll][Aa][Yy][Bb][Aa][Cc][Kk]%s*:%s*([%d%.]+)")
+					if nVal then
+						if curRec then flushRec() end
+						curName = trim(nVal)
+					elseif iVal then
+						curId = iVal
+					elseif psVal then
+						curRec = { key = "playbackspeed", value = tonumber(psVal) or 1.0 }
+					elseif pbVal then
+						curRec = { key = "playback", value = tonumber(pbVal) or 1.0 }
+					end
+				end
+			end
+			flushRec()
+		end
+	end
+
+	return {
+		byName = byName,
+		byId = byId,
+		orderedList = orderedList,
+	}
 end
 
 local function parseIds(raw: string): {string}
@@ -709,10 +786,10 @@ local function fetchUniverseInfo(universeId: string, cookieVal: string?): string
 	}, "\n")
 end
 
--- Deteksi format upload otomatis berdasarkan ekstensi file / tipe asset
-local function detectAssetUploadSpec(filename: string, requestedType: string): (string, string)
+-- Deteksi format upload otomatis berdasarkan jenis file / asset
+local function detectAssetFormatByFile(filename: string, manualType: string): (string, string)
 	local low = filename:lower()
-	local reqLow = trim(requestedType):lower()
+	local manLow = trim(manualType):lower()
 
 	if low:sub(-4) == ".mp3" then
 		return "Audio", "audio/mpeg"
@@ -721,7 +798,7 @@ local function detectAssetUploadSpec(filename: string, requestedType: string): (
 	elseif low:sub(-4) == ".wav" then
 		return "Audio", "audio/wav"
 	elseif low:sub(-5) == ".rbxm" or low:sub(-5) == ".rbxmx" then
-		if reqLow == "animation" or reqLow == "anim" then
+		if manLow == "animation" or manLow == "anim" then
 			return "Animation", "application/octet-stream"
 		end
 		return "Model", "application/octet-stream"
@@ -730,20 +807,21 @@ local function detectAssetUploadSpec(filename: string, requestedType: string): (
 	elseif low:sub(-4) == ".jpg" or low:sub(-5) == ".jpeg" then
 		return "Decal", "image/jpeg"
 	elseif low:sub(-4) == ".lua" or low:sub(-5) == ".luau" then
-		return (reqLow ~= "" and reqLow ~= "model") and requestedType or "Model", "text/plain"
+		local luaAssetType = (manLow ~= "" and manLow ~= "auto" and manLow ~= "model") and manualType or "Model"
+		return luaAssetType, "text/plain"
 	end
 
-	if reqLow == "audio" or reqLow == "suara" then
+	if manLow == "audio" or manLow == "suara" then
 		return "Audio", "audio/mpeg"
-	elseif reqLow == "animation" or reqLow == "anim" then
+	elseif manLow == "animation" or manLow == "anim" then
 		return "Animation", "application/octet-stream"
-	elseif reqLow == "decal" or reqLow == "stiker" or reqLow == "image" then
+	elseif manLow == "decal" or manLow == "stiker" or manLow == "image" then
 		return "Decal", "image/png"
 	end
 	return "Model", "application/octet-stream"
 end
 
-local function buildMultipartAssetBody(requestJson: string, payloadContent: string, filename: string, fileMime: string)
+local function buildMultipartAssetBody(requestJson: string, payloadContent: string, filename: string, mimeType: string)
 	local boundary = "----IkyyStudioBoundary" .. tostring(os.time()) .. tostring(math.random(1000, 9999))
 	local safeFilename = sanitizeFileName(filename):gsub('"', "_")
 	local crlf = string.char(13, 10)
@@ -754,7 +832,7 @@ local function buildMultipartAssetBody(requestJson: string, payloadContent: stri
 		requestJson .. crlf,
 		"--" .. boundary .. crlf,
 		'Content-Disposition: form-data; name="fileContent"; filename="' .. safeFilename .. '"' .. crlf,
-		"Content-Type: " .. fileMime .. crlf .. crlf,
+		"Content-Type: " .. mimeType .. crlf .. crlf,
 		payloadContent .. crlf,
 		"--" .. boundary .. "--" .. crlf,
 	}
@@ -766,11 +844,11 @@ local function extractUploadedAssetId(bodyText: string): string
 		return HttpService:JSONDecode(bodyText)
 	end)
 	if okDec and type(decoded) == "table" then
-		if type(decoded.assetId) == "string" or type(decoded.assetId) == "number" then
+		if decoded.assetId ~= nil then
 			local m = tostring(decoded.assetId):match("%d+")
 			if m then return m end
 		end
-		if type(decoded.id) == "string" or type(decoded.id) == "number" then
+		if decoded.id ~= nil then
 			local m = tostring(decoded.id):match("%d+")
 			if m then return m end
 		end
@@ -1568,7 +1646,7 @@ BersihkanBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- HALAMAN 2: UPLOAD ASSET (+ 2 CONSOLE: PROSES & JSON HASIL)
+-- HALAMAN 2: UPLOAD ASSET (2 CONSOLE: PROSES + JSON HASIL)
 -- ==========================================
 local UploadPage = Instance.new("Frame")
 UploadPage.Size = UDim2.fromScale(1, 1)
@@ -1611,7 +1689,7 @@ SelectAllFilesBtn.Parent = UploadPage
 Instance.new("UICorner", SelectAllFilesBtn).CornerRadius = UDim.new(0, 5)
 
 local UploadNameBox = Instance.new("TextBox")
-UploadNameBox.Size = UDim2.new(0.5, -15, 0, 19)
+UploadNameBox.Size = UDim2.new(0.5, -15, 0, 18)
 UploadNameBox.Position = UDim2.new(0, 12, 0, 20)
 UploadNameBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 UploadNameBox.PlaceholderText = "Nama Asset (otomatis jika kosong)"
@@ -1625,7 +1703,7 @@ UploadNameBox.Parent = UploadPage
 Instance.new("UICorner", UploadNameBox).CornerRadius = UDim.new(0, 5)
 
 local UploadTypeBox = Instance.new("TextBox")
-UploadTypeBox.Size = UDim2.new(0.5, -15, 0, 19)
+UploadTypeBox.Size = UDim2.new(0.5, -15, 0, 18)
 UploadTypeBox.Position = UDim2.new(0.5, 3, 0, 20)
 UploadTypeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 UploadTypeBox.PlaceholderText = "Auto / Model / Audio / Animation / Decal"
@@ -1639,8 +1717,8 @@ UploadTypeBox.Parent = UploadPage
 Instance.new("UICorner", UploadTypeBox).CornerRadius = UDim.new(0, 5)
 
 local UploadCreatorBox = Instance.new("TextBox")
-UploadCreatorBox.Size = UDim2.new(0.5, -15, 0, 19)
-UploadCreatorBox.Position = UDim2.new(0, 12, 0, 41)
+UploadCreatorBox.Size = UDim2.new(0.5, -15, 0, 18)
+UploadCreatorBox.Position = UDim2.new(0, 12, 0, 40)
 UploadCreatorBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 UploadCreatorBox.PlaceholderText = "Creator ID"
 UploadCreatorBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
@@ -1653,8 +1731,8 @@ UploadCreatorBox.Parent = UploadPage
 Instance.new("UICorner", UploadCreatorBox).CornerRadius = UDim.new(0, 5)
 
 local UploadOwnerModeBox = Instance.new("TextBox")
-UploadOwnerModeBox.Size = UDim2.new(0.5, -15, 0, 19)
-UploadOwnerModeBox.Position = UDim2.new(0.5, 3, 0, 41)
+UploadOwnerModeBox.Size = UDim2.new(0.5, -15, 0, 18)
+UploadOwnerModeBox.Position = UDim2.new(0.5, 3, 0, 40)
 UploadOwnerModeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 UploadOwnerModeBox.PlaceholderText = "user atau group"
 UploadOwnerModeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
@@ -1668,8 +1746,8 @@ Instance.new("UICorner", UploadOwnerModeBox).CornerRadius = UDim.new(0, 5)
 
 local SpoofFileListFrame = Instance.new("ScrollingFrame")
 SpoofFileListFrame.Name = "SpoofFileListFrame"
-SpoofFileListFrame.Size = UDim2.new(1, -24, 0, 42)
-SpoofFileListFrame.Position = UDim2.new(0, 12, 0, 62)
+SpoofFileListFrame.Size = UDim2.new(1, -24, 0, 40)
+SpoofFileListFrame.Position = UDim2.new(0, 12, 0, 60)
 SpoofFileListFrame.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
 SpoofFileListFrame.BorderSizePixel = 0
 SpoofFileListFrame.ScrollBarThickness = 3
@@ -1709,7 +1787,7 @@ local selectedSpoofRelPath: string? = nil
 
 local UploadPayloadBox = Instance.new("TextBox")
 UploadPayloadBox.Size = UDim2.new(1, -24, 0, 18)
-UploadPayloadBox.Position = UDim2.new(0, 12, 0, 106)
+UploadPayloadBox.Position = UDim2.new(0, 12, 0, 102)
 UploadPayloadBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 UploadPayloadBox.PlaceholderText = "File terpilih (1 file = single, >1 file = massal)"
 UploadPayloadBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
@@ -1723,7 +1801,7 @@ Instance.new("UICorner", UploadPayloadBox).CornerRadius = UDim.new(0, 5)
 
 local UploadActionBtn = Instance.new("TextButton")
 UploadActionBtn.Size = UDim2.new(1, -24, 0, 20)
-UploadActionBtn.Position = UDim2.new(0, 12, 0, 126)
+UploadActionBtn.Position = UDim2.new(0, 12, 0, 122)
 UploadActionBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
 UploadActionBtn.Text = "⬆  UPLOAD ASSET"
 UploadActionBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1732,10 +1810,9 @@ UploadActionBtn.Font = Enum.Font.GothamBold
 UploadActionBtn.Parent = UploadPage
 Instance.new("UICorner", UploadActionBtn).CornerRadius = UDim.new(0, 6)
 
--- Progress Bar Upload
 local uploadBar = Instance.new("Frame")
 uploadBar.Size = UDim2.new(1, -24, 0, 3)
-uploadBar.Position = UDim2.new(0, 12, 0, 148)
+uploadBar.Position = UDim2.new(0, 12, 0, 144)
 uploadBar.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
 uploadBar.BorderSizePixel = 0
 uploadBar.Parent = UploadPage
@@ -1751,8 +1828,8 @@ Instance.new("UICorner", uploadFill).CornerRadius = UDim.new(1, 0)
 -- Console 1: Proses Upload
 local uploadProcScroll = Instance.new("ScrollingFrame")
 uploadProcScroll.Name = "UploadProcessConsole"
-uploadProcScroll.Size = UDim2.new(1, -24, 0, 38)
-uploadProcScroll.Position = UDim2.new(0, 12, 0, 153)
+uploadProcScroll.Size = UDim2.new(1, -24, 0, 40)
+uploadProcScroll.Position = UDim2.new(0, 12, 0, 149)
 uploadProcScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
 uploadProcScroll.BorderSizePixel = 0
 uploadProcScroll.ScrollBarThickness = 2
@@ -1765,7 +1842,7 @@ upProcStroke.Color = Color3.fromRGB(48, 44, 74)
 upProcStroke.Thickness = 1
 
 local uploadProcBox = Instance.new("TextBox")
-uploadProcBox.Size = UDim2.new(1, -10, 0, 34)
+uploadProcBox.Size = UDim2.new(1, -10, 0, 36)
 uploadProcBox.AutomaticSize = Enum.AutomaticSize.Y
 uploadProcBox.Position = UDim2.new(0, 5, 0, 2)
 uploadProcBox.BackgroundTransparency = 1
@@ -1786,8 +1863,8 @@ uploadProcBox.Parent = uploadProcScroll
 -- Console 2: Hasil JSON Upload + Tombol Copy
 local uploadJsonScroll = Instance.new("ScrollingFrame")
 uploadJsonScroll.Name = "UploadJsonConsole"
-uploadJsonScroll.Size = UDim2.new(1, -24, 0, 64)
-uploadJsonScroll.Position = UDim2.new(0, 12, 0, 193)
+uploadJsonScroll.Size = UDim2.new(1, -24, 0, 68)
+uploadJsonScroll.Position = UDim2.new(0, 12, 0, 191)
 uploadJsonScroll.BackgroundColor3 = Color3.fromRGB(11, 10, 17)
 uploadJsonScroll.BorderSizePixel = 0
 uploadJsonScroll.ScrollBarThickness = 3
@@ -1800,7 +1877,7 @@ upJsonStroke.Color = Color3.fromRGB(64, 56, 102)
 upJsonStroke.Thickness = 1
 
 local uploadJsonBox = Instance.new("TextBox")
-uploadJsonBox.Size = UDim2.new(1, -54, 0, 60)
+uploadJsonBox.Size = UDim2.new(1, -54, 0, 64)
 uploadJsonBox.AutomaticSize = Enum.AutomaticSize.Y
 uploadJsonBox.Position = UDim2.new(0, 6, 0, 3)
 uploadJsonBox.BackgroundTransparency = 1
@@ -1841,7 +1918,7 @@ copyUploadJsonBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
-local function setUploadState(state: "idle" | "working" | "ok" | "err", ratio: number, procText: string?, jsonText: string?)
+local function setUploadConsoles(state: "idle" | "working" | "ok" | "err", ratio: number, procText: string?, jsonText: string?)
 	local clamped = math.clamp(ratio, 0, 1)
 	if state == "idle" then
 		uploadFill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
@@ -1935,10 +2012,10 @@ local function renderSpoofFileList(files: {string})
 				local baseOnly = relFile:match("([^/]+)$") or relFile
 				UploadNameBox.Text = baseOnly:gsub("%.[^%.]+$", "")
 			end
-			local autoType = select(1, detectAssetUploadSpec(relFile, "Auto"))
+			local autoType = select(1, detectAssetFormatByFile(relFile, "Auto"))
 			UploadTypeBox.Text = autoType
 			renderSpoofFileList(files)
-			setUploadState("ok", 1, "Dipilih: " .. CONFIG.WorkspaceRoot .. "/" .. relFile .. " (Type: " .. autoType .. ")", nil)
+			setUploadConsoles("ok", 1, "Dipilih: " .. CONFIG.WorkspaceRoot .. "/" .. relFile .. " [" .. autoType .. "]", nil)
 		end)
 	end
 end
@@ -1947,10 +2024,10 @@ ScanSpoofBtn.MouseButton1Click:Connect(function()
 	local foundFiles = scanFilesByPrefix({ "SPOOF/" }, nil)
 	renderSpoofFileList(foundFiles)
 	if #foundFiles > 0 then
-		setUploadState("ok", 1, "Ditemukan " .. tostring(#foundFiles) .. " file di SPOOF.", nil)
+		setUploadConsoles("ok", 1, "Ditemukan " .. tostring(#foundFiles) .. " file di SPOOF.", nil)
 		notify("Scan SPOOF", tostring(#foundFiles) .. " file ditemukan.")
 	else
-		setUploadState("err", 0, "Tidak ada file ditemukan di folder SPOOF.", nil)
+		setUploadConsoles("err", 0, "Tidak ada file ditemukan di folder SPOOF.", nil)
 		notify("Scan SPOOF", "Folder SPOOF kosong.")
 	end
 end)
@@ -1958,7 +2035,7 @@ end)
 SelectAllFilesBtn.MouseButton1Click:Connect(function()
 	local listToSelect = (#scannedSpoofFiles > 0) and scannedSpoofFiles or scanFilesByPrefix({ "SPOOF/" }, nil)
 	if #listToSelect == 0 then
-		setUploadState("err", 0, "Tidak ada file di folder SPOOF untuk dipilih.", nil)
+		setUploadConsoles("err", 0, "Tidak ada file di folder SPOOF untuk dipilih.", nil)
 		notify("Select All", "Folder SPOOF kosong.")
 		return
 	end
@@ -1966,7 +2043,7 @@ SelectAllFilesBtn.MouseButton1Click:Connect(function()
 	selectedSpoofRelPath = listToSelect[1]
 	UploadPayloadBox.Text = table.concat(listToSelect, ", ")
 	renderSpoofFileList(listToSelect)
-	setUploadState("ok", 1, "Semua file dipilih (" .. tostring(#listToSelect) .. " file). Klik UPLOAD ASSET untuk memproses.", nil)
+	setUploadConsoles("ok", 1, "Semua file dipilih (" .. tostring(#listToSelect) .. " file). Klik UPLOAD ASSET untuk memproses.", nil)
 	notify("Select All", tostring(#listToSelect) .. " file dipilih.")
 end)
 
@@ -2746,7 +2823,7 @@ AboutText.Text = table.concat({
 	"",
 	"Fitur Utama:",
 	"• Spoof Asset : Spoof ID satuan/massal & file .txt (Audio & RBXM) dengan JSON hasil.",
-	"• Upload Asset: Scan folder SPOOF, Select / Select All file, upload otomatis, & console proses + JSON hasil.",
+	"• Upload Asset: Scan folder SPOOF, Select / Select All file, upload otomatis, & 2 console (Proses + Hasil JSON).",
 	"• Place & Perm: Buat place, muat ID dari file TXT (id,id,id), grant permissions pakai API Key terpisah, & tampilkan info lengkap Universe.",
 	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
 	"• Setting     : Kelola .ROBLOSECURITY cookie dan Open Cloud API Key.",
@@ -3041,14 +3118,14 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 	if isUploading then return end
 	local _, apiKey = syncCredentialsFromInputs()
 	if apiKey == "" then
-		setUploadState("err", 0, "API Key (x-api-key) belum diisi di Setting.", "[]")
+		setUploadConsoles("err", 0, "API Key (x-api-key) belum diisi di Setting.", "[]")
 		notify("Upload", "API Key kosong.")
 		return
 	end
 
 	local customAssetName = sanitizeJsonText(UploadNameBox.Text)
-	local requestedAssetType = sanitizeJsonText(UploadTypeBox.Text)
-	if requestedAssetType == "" then requestedAssetType = "Auto" end
+	local requestedType = sanitizeJsonText(UploadTypeBox.Text)
+	if requestedType == "" then requestedType = "Auto" end
 	local creatorIdNum = tonumber(trim(UploadCreatorBox.Text):match("%d+")) or LocalPlayer.UserId
 	local isGroup = (trim(UploadOwnerModeBox.Text):lower() == "group")
 	local creatorObj = isGroup and { groupId = creatorIdNum } or { userId = creatorIdNum }
@@ -3069,16 +3146,16 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 	end
 
 	if #targets == 0 then
-		setUploadState("err", 0, "Pilih file terlebih dahulu (SCAN -> Select / Select All).", "[]")
+		setUploadConsoles("err", 0, "Pilih file terlebih dahulu (SCAN -> Select / Select All).", "[]")
 		notify("Upload", "Belum ada file dipilih.")
 		return
 	end
 
 	local isMassUpload = (#targets > 1)
-	local txtPlaybackMap = isMassUpload and buildTxtPlaybackLookup() or {}
+	local txtPlaybackData = isMassUpload and extractPlaybackFromTxtFiles(targets) or nil
 
 	isUploading = true
-	setUploadState("working", 0.15, "Memulai upload " .. tostring(#targets) .. " file...", "[]")
+	setUploadConsoles("working", 0.15, "Memulai upload " .. tostring(#targets) .. " file...", "[]")
 
 	task.spawn(function()
 		local sukses, gagal = 0, 0
@@ -3086,23 +3163,23 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 		local resultRows: {{[string]: any}} = {}
 
 		for idx, itemTarget in ipairs(targets) do
-			local loadedContent = loadTextFile(itemTarget)
-			if not loadedContent or loadedContent == "" then
+			local loadedFileData = loadTextFile(itemTarget)
+			if not loadedFileData or loadedFileData == "" then
 				gagal += 1
 				table.insert(procLines, string.format("[%d/%d] %s Gagal: File tidak ditemukan atau kosong.", idx, #targets, itemTarget))
-				setUploadState("err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
+				setUploadConsoles("err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
 				continue
 			end
 
-			local baseFileName = itemTarget:match("([^/\\]+)$") or itemTarget
-			local stemName = baseFileName:gsub("%.[^%.]+$", "")
+			local originalFileName = itemTarget:match("([^/\\]+)$") or itemTarget
+			local stemName = originalFileName:gsub("%.[^%.]+$", "")
 			local displayName = (not isMassUpload and customAssetName ~= "") and customAssetName or stemName
 			displayName = sanitizeJsonText(displayName)
 			if displayName == "" then
 				displayName = stemName
 			end
 
-			local autoAssetType, fileMime = detectAssetUploadSpec(baseFileName, requestedAssetType)
+			local autoAssetType, mimeType = detectAssetFormatByFile(originalFileName, requestedType)
 			local metaTable = {
 				assetType = autoAssetType,
 				displayName = displayName:sub(1, 50),
@@ -3113,20 +3190,20 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 			local okMeta, requestPayloadJson = safeJsonEncode(metaTable)
 			if not okMeta then
 				gagal += 1
-				table.insert(procLines, string.format("[%d/%d] %s Gagal metadata: %s", idx, #targets, baseFileName, requestPayloadJson))
-				setUploadState("err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
+				table.insert(procLines, string.format("[%d/%d] %s Gagal metadata: %s", idx, #targets, originalFileName, requestPayloadJson))
+				setUploadConsoles("err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
 				continue
 			end
 
 			local multipartBody, contentTypeHeader = buildMultipartAssetBody(
 				requestPayloadJson,
-				loadedContent,
-				baseFileName,
-				fileMime
+				loadedFileData,
+				originalFileName,
+				mimeType
 			)
 
-			table.insert(procLines, string.format("[%d/%d] Mengunggah %s (%s)...", idx, #targets, baseFileName, autoAssetType))
-			setUploadState("working", (idx - 0.5) / #targets, table.concat(procLines, "\n"), nil)
+			table.insert(procLines, string.format("[%d/%d] Mengunggah %s (%s)...", idx, #targets, originalFileName, autoAssetType))
+			setUploadConsoles("working", (idx - 0.5) / #targets, table.concat(procLines, "\n"), nil)
 
 			local res, ok, info = apiRequest({
 				Url = "https://apis.roblox.com/assets/v1/assets",
@@ -3148,29 +3225,33 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 					uploadedId = "-"
 				end
 
-				procLines[#procLines] = string.format("[%d/%d] %s OK -> ID: %s (%s)", idx, #targets, baseFileName, uploadedId, info)
+				procLines[#procLines] = string.format("[%d/%d] %s OK -> ID: %s (%s)", idx, #targets, originalFileName, uploadedId, info)
 
-				if isMassUpload then
-					local keyByStem = sanitizeFileName(stemName):lower()
-					local pbVal = txtPlaybackMap[keyByStem] or txtPlaybackMap[uploadedId:lower()] or 1.0
-					table.insert(resultRows, {
-						nama = baseFileName,
+				if isMassUpload and txtPlaybackData then
+					local matchedRec = txtPlaybackData.byName[sanitizeFileName(stemName):lower()]
+						or txtPlaybackData.byId[uploadedId]
+						or txtPlaybackData.orderedList[idx]
+					local pbKey = matchedRec and matchedRec.key or "playback"
+					local pbVal = matchedRec and matchedRec.value or 1.0
+					local rowObj: {[string]: any} = {
+						nama = originalFileName,
 						id = uploadedId,
-						playback = pbVal,
-					})
+					}
+					rowObj[pbKey] = pbVal
+					table.insert(resultRows, rowObj)
 				else
 					table.insert(resultRows, {
-						nama = baseFileName,
+						nama = originalFileName,
 						id = uploadedId,
 					})
 				end
 			else
 				gagal += 1
 				local shortErr = bodyStr:gsub("[%r\n]+", " "):sub(1, 120)
-				procLines[#procLines] = string.format("[%d/%d] %s Gagal (%s): %s", idx, #targets, baseFileName, info, shortErr)
+				procLines[#procLines] = string.format("[%d/%d] %s Gagal (%s): %s", idx, #targets, originalFileName, info, shortErr)
 			end
 
-			setUploadState((gagal == 0) and "working" or "err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
+			setUploadConsoles((gagal == 0) and "working" or "err", idx / #targets, table.concat(procLines, "\n"), formatStackedJson(resultRows))
 			if idx < #targets then
 				task.wait(0.5)
 			end
@@ -3181,7 +3262,7 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 		table.insert(procLines, string.format("Selesai: %d berhasil, %d gagal.", sukses, gagal))
 
 		local allOk = (sukses > 0 and gagal == 0)
-		setUploadState(allOk and "ok" or "err", 1, table.concat(procLines, "\n"), finalJson)
+		setUploadConsoles(allOk and "ok" or "err", 1, table.concat(procLines, "\n"), finalJson)
 		notify("Upload", string.format("Selesai: %d berhasil, %d gagal.", sukses, gagal))
 		isUploading = false
 	end)
