@@ -40,6 +40,8 @@ export type FontPreset = {
 	boldFont: Enum.Font,
 }
 
+export type JailMode = "OrbitHead" | "ShakePart" | "GravityThrow" | "PullToTarget" | "RopeBreak" | "AttackFall" | "CarryPart"
+
 local GUI_THEMES: {GuiTheme} = {
 	{
 		name = "Violet Neon",
@@ -96,6 +98,11 @@ local CONFIG = {
 	ActiveTab = "Music",
 	ThemeIndex = 1,
 	FontIndex = 1,
+	JailEnabled = false,
+	JailMode = "OrbitHead" :: JailMode,
+	JailSpeed = 2.5,
+	JailTargetUserId = 0,
+	JailAnchorLocked = false,
 }
 
 export type MusicTrack = {
@@ -851,7 +858,579 @@ do
 end
 
 -- ==========================================
--- HALAMAN 2: ABOUT CREATOR & TOOLS
+-- HALAMAN 2: JAIL (UNANCHORED PART SERVER-SIDE PHYSICS ACCESS)
+-- ==========================================
+local JailPage = Instance.new("Frame")
+JailPage.Size = UDim2.fromScale(1, 1)
+JailPage.BackgroundTransparency = 1
+JailPage.Visible = false
+JailPage.Parent = ContentArea
+tabPages["Jail"] = JailPage
+
+local JailTopRow = Instance.new("Frame")
+JailTopRow.Size = UDim2.new(1, -24, 0, 24)
+JailTopRow.Position = UDim2.new(0, 12, 0, 6)
+JailTopRow.BackgroundTransparency = 1
+JailTopRow.Parent = JailPage
+
+local JailSwitchBtn = Instance.new("TextButton")
+JailSwitchBtn.Size = UDim2.new(0.56, -4, 1, 0)
+JailSwitchBtn.Position = UDim2.new(0, 0, 0, 0)
+JailSwitchBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 50)
+JailSwitchBtn.Text = "⚡ JAIL: OFF"
+JailSwitchBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
+JailSwitchBtn.TextSize = 9
+JailSwitchBtn.Font = Enum.Font.GothamBold
+JailSwitchBtn.Parent = JailTopRow
+Instance.new("UICorner", JailSwitchBtn).CornerRadius = UDim.new(0, 6)
+
+local JailAnchorLockBtn = Instance.new("TextButton")
+JailAnchorLockBtn.Size = UDim2.new(0.44, -4, 1, 0)
+JailAnchorLockBtn.Position = UDim2.new(0.56, 4, 0, 0)
+JailAnchorLockBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
+JailAnchorLockBtn.Text = "🔒 Anchor Lock: OFF"
+JailAnchorLockBtn.TextColor3 = Color3.fromRGB(220, 218, 245)
+JailAnchorLockBtn.TextSize = 9
+JailAnchorLockBtn.Font = Enum.Font.GothamBold
+JailAnchorLockBtn.Parent = JailTopRow
+Instance.new("UICorner", JailAnchorLockBtn).CornerRadius = UDim.new(0, 6)
+
+local JailStatusLabel = Instance.new("TextLabel")
+JailStatusLabel.Size = UDim2.new(1, -24, 0, 12)
+JailStatusLabel.Position = UDim2.new(0, 12, 0, 32)
+JailStatusLabel.BackgroundTransparency = 1
+JailStatusLabel.Text = "Scan: 0 unanchored part • Mode: OrbitHead"
+JailStatusLabel.TextColor3 = Color3.fromRGB(150, 146, 182)
+JailStatusLabel.TextSize = 8
+JailStatusLabel.Font = Enum.Font.GothamMedium
+JailStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+JailStatusLabel.Parent = JailPage
+
+-- Slider Speed (0.5x - 6.0x, default 2.5x)
+local JailSpeedRow = Instance.new("Frame")
+JailSpeedRow.Size = UDim2.new(1, -24, 0, 18)
+JailSpeedRow.Position = UDim2.new(0, 12, 0, 46)
+JailSpeedRow.BackgroundTransparency = 1
+JailSpeedRow.Parent = JailPage
+
+local JailSpeedLabel = Instance.new("TextLabel")
+JailSpeedLabel.Size = UDim2.new(0, 84, 1, 0)
+JailSpeedLabel.BackgroundTransparency = 1
+JailSpeedLabel.Text = "🚀 Speed: 2.5x"
+JailSpeedLabel.TextColor3 = Color3.fromRGB(205, 202, 230)
+JailSpeedLabel.TextSize = 9
+JailSpeedLabel.Font = Enum.Font.GothamBold
+JailSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
+JailSpeedLabel.Parent = JailSpeedRow
+
+local JailSpeedBg = Instance.new("Frame")
+JailSpeedBg.Size = UDim2.new(1, -90, 0, 7)
+JailSpeedBg.Position = UDim2.new(0, 88, 0.5, -3)
+JailSpeedBg.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
+JailSpeedBg.BorderSizePixel = 0
+JailSpeedBg.Parent = JailSpeedRow
+Instance.new("UICorner", JailSpeedBg).CornerRadius = UDim.new(1, 0)
+
+local JailSpeedFill = Instance.new("Frame")
+JailSpeedFill.Size = UDim2.new(0.36, 0, 1, 0)
+JailSpeedFill.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+JailSpeedFill.BorderSizePixel = 0
+JailSpeedFill.Parent = JailSpeedBg
+Instance.new("UICorner", JailSpeedFill).CornerRadius = UDim.new(1, 0)
+
+local JailSpeedKnob = Instance.new("TextButton")
+JailSpeedKnob.Size = UDim2.fromOffset(12, 12)
+JailSpeedKnob.Position = UDim2.new(0.36, -6, 0.5, -6)
+JailSpeedKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+JailSpeedKnob.Text = ""
+JailSpeedKnob.AutoButtonColor = false
+JailSpeedKnob.Parent = JailSpeedBg
+Instance.new("UICorner", JailSpeedKnob).CornerRadius = UDim.new(1, 0)
+
+-- Pilihan Mode Akses (OrbitHead, ShakePart, GravityThrow, PullToTarget, RopeBreak, AttackFall, CarryPart)
+local JailModeGrid = Instance.new("Frame")
+JailModeGrid.Size = UDim2.new(1, -24, 0, 48)
+JailModeGrid.Position = UDim2.new(0, 12, 0, 67)
+JailModeGrid.BackgroundTransparency = 1
+JailModeGrid.Parent = JailPage
+
+local JailModeLayout = Instance.new("UIGridLayout")
+JailModeLayout.CellSize = UDim2.new(0.25, -4, 0, 22)
+JailModeLayout.CellPadding = UDim2.fromOffset(4, 4)
+JailModeLayout.SortOrder = Enum.SortOrder.LayoutOrder
+JailModeLayout.Parent = JailModeGrid
+
+local JAIL_MODES: {{id: JailMode, label: string}} = {
+	{ id = "OrbitHead", label = "🌀 Orbit" },
+	{ id = "ShakePart", label = "💥 Shake" },
+	{ id = "GravityThrow", label = "🎯 Throw" },
+	{ id = "PullToTarget", label = "🧲 Pull" },
+	{ id = "RopeBreak", label = "⛓ Rope" },
+	{ id = "AttackFall", label = "⬇ Fall" },
+	{ id = "CarryPart", label = "🧳 Carry" },
+}
+
+local modeButtons: {[JailMode]: TextButton} = {}
+for idx, m in ipairs(JAIL_MODES) do
+	local btn = Instance.new("TextButton")
+	btn.Text = m.label
+	btn.TextColor3 = Color3.fromRGB(220, 218, 245)
+	btn.TextSize = 8
+	btn.BackgroundColor3 = Color3.fromRGB(24, 23, 36)
+	btn.LayoutOrder = idx
+	btn.Parent = JailModeGrid
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+	modeButtons[m.id] = btn
+
+	btn.MouseButton1Click:Connect(function()
+		CONFIG.JailMode = m.id
+		applyThemeAndFont()
+	end)
+end
+
+-- List Pilihan User (Target Player)
+local JailTargetHeader = Instance.new("Frame")
+JailTargetHeader.Size = UDim2.new(1, -24, 0, 16)
+JailTargetHeader.Position = UDim2.new(0, 12, 0, 120)
+JailTargetHeader.BackgroundTransparency = 1
+JailTargetHeader.Parent = JailPage
+
+local JailTargetTitle = Instance.new("TextLabel")
+JailTargetTitle.Size = UDim2.new(0.75, 0, 1, 0)
+JailTargetTitle.BackgroundTransparency = 1
+JailTargetTitle.Text = "👤 Target User (Gravity Throw / Pull Target)"
+JailTargetTitle.TextColor3 = Color3.fromRGB(205, 202, 230)
+JailTargetTitle.TextSize = 9
+JailTargetTitle.Font = Enum.Font.GothamBold
+JailTargetTitle.TextXAlignment = Enum.TextXAlignment.Left
+JailTargetTitle.Parent = JailTargetHeader
+
+local RefreshUsersBtn = Instance.new("TextButton")
+RefreshUsersBtn.Size = UDim2.new(0.24, 0, 1, 0)
+RefreshUsersBtn.Position = UDim2.new(0.76, 0, 0, 0)
+RefreshUsersBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
+RefreshUsersBtn.Text = "↻ List"
+RefreshUsersBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
+RefreshUsersBtn.TextSize = 8
+RefreshUsersBtn.Font = Enum.Font.GothamBold
+RefreshUsersBtn.Parent = JailTargetHeader
+Instance.new("UICorner", RefreshUsersBtn).CornerRadius = UDim.new(0, 5)
+
+local UserListScroll = Instance.new("ScrollingFrame")
+UserListScroll.Size = UDim2.new(1, -24, 0, 114)
+UserListScroll.Position = UDim2.new(0, 12, 0, 139)
+UserListScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+UserListScroll.BorderSizePixel = 0
+UserListScroll.ScrollBarThickness = 3
+UserListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+UserListScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+UserListScroll.Parent = JailPage
+Instance.new("UICorner", UserListScroll).CornerRadius = UDim.new(0, 7)
+local UserListStroke = Instance.new("UIStroke", UserListScroll)
+UserListStroke.Color = Color3.fromRGB(48, 44, 74)
+UserListStroke.Thickness = 1
+
+local UserListLayout = Instance.new("UIListLayout")
+UserListLayout.Padding = UDim.new(0, 3)
+UserListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UserListLayout.Parent = UserListScroll
+
+local UserListPad = Instance.new("UIPadding")
+UserListPad.PaddingTop = UDim.new(0, 4)
+UserListPad.PaddingBottom = UDim.new(0, 4)
+UserListPad.PaddingLeft = UDim.new(0, 4)
+UserListPad.PaddingRight = UDim.new(0, 4)
+UserListPad.Parent = UserListScroll
+
+-- Logika Scan & Akses Unanchored Part (No Visual)
+local scannedUnanchoredParts: {BasePart} = {}
+local activeAttackedParts: {[BasePart]: boolean} = {}
+local lockedAnchoredParts: {[BasePart]: boolean} = {}
+
+local function getCharacterRoot(player: Player?): BasePart?
+	local plr = player or LocalPlayer
+	local char = plr.Character
+	if not char then return nil end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if hrp and hrp:IsA("BasePart") then
+		return hrp
+	end
+	local head = char:FindFirstChild("Head")
+	if head and head:IsA("BasePart") then
+		return head
+	end
+	return nil
+end
+
+local function isDescendantOfAnyCharacter(inst: Instance): boolean
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr.Character and inst:IsDescendantOf(plr.Character) then
+			return true
+		end
+	end
+	return false
+end
+
+local function isConstraintBindingPart(inst: Instance, part: BasePart): boolean
+	if inst:IsA("RopeConstraint") or inst:IsA("AlignPosition") or inst:IsA("AlignOrientation") or inst:IsA("RodConstraint") or inst:IsA("SpringConstraint") or inst:IsA("WeldConstraint") then
+		local c = inst :: any
+		local a0 = c.Attachment0
+		local a1 = c.Attachment1
+		local p0 = c.Part0
+		local p1 = c.Part1
+		if p0 == part or p1 == part then
+			return true
+		end
+		if (a0 and a0:IsDescendantOf(part)) or (a1 and a1:IsDescendantOf(part)) then
+			return true
+		end
+	end
+	return false
+end
+
+local function detachPartFromReturnPull(part: BasePart)
+	pcall(function()
+		for _, desc in ipairs(part:GetDescendants()) do
+			if desc:IsA("RopeConstraint") or desc:IsA("AlignPosition") or desc:IsA("AlignOrientation") or desc:IsA("RodConstraint") or desc:IsA("SpringConstraint") or desc:IsA("WeldConstraint") then
+				(desc :: any).Enabled = false
+				if desc:IsA("RopeConstraint") then
+					desc.Length = 0.01
+				end
+			end
+		end
+		for _, desc in ipairs(workspace:GetDescendants()) do
+			if isConstraintBindingPart(desc, part) then
+				(desc :: any).Enabled = false
+				if desc:IsA("RopeConstraint") then
+					desc.Length = 0.01
+				end
+			end
+		end
+	end)
+end
+
+local function scanUnanchoredParts()
+	local found: {BasePart} = {}
+	local root = getCharacterRoot(LocalPlayer)
+	local originPos = root and root.Position or Vector3.zero
+
+	for _, desc in ipairs(workspace:GetDescendants()) do
+		if desc:IsA("BasePart") and not desc.Anchored and not isDescendantOfAnyCharacter(desc) then
+			table.insert(found, desc)
+			if #found >= 48 then
+				break
+			end
+		end
+	end
+
+	table.sort(found, function(a: BasePart, b: BasePart): boolean
+		return (a.Position - originPos).Magnitude < (b.Position - originPos).Magnitude
+	end)
+
+	scannedUnanchoredParts = found
+end
+
+local function releasePartsToFall()
+	local dropBoost = 65 * CONFIG.JailSpeed
+	for _, part in ipairs(scannedUnanchoredParts) do
+		if part and part.Parent and part:IsA("BasePart") then
+			pcall(function()
+				part.Anchored = false
+				part.AssemblyLinearVelocity = Vector3.new(
+					math.random(-25, 25),
+					-dropBoost,
+					math.random(-25, 25)
+				)
+				part.AssemblyAngularVelocity = Vector3.new(25, 25, 25)
+			end)
+		end
+	end
+	for part, _ in pairs(activeAttackedParts) do
+		if part and part.Parent and part:IsA("BasePart") then
+			pcall(function()
+				part.Anchored = false
+				part.AssemblyLinearVelocity = Vector3.new(
+					math.random(-25, 25),
+					-dropBoost,
+					math.random(-25, 25)
+				)
+				part.AssemblyAngularVelocity = Vector3.new(25, 25, 25)
+			end)
+		end
+	end
+	table.clear(activeAttackedParts)
+	table.clear(scannedUnanchoredParts)
+end
+
+local function setAnchorLock(locked: boolean)
+	CONFIG.JailAnchorLocked = locked
+	if locked then
+		scanUnanchoredParts()
+		for _, part in ipairs(scannedUnanchoredParts) do
+			if part and part.Parent and not part.Anchored then
+				lockedAnchoredParts[part] = true
+				pcall(function()
+					part.Anchored = true
+				end)
+			end
+		end
+	else
+		for part, _ in pairs(lockedAnchoredParts) do
+			if part and part.Parent then
+				pcall(function()
+					part.Anchored = false
+				end)
+			end
+		end
+		table.clear(lockedAnchoredParts)
+	end
+	applyThemeAndFont()
+end
+
+local function renderUserList()
+	local theme = GUI_THEMES[CONFIG.ThemeIndex]
+	local fontPreset = FONT_PRESETS[CONFIG.FontIndex]
+
+	for _, child in ipairs(UserListScroll:GetChildren()) do
+		if child:IsA("TextButton") then
+			child:Destroy()
+		end
+	end
+
+	local others: {Player} = {}
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer then
+			table.insert(others, plr)
+		end
+	end
+
+	if CONFIG.JailTargetUserId == 0 and #others > 0 then
+		CONFIG.JailTargetUserId = others[1].UserId
+	end
+
+	if #others == 0 then
+		local emptyBtn = Instance.new("TextButton")
+		emptyBtn.Size = UDim2.new(1, -4, 0, 22)
+		emptyBtn.BackgroundColor3 = Color3.fromRGB(22, 21, 34)
+		emptyBtn.Text = "  Tidak ada player lain di server"
+		emptyBtn.TextColor3 = Color3.fromRGB(165, 162, 190)
+		emptyBtn.TextSize = 8
+		emptyBtn.Font = fontPreset.font
+		emptyBtn.TextXAlignment = Enum.TextXAlignment.Left
+		emptyBtn.LayoutOrder = 1
+		emptyBtn.Parent = UserListScroll
+		Instance.new("UICorner", emptyBtn).CornerRadius = UDim.new(0, 5)
+		return
+	end
+
+	for idx, plr in ipairs(others) do
+		local selected = (plr.UserId == CONFIG.JailTargetUserId)
+		local uBtn = Instance.new("TextButton")
+		uBtn.Size = UDim2.new(1, -4, 0, 22)
+		uBtn.BackgroundColor3 = selected and theme.accentSoft or Color3.fromRGB(22, 21, 34)
+		uBtn.Text = string.format("  %s (@%s)", plr.DisplayName, plr.Name)
+		uBtn.TextColor3 = selected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 188, 215)
+		uBtn.TextSize = 9
+		uBtn.Font = selected and fontPreset.boldFont or fontPreset.font
+		uBtn.TextXAlignment = Enum.TextXAlignment.Left
+		uBtn.TextTruncate = Enum.TextTruncate.AtEnd
+		uBtn.LayoutOrder = idx
+		uBtn.Parent = UserListScroll
+		Instance.new("UICorner", uBtn).CornerRadius = UDim.new(0, 5)
+
+		uBtn.MouseButton1Click:Connect(function()
+			CONFIG.JailTargetUserId = plr.UserId
+			renderUserList()
+		end)
+	end
+end
+
+local function applyJailSpeedFromRatio(ratio: number)
+	local clamped = math.clamp(ratio, 0, 1)
+	local minSpeed = 0.5
+	local maxSpeed = 6.0
+	local speedVal = minSpeed + (clamped * (maxSpeed - minSpeed))
+	CONFIG.JailSpeed = math.floor(speedVal * 10 + 0.5) / 10
+	local displayRatio = (CONFIG.JailSpeed - minSpeed) / (maxSpeed - minSpeed)
+	JailSpeedFill.Size = UDim2.new(displayRatio, 0, 1, 0)
+	JailSpeedKnob.Position = UDim2.new(displayRatio, -6, 0.5, -6)
+	JailSpeedLabel.Text = "🚀 Speed: " .. string.format("%.1f", CONFIG.JailSpeed) .. "x"
+end
+
+JailSwitchBtn.MouseButton1Click:Connect(function()
+	CONFIG.JailEnabled = not CONFIG.JailEnabled
+	if CONFIG.JailEnabled then
+		scanUnanchoredParts()
+	else
+		releasePartsToFall()
+	end
+	applyThemeAndFont()
+end)
+
+JailAnchorLockBtn.MouseButton1Click:Connect(function()
+	setAnchorLock(not CONFIG.JailAnchorLocked)
+end)
+
+RefreshUsersBtn.MouseButton1Click:Connect(function()
+	renderUserList()
+end)
+
+Players.PlayerAdded:Connect(function()
+	renderUserList()
+end)
+
+Players.PlayerRemoving:Connect(function(plr: Player)
+	if plr.UserId == CONFIG.JailTargetUserId then
+		CONFIG.JailTargetUserId = 0
+	end
+	renderUserList()
+end)
+
+-- Drag slider Jail Speed kanan-kiri
+do
+	local draggingSpeed = false
+	local function updateSpeedFromInput(inputPos: Vector2)
+		local absPos = JailSpeedBg.AbsolutePosition.X
+		local absW = math.max(1, JailSpeedBg.AbsoluteSize.X)
+		local ratio = math.clamp((inputPos.X - absPos) / absW, 0, 1)
+		applyJailSpeedFromRatio(ratio)
+	end
+
+	JailSpeedBg.InputBegan:Connect(function(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingSpeed = true
+			updateSpeedFromInput(input.Position)
+		end
+	end)
+
+	JailSpeedKnob.InputBegan:Connect(function(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingSpeed = true
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input: InputObject)
+		if not draggingSpeed then return end
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			updateSpeedFromInput(input.Position)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingSpeed = false
+		end
+	end)
+end
+
+-- Loop eksekusi fisika JAIL (Server-side physics replication, no visual)
+do
+	local jailClock = 0
+	local scanAccum = 0
+
+	local function getSelectedTargetPlayer(): Player?
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr.UserId == CONFIG.JailTargetUserId and plr ~= LocalPlayer then
+				return plr
+			end
+		end
+		return nil
+	end
+
+	RunService.Heartbeat:Connect(function(dt: number)
+		jailClock += dt
+		if not CONFIG.JailEnabled then
+			return
+		end
+
+		scanAccum += dt
+		if scanAccum >= 0.45 then
+			scanAccum = 0
+			scanUnanchoredParts()
+		end
+
+		local myRoot = getCharacterRoot(LocalPlayer)
+		local targetPlr = getSelectedTargetPlayer()
+		local targetRoot = getCharacterRoot(targetPlr) or myRoot
+		local speed = CONFIG.JailSpeed
+		local activeCount = #scannedUnanchoredParts
+
+		for i, part in ipairs(scannedUnanchoredParts) do
+			if part and part.Parent and part:IsA("BasePart") and not part.Anchored then
+				if not activeAttackedParts[part] then
+					activeAttackedParts[part] = true
+					detachPartFromReturnPull(part)
+				end
+
+				local mode = CONFIG.JailMode
+				if mode == "OrbitHead" then
+					local center = (myRoot and myRoot.Position or Vector3.zero) + Vector3.new(0, 5.5, 0)
+					local angle = jailClock * (3.2 * speed) + (i * ((math.pi * 2) / math.max(1, activeCount)))
+					local radius = 3.5 + ((i % 3) * 1.1)
+					local desiredPos = center + Vector3.new(math.cos(angle) * radius, math.sin(angle * 1.5) * 0.6, math.sin(angle) * radius)
+					local delta = desiredPos - part.Position
+					part.AssemblyLinearVelocity = delta * (12 * speed)
+					part.AssemblyAngularVelocity = Vector3.new(0, 14 * speed, 0)
+				elseif mode == "ShakePart" then
+					local shakeVec = Vector3.new(
+						math.sin(jailClock * 42 * speed + i) * 28 * speed,
+						math.cos(jailClock * 37 * speed + i * 2) * 28 * speed,
+						math.sin(jailClock * 45 * speed + i * 3) * 28 * speed
+					)
+					part.AssemblyLinearVelocity = shakeVec
+					part.AssemblyAngularVelocity = Vector3.new(26 * speed, -24 * speed, 28 * speed)
+				elseif mode == "GravityThrow" then
+					local anchorPos = targetRoot and targetRoot.Position or Vector3.zero
+					local toTarget = (anchorPos + Vector3.new(0, 2.5, 0)) - part.Position
+					local dir = toTarget.Magnitude > 0.05 and toTarget.Unit or Vector3.new(0, 1, 0)
+					part.AssemblyLinearVelocity = (dir * (48 * speed)) + Vector3.new(0, 18 * speed, 0)
+					part.AssemblyAngularVelocity = Vector3.new(18 * speed, 18 * speed, 18 * speed)
+				elseif mode == "PullToTarget" then
+					local anchorPos = targetRoot and targetRoot.Position or Vector3.zero
+					local angle = jailClock * (2.2 * speed) + (i * 0.7)
+					local desiredPos = anchorPos + Vector3.new(math.cos(angle) * 2.2, 1.5 + (i % 3), math.sin(angle) * 2.2)
+					local delta = desiredPos - part.Position
+					part.AssemblyLinearVelocity = delta * (14 * speed)
+				elseif mode == "RopeBreak" then
+					local pullDir = (myRoot and (myRoot.Position - part.Position) or Vector3.new(0, 12, 0))
+					local unitDir = pullDir.Magnitude > 0.1 and pullDir.Unit or Vector3.new(0, 1, 0)
+					local yank = unitDir * (75 * speed) + Vector3.new(
+						math.sin(jailClock * 55 * speed + i) * 45 * speed,
+						40 * speed,
+						math.cos(jailClock * 55 * speed + i) * 45 * speed
+					)
+					part.AssemblyLinearVelocity = yank
+					part.AssemblyAngularVelocity = Vector3.new(45 * speed, 45 * speed, 45 * speed)
+				elseif mode == "AttackFall" then
+					local slamDir = Vector3.new(
+						math.sin(jailClock * 48 * speed + i) * 35 * speed,
+						-95 * speed,
+						math.cos(jailClock * 48 * speed + i) * 35 * speed
+					)
+					part.AssemblyLinearVelocity = slamDir
+					part.AssemblyAngularVelocity = Vector3.new(55 * speed, -45 * speed, 55 * speed)
+				elseif mode == "CarryPart" then
+					local baseCf = myRoot and myRoot.CFrame or CFrame.new()
+					local col = (i - 1) % 3 - 1
+					local row = math.floor((i - 1) / 3) % 3
+					local carryPos = (baseCf * CFrame.new(col * 2.2, 1.2 + (row * 1.6), -4.5)).Position
+					local toCarry = carryPos - part.Position
+					part.AssemblyLinearVelocity = toCarry * (16 * speed)
+					part.AssemblyAngularVelocity = Vector3.zero
+				end
+			end
+		end
+
+		local targetName = targetPlr and ("@" .. targetPlr.Name) or "Self"
+		JailStatusLabel.Text = string.format("ON • %d part • %s • Target: %s", activeCount, CONFIG.JailMode, targetName)
+	end)
+end
+
+renderUserList()
+applyJailSpeedFromRatio((CONFIG.JailSpeed - 0.5) / (6.0 - 0.5))
+
+-- ==========================================
+-- HALAMAN 3: ABOUT CREATOR & TOOLS
 -- ==========================================
 local AboutPage = Instance.new("Frame")
 AboutPage.Size = UDim2.fromScale(1, 1)
@@ -897,6 +1476,7 @@ AboutText.Text = table.concat({
 	"",
 	"Fitur Aktif:",
 	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
+	"• JAIL        : Akses fisika unanchored part (Orbit, Shake, Throw, Pull, Rope, Fall, Carry, Anchor Lock).",
 	"• Settings    : Pengaturan warna tema GUI dan pilihan font secara langsung.",
 	"• About       : Informasi kreator dan versi tools.",
 }, "\n")
@@ -909,7 +1489,7 @@ AboutText.TextWrapped = true
 AboutText.Parent = AboutCard
 
 -- ==========================================
--- HALAMAN 3: SETTINGS (WARNA GUI & FONT)
+-- HALAMAN 4: SETTINGS (WARNA GUI & FONT)
 -- ==========================================
 local SettingsPage = Instance.new("Frame")
 SettingsPage.Size = UDim2.fromScale(1, 1)
@@ -1056,6 +1636,24 @@ applyThemeAndFont = function()
 	EqStroke.Color = theme.stroke
 	VolSliderFill.BackgroundColor3 = theme.accent
 	PlayPauseBtn.BackgroundColor3 = theme.accent
+	JailSpeedFill.BackgroundColor3 = theme.accent
+
+	JailSwitchBtn.BackgroundColor3 = CONFIG.JailEnabled and theme.accent or Color3.fromRGB(34, 32, 50)
+	JailSwitchBtn.Text = CONFIG.JailEnabled and "⚡ JAIL: ON" or "⚡ JAIL: OFF"
+
+	JailAnchorLockBtn.BackgroundColor3 = CONFIG.JailAnchorLocked and theme.accentSoft or Color3.fromRGB(32, 30, 48)
+	JailAnchorLockBtn.Text = CONFIG.JailAnchorLocked and "🔒 Anchor Lock: ON" or "🔒 Anchor Lock: OFF"
+
+	if not CONFIG.JailEnabled then
+		JailStatusLabel.Text = string.format("OFF • Released/Fall • Mode: %s", CONFIG.JailMode)
+	end
+
+	for modeId, mBtn in pairs(modeButtons) do
+		local active = (modeId == CONFIG.JailMode)
+		mBtn.BackgroundColor3 = active and theme.accentSoft or Color3.fromRGB(24, 23, 36)
+		mBtn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(220, 218, 245)
+		mBtn.Font = active and fontPreset.boldFont or fontPreset.font
+	end
 
 	for name, btn in pairs(tabButtons) do
 		local active = (name == CONFIG.ActiveTab)
@@ -1074,6 +1672,12 @@ applyThemeAndFont = function()
 	PrevTrackBtn.Font = fontPreset.boldFont
 	PlayPauseBtn.Font = fontPreset.boldFont
 	NextTrackBtn.Font = fontPreset.boldFont
+	JailSwitchBtn.Font = fontPreset.boldFont
+	JailAnchorLockBtn.Font = fontPreset.boldFont
+	JailStatusLabel.Font = fontPreset.font
+	JailSpeedLabel.Font = fontPreset.boldFont
+	JailTargetTitle.Font = fontPreset.boldFont
+	RefreshUsersBtn.Font = fontPreset.boldFont
 	AboutTitle.Font = fontPreset.boldFont
 	SettingsTitle.Font = fontPreset.boldFont
 	ColorSectionLabel.Font = fontPreset.boldFont
@@ -1095,12 +1699,14 @@ applyThemeAndFont = function()
 	end
 
 	renderMusicPlaylist()
+	renderUserList()
 end
 
 -- Navigasi Sidebar
 createNavButton("Music", "🎵  Music", 1).MouseButton1Click:Connect(function() switchTab("Music") end)
-createNavButton("Settings", "🎨  Settings", 2).MouseButton1Click:Connect(function() switchTab("Settings") end)
-createNavButton("About", "ℹ  About", 3).MouseButton1Click:Connect(function() switchTab("About") end)
+createNavButton("Jail", "⛓  JAIL", 2).MouseButton1Click:Connect(function() switchTab("Jail") end)
+createNavButton("Settings", "🎨  Settings", 3).MouseButton1Click:Connect(function() switchTab("Settings") end)
+createNavButton("About", "ℹ  About", 4).MouseButton1Click:Connect(function() switchTab("About") end)
 
 switchTab("Music")
 applyThemeAndFont()
