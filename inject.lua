@@ -360,7 +360,6 @@ local function parseTxtEntries(content: string, forceKind: "auto" | "audio" | "r
 			local playbackStr = block:match('%["PlaybackSpeed"%]%s*=%s*([%d%.]+)')
 			local imageId = block:match('%["ImageId"%]%s*=%s*"(.-)"')
 
-			-- Ambil SoundIds array jika ada
 			local soundIdsBlock = block:match('%["SoundIds"%]%s*=%s*{(.-)}')
 			local foundAnySound = false
 			if soundIdsBlock then
@@ -378,7 +377,6 @@ local function parseTxtEntries(content: string, forceKind: "auto" | "audio" | "r
 				end
 			end
 
-			-- Jika SoundIds = nil tapi ada ImageId / SongName
 			if not foundAnySound and songName then
 				local fallbackId = block:match('rbxassetid://(%d+)')
 				if fallbackId and #fallbackId >= 4 then
@@ -438,14 +436,26 @@ local function parseTxtEntries(content: string, forceKind: "auto" | "audio" | "r
 	return entries
 end
 
-local function buildJsonOutput(results: {{[string]: any}}): string
-	local ok, encoded = pcall(function()
-		return HttpService:JSONEncode(results)
-	end)
-	if ok and type(encoded) == "string" then
-		return encoded
+-- Format JSON bertumpuk (pretty-printed) per item agar mudah dibaca & disalin
+local function formatStackedJson(rows: {{[string]: any}}): string
+	if #rows == 0 then
+		return "[]"
 	end
-	return "[]"
+	local blocks: {string} = {}
+	for _, row in ipairs(rows) do
+		local ok, singleEncoded = pcall(function()
+			return HttpService:JSONEncode(row)
+		end)
+		if ok and type(singleEncoded) == "string" then
+			-- Pecah field utama agar bertumpuk ke bawah
+			local pretty = singleEncoded
+				:gsub("^%{", "{\n  ")
+				:gsub('%,"', ',\n  "')
+				:gsub("%}$", "\n}")
+			table.insert(blocks, pretty)
+		end
+	end
+	return "[\n" .. table.concat(blocks, ",\n") .. "\n]"
 end
 
 local savedCookie = loadTextFile("cookie.txt")
@@ -883,7 +893,7 @@ local function switchTab(tabName: string)
 	end
 end
 
--- Helper Komponen Output Hasil (Progress Bar + Console JSON Editable & Copyable)
+-- Helper Komponen Output Hasil Standar (Progress Bar + Console)
 local function createOutcomePanel(parent: GuiObject, yPos: number, boxHeight: number, editableConsole: boolean)
 	local bar = Instance.new("Frame")
 	bar.Size = UDim2.new(1, -24, 0, 5)
@@ -915,12 +925,12 @@ local function createOutcomePanel(parent: GuiObject, yPos: number, boxHeight: nu
 	csStroke.Thickness = 1
 
 	local consoleBox = Instance.new("TextBox")
-	consoleBox.Size = UDim2.new(1, -54, 0, boxHeight)
+	consoleBox.Size = UDim2.new(1, -12, 0, boxHeight)
 	consoleBox.AutomaticSize = Enum.AutomaticSize.Y
 	consoleBox.Position = UDim2.new(0, 6, 0, 4)
 	consoleBox.BackgroundTransparency = 1
 	consoleBox.Text = ""
-	consoleBox.PlaceholderText = editableConsole and "Console JSON (bisa diedit & dicopy)..." or "Hasil akan muncul di sini..."
+	consoleBox.PlaceholderText = "Hasil akan muncul di sini..."
 	consoleBox.PlaceholderColor3 = Color3.fromRGB(95, 92, 118)
 	consoleBox.TextColor3 = Color3.fromRGB(210, 240, 220)
 	consoleBox.TextSize = 9
@@ -932,33 +942,6 @@ local function createOutcomePanel(parent: GuiObject, yPos: number, boxHeight: nu
 	consoleBox.MultiLine = true
 	consoleBox.TextWrapped = true
 	consoleBox.Parent = consoleScroll
-
-	local copyBtn: TextButton? = nil
-	if editableConsole then
-		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.fromOffset(44, 18)
-		btn.Position = UDim2.new(1, -48, 0, 4)
-		btn.BackgroundColor3 = Color3.fromRGB(38, 35, 60)
-		btn.Text = "Copy"
-		btn.TextColor3 = Color3.fromRGB(235, 232, 255)
-		btn.TextSize = 8
-		btn.Font = Enum.Font.GothamBold
-		btn.ZIndex = 5
-		btn.Parent = consoleScroll
-		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
-		copyBtn = btn
-
-		btn.MouseButton1Click:Connect(function()
-			local okCopy = copyToClipboard(consoleBox.Text)
-			btn.Text = okCopy and "Copied!" or "Selected"
-			notify("Console JSON", okCopy and "JSON disalin ke clipboard." or "Teks siap disalin manual.")
-			task.delay(1.2, function()
-				if btn and btn.Parent then
-					btn.Text = "Copy"
-				end
-			end)
-		end)
-	end
 
 	return function(state: "idle" | "working" | "ok" | "err", ratio: number, outputText: string?)
 		local clamped = math.clamp(ratio, 0, 1)
@@ -984,7 +967,7 @@ local function createOutcomePanel(parent: GuiObject, yPos: number, boxHeight: nu
 end
 
 -- ==========================================
--- HALAMAN 1: SPOOF (ID MASSAL & FILE TXT MASSAL -> HASIL NAMA TXT + CONSOLE JSON)
+-- HALAMAN 1: SPOOF (CONSOLE PROSES & CONSOLE JSON HASIL TERPISAH)
 -- ==========================================
 local SpoofPage = Instance.new("Frame")
 SpoofPage.Size = UDim2.fromScale(1, 1)
@@ -1028,8 +1011,8 @@ Instance.new("UICorner", SourceTxtBtn).CornerRadius = UDim.new(0, 5)
 
 -- Mode 1: Input Asset ID Manual/Massal
 local AssetIdBox = Instance.new("TextBox")
-AssetIdBox.Size = UDim2.new(1, -24, 0, 44)
-AssetIdBox.Position = UDim2.new(0, 12, 0, 22)
+AssetIdBox.Size = UDim2.new(1, -24, 0, 38)
+AssetIdBox.Position = UDim2.new(0, 12, 0, 21)
 AssetIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 AssetIdBox.Text = ""
 AssetIdBox.PlaceholderText = "Input Asset ID (pisah spasi, koma, atau baris baru)"
@@ -1051,8 +1034,8 @@ AssetStroke.Thickness = 1
 
 -- Mode 2: Scan & Select File TXT Massal
 local TxtSelectorPanel = Instance.new("Frame")
-TxtSelectorPanel.Size = UDim2.new(1, -24, 0, 44)
-TxtSelectorPanel.Position = UDim2.new(0, 12, 0, 22)
+TxtSelectorPanel.Size = UDim2.new(1, -24, 0, 38)
+TxtSelectorPanel.Position = UDim2.new(0, 12, 0, 21)
 TxtSelectorPanel.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
 TxtSelectorPanel.Visible = false
 TxtSelectorPanel.Parent = SpoofPage
@@ -1177,8 +1160,8 @@ ScanTxtBtn.MouseButton1Click:Connect(function()
 end)
 
 local FilterRow = Instance.new("Frame")
-FilterRow.Size = UDim2.new(1, -24, 0, 21)
-FilterRow.Position = UDim2.new(0, 12, 0, 70)
+FilterRow.Size = UDim2.new(1, -24, 0, 19)
+FilterRow.Position = UDim2.new(0, 12, 0, 62)
 FilterRow.BackgroundTransparency = 1
 FilterRow.Parent = SpoofPage
 
@@ -1221,8 +1204,8 @@ end
 setFilter("Auto")
 
 local SpoofNowBtn = Instance.new("TextButton")
-SpoofNowBtn.Size = UDim2.new(0.62, -14, 0, 27)
-SpoofNowBtn.Position = UDim2.new(0, 12, 0, 95)
+SpoofNowBtn.Size = UDim2.new(0.62, -14, 0, 24)
+SpoofNowBtn.Position = UDim2.new(0, 12, 0, 84)
 SpoofNowBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
 SpoofNowBtn.Text = "⇄  SPOOF SEKARANG"
 SpoofNowBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1232,8 +1215,8 @@ SpoofNowBtn.Parent = SpoofPage
 Instance.new("UICorner", SpoofNowBtn).CornerRadius = UDim.new(0, 7)
 
 local BersihkanBtn = Instance.new("TextButton")
-BersihkanBtn.Size = UDim2.new(0.38, -14, 0, 27)
-BersihkanBtn.Position = UDim2.new(0.62, 2, 0, 95)
+BersihkanBtn.Size = UDim2.new(0.38, -14, 0, 24)
+BersihkanBtn.Position = UDim2.new(0.62, 2, 0, 84)
 BersihkanBtn.BackgroundColor3 = Color3.fromRGB(26, 25, 39)
 BersihkanBtn.Text = "BERSIHKAN"
 BersihkanBtn.TextColor3 = Color3.fromRGB(210, 208, 232)
@@ -1245,13 +1228,147 @@ local BersStroke = Instance.new("UIStroke", BersihkanBtn)
 BersStroke.Color = Color3.fromRGB(68, 64, 100)
 BersStroke.Thickness = 1
 
-local updateSpoofOutcome, spoofConsoleBox = createOutcomePanel(SpoofPage, 127, 118, true)
+-- Progress bar
+local spoofBar = Instance.new("Frame")
+spoofBar.Size = UDim2.new(1, -24, 0, 4)
+spoofBar.Position = UDim2.new(0, 12, 0, 111)
+spoofBar.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
+spoofBar.BorderSizePixel = 0
+spoofBar.Parent = SpoofPage
+Instance.new("UICorner", spoofBar).CornerRadius = UDim.new(1, 0)
+
+local spoofFill = Instance.new("Frame")
+spoofFill.Size = UDim2.new(0, 0, 1, 0)
+spoofFill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
+spoofFill.BorderSizePixel = 0
+spoofFill.Parent = spoofBar
+Instance.new("UICorner", spoofFill).CornerRadius = UDim.new(1, 0)
+
+-- 1) Console Proses (atas)
+local procScroll = Instance.new("ScrollingFrame")
+procScroll.Name = "ProcessConsole"
+procScroll.Size = UDim2.new(1, -24, 0, 44)
+procScroll.Position = UDim2.new(0, 12, 0, 118)
+procScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+procScroll.BorderSizePixel = 0
+procScroll.ScrollBarThickness = 2
+procScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+procScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+procScroll.Parent = SpoofPage
+Instance.new("UICorner", procScroll).CornerRadius = UDim.new(0, 6)
+local procStroke = Instance.new("UIStroke", procScroll)
+procStroke.Color = Color3.fromRGB(48, 44, 74)
+procStroke.Thickness = 1
+
+local procBox = Instance.new("TextBox")
+procBox.Size = UDim2.new(1, -10, 0, 40)
+procBox.AutomaticSize = Enum.AutomaticSize.Y
+procBox.Position = UDim2.new(0, 5, 0, 2)
+procBox.BackgroundTransparency = 1
+procBox.Text = ""
+procBox.PlaceholderText = "Console Proses..."
+procBox.PlaceholderColor3 = Color3.fromRGB(95, 92, 118)
+procBox.TextColor3 = Color3.fromRGB(185, 205, 255)
+procBox.TextSize = 8
+procBox.Font = Enum.Font.Code
+procBox.TextXAlignment = Enum.TextXAlignment.Left
+procBox.TextYAlignment = Enum.TextYAlignment.Top
+procBox.ClearTextOnFocus = false
+procBox.TextEditable = false
+procBox.MultiLine = true
+procBox.TextWrapped = true
+procBox.Parent = procScroll
+
+-- 2) Console JSON Hasil Bertumpuk (bawah, bisa diedit & dicopy)
+local jsonScroll = Instance.new("ScrollingFrame")
+jsonScroll.Name = "JsonResultConsole"
+jsonScroll.Size = UDim2.new(1, -24, 0, 82)
+jsonScroll.Position = UDim2.new(0, 12, 0, 165)
+jsonScroll.BackgroundColor3 = Color3.fromRGB(11, 10, 17)
+jsonScroll.BorderSizePixel = 0
+jsonScroll.ScrollBarThickness = 3
+jsonScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+jsonScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+jsonScroll.Parent = SpoofPage
+Instance.new("UICorner", jsonScroll).CornerRadius = UDim.new(0, 6)
+local jsonStroke = Instance.new("UIStroke", jsonScroll)
+jsonStroke.Color = Color3.fromRGB(64, 56, 102)
+jsonStroke.Thickness = 1
+
+local jsonResultBox = Instance.new("TextBox")
+jsonResultBox.Size = UDim2.new(1, -54, 0, 78)
+jsonResultBox.AutomaticSize = Enum.AutomaticSize.Y
+jsonResultBox.Position = UDim2.new(0, 6, 0, 4)
+jsonResultBox.BackgroundTransparency = 1
+jsonResultBox.Text = ""
+jsonResultBox.PlaceholderText = "Console JSON Hasil (bertumpuk, bisa diedit & dicopy)..."
+jsonResultBox.PlaceholderColor3 = Color3.fromRGB(95, 92, 118)
+jsonResultBox.TextColor3 = Color3.fromRGB(205, 242, 218)
+jsonResultBox.TextSize = 8
+jsonResultBox.Font = Enum.Font.Code
+jsonResultBox.TextXAlignment = Enum.TextXAlignment.Left
+jsonResultBox.TextYAlignment = Enum.TextYAlignment.Top
+jsonResultBox.ClearTextOnFocus = false
+jsonResultBox.TextEditable = true
+jsonResultBox.MultiLine = true
+jsonResultBox.TextWrapped = true
+jsonResultBox.Parent = jsonScroll
+
+local copyJsonBtn = Instance.new("TextButton")
+copyJsonBtn.Size = UDim2.fromOffset(44, 17)
+copyJsonBtn.Position = UDim2.new(1, -48, 0, 4)
+copyJsonBtn.BackgroundColor3 = Color3.fromRGB(38, 35, 60)
+copyJsonBtn.Text = "Copy"
+copyJsonBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
+copyJsonBtn.TextSize = 8
+copyJsonBtn.Font = Enum.Font.GothamBold
+copyJsonBtn.ZIndex = 5
+copyJsonBtn.Parent = jsonScroll
+Instance.new("UICorner", copyJsonBtn).CornerRadius = UDim.new(0, 4)
+
+copyJsonBtn.MouseButton1Click:Connect(function()
+	local okCopy = copyToClipboard(jsonResultBox.Text)
+	copyJsonBtn.Text = okCopy and "Copied!" or "Selected"
+	notify("Console JSON", okCopy and "JSON disalin ke clipboard." or "Teks siap disalin manual.")
+	task.delay(1.2, function()
+		if copyJsonBtn and copyJsonBtn.Parent then
+			copyJsonBtn.Text = "Copy"
+		end
+	end)
+end)
+
+local function setSpoofBar(state: "idle" | "working" | "ok" | "err", ratio: number)
+	local clamped = math.clamp(ratio, 0, 1)
+	if state == "idle" then
+		spoofFill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
+	elseif state == "working" then
+		spoofFill.BackgroundColor3 = Color3.fromRGB(96, 165, 250)
+	elseif state == "ok" then
+		spoofFill.BackgroundColor3 = Color3.fromRGB(56, 239, 125)
+	else
+		spoofFill.BackgroundColor3 = Color3.fromRGB(255, 86, 102)
+	end
+	TweenService:Create(spoofFill, TweenInfo.new(0.15), {
+		Size = UDim2.new(clamped, 0, 1, 0),
+	}):Play()
+end
+
+local function setProcessLog(state: "idle" | "working" | "ok" | "err", text: string)
+	procBox.Text = text
+	procBox.TextColor3 = (state == "err") and Color3.fromRGB(255, 145, 155) or Color3.fromRGB(185, 205, 255)
+end
+
+local function setJsonResultText(isErr: boolean, text: string)
+	jsonResultBox.Text = text
+	jsonResultBox.TextColor3 = isErr and Color3.fromRGB(255, 165, 175) or Color3.fromRGB(205, 242, 218)
+end
 
 BersihkanBtn.MouseButton1Click:Connect(function()
 	AssetIdBox.Text = ""
 	selectedSpoofTxtPath = nil
-	spoofConsoleBox.Text = ""
-	updateSpoofOutcome("idle", 0, "")
+	setSpoofBar("idle", 0)
+	setProcessLog("idle", "")
+	setJsonResultText(false, "")
 end)
 
 -- ==========================================
@@ -1822,8 +1939,6 @@ local function spoofSingleEntry(entry: SpoofEntry, filterMode: string): (boolean
 	})
 
 	if not cmdOk then
-		jsonRecord.ok = false
-		jsonRecord.error = "Gagal kirim perintah (" .. cmdInfo .. ")"
 		return false, assetId .. " -> Gagal kirim perintah (" .. cmdInfo .. ")", jsonRecord
 	end
 
@@ -1859,8 +1974,6 @@ local function spoofSingleEntry(entry: SpoofEntry, filterMode: string): (boolean
 	end
 
 	if not foundFile then
-		jsonRecord.ok = false
-		jsonRecord.error = "File hasil belum muncul di /list-files"
 		return false, assetId .. " -> File hasil belum muncul di /list-files", jsonRecord
 	end
 
@@ -1897,17 +2010,11 @@ local function spoofSingleEntry(entry: SpoofEntry, filterMode: string): (boolean
 		local outRel = subDir .. baseFileName .. ext
 		local saved = saveTextFile(outRel, tostring(dlRes.Body))
 		if saved then
-			jsonRecord.ok = true
-			jsonRecord.file = CONFIG.WorkspaceRoot .. "/" .. outRel
 			return true, entry.name .. " (" .. assetId .. ") -> " .. CONFIG.WorkspaceRoot .. "/" .. outRel, jsonRecord
 		end
-		jsonRecord.ok = false
-		jsonRecord.error = "Gagal menyimpan file lokal"
 		return false, assetId .. " -> Gagal menyimpan file lokal", jsonRecord
 	end
 
-	jsonRecord.ok = false
-	jsonRecord.error = "Gagal unduh (" .. dlInfo .. ")"
 	return false, assetId .. " -> Gagal unduh (" .. dlInfo .. ")", jsonRecord
 end
 
@@ -1917,7 +2024,8 @@ CekKoneksiBtn.MouseButton1Click:Connect(function()
 	if isCheckingConn then return end
 	isCheckingConn = true
 	switchTab("Spoof")
-	updateSpoofOutcome("working", 0.35, "Memeriksa koneksi ke " .. CONFIG.BaseUrl .. "...")
+	setSpoofBar("working", 0.35)
+	setProcessLog("working", "Memeriksa koneksi ke " .. CONFIG.BaseUrl .. "...")
 	task.spawn(function()
 		local sess, sessOk, sessInfo = fetchAndStoreSession()
 		local _, listOk, listInfo = apiRequest({
@@ -1934,7 +2042,8 @@ CekKoneksiBtn.MouseButton1Click:Connect(function()
 			sess,
 			listOk and listInfo or sessInfo
 		)
-		updateSpoofOutcome(success and "ok" or "err", success and 1 or 0, msg)
+		setSpoofBar(success and "ok" or "err", success and 1 or 0)
+		setProcessLog(success and "ok" or "err", msg)
 		notify("Koneksi", success and "Terhubung." or "Gagal terhubung.")
 		isCheckingConn = false
 	end)
@@ -1948,13 +2057,15 @@ SpoofNowBtn.MouseButton1Click:Connect(function()
 	local entries: {SpoofEntry} = {}
 	if CONFIG.SpoofSourceMode == "TXT" then
 		if not selectedSpoofTxtPath or selectedSpoofTxtPath == "" then
-			updateSpoofOutcome("err", 0, "Pilih file .txt terlebih dahulu (klik Scan TXT -> Select).")
+			setSpoofBar("err", 0)
+			setProcessLog("err", "Pilih file .txt terlebih dahulu (klik Scan TXT -> Select).")
 			notify("Spoof TXT", "Belum ada file TXT dipilih.")
 			return
 		end
 		local txtContent = loadTextFile(selectedSpoofTxtPath)
 		if not txtContent or trim(txtContent) == "" then
-			updateSpoofOutcome("err", 0, "File TXT kosong atau tidak bisa dibaca: " .. selectedSpoofTxtPath)
+			setSpoofBar("err", 0)
+			setProcessLog("err", "File TXT kosong atau tidak bisa dibaca: " .. selectedSpoofTxtPath)
 			notify("Spoof TXT", "File TXT kosong.")
 			return
 		end
@@ -1966,14 +2077,16 @@ SpoofNowBtn.MouseButton1Click:Connect(function()
 		end
 		entries = parseTxtEntries(txtContent, kindHint)
 		if #entries == 0 then
-			updateSpoofOutcome("err", 0, "Tidak ada data ID valid ditemukan di dalam " .. selectedSpoofTxtPath)
+			setSpoofBar("err", 0)
+			setProcessLog("err", "Tidak ada data ID valid di dalam " .. selectedSpoofTxtPath)
 			notify("Spoof TXT", "Data tidak ditemukan.")
 			return
 		end
 	else
 		local ids = parseIds(AssetIdBox.Text)
 		if #ids == 0 then
-			updateSpoofOutcome("err", 0, "Input Asset ID kosong atau tidak valid.")
+			setSpoofBar("err", 0)
+			setProcessLog("err", "Input Asset ID kosong atau tidak valid.")
 			notify("Spoof", "Input kosong.")
 			return
 		end
@@ -1990,33 +2103,49 @@ SpoofNowBtn.MouseButton1Click:Connect(function()
 	end
 
 	isSpoofing = true
-	updateSpoofOutcome("working", 0.1, "Memproses " .. tostring(#entries) .. " item...")
+	setSpoofBar("working", 0.1)
+	setProcessLog("working", "Memulai proses " .. tostring(#entries) .. " item...")
+	setJsonResultText(false, "")
+
 	task.spawn(function()
 		ensureFolders()
 		fetchAndStoreSession()
 
 		local berhasil, gagal = 0, 0
+		local processLines: {string} = {}
 		local jsonRows: {{[string]: any}} = {}
 
 		for i, item in ipairs(entries) do
-			updateSpoofOutcome("working", (i - 0.5) / #entries, "Memproses " .. item.name .. " (" .. item.id .. ")...")
-			local okItem, _, rowJson = spoofSingleEntry(item, CONFIG.SpoofFilter)
+			table.insert(processLines, string.format("[%d/%d] Memproses %s (%s)...", i, #entries, item.name, item.id))
+			setSpoofBar("working", (i - 0.5) / #entries)
+			setProcessLog("working", table.concat(processLines, "\n"))
+
+			local okItem, stepMsg, rowJson = spoofSingleEntry(item, CONFIG.SpoofFilter)
+			processLines[#processLines] = stepMsg
 			if okItem then
 				berhasil += 1
 			else
 				gagal += 1
 			end
+
 			table.insert(jsonRows, rowJson)
-			updateSpoofOutcome((gagal == 0) and "working" or "err", i / #entries, buildJsonOutput(jsonRows))
+			setJsonResultText(gagal > 0, formatStackedJson(jsonRows))
+			setSpoofBar((gagal == 0) and "working" or "err", i / #entries)
+			setProcessLog((gagal == 0) and "working" or "err", table.concat(processLines, "\n"))
+
 			if i < #entries then
 				task.wait(0.35)
 			end
 		end
 
-		local finalJson = buildJsonOutput(jsonRows)
+		local finalJson = formatStackedJson(jsonRows)
 		saveTextFile("Logs/spoof_result_" .. tostring(os.time()) .. ".json", finalJson)
+		table.insert(processLines, string.format("Selesai: %d berhasil, %d gagal.", berhasil, gagal))
+
 		local allOk = (berhasil > 0 and gagal == 0)
-		updateSpoofOutcome(allOk and "ok" or "err", 1, finalJson)
+		setSpoofBar(allOk and "ok" or "err", 1)
+		setProcessLog(allOk and "ok" or "err", table.concat(processLines, "\n"))
+		setJsonResultText(not allOk, finalJson)
 		notify("Spoof", string.format("Selesai: %d berhasil, %d gagal.", berhasil, gagal))
 		isSpoofing = false
 	end)
