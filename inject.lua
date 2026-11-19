@@ -80,6 +80,23 @@ local function trim(s: string?): string
 	return s:match("^%s*(.-)%s*$") or ""
 end
 
+local function sanitizeJsonText(s: string?): string
+	if type(s) ~= "string" then return "" end
+	-- Hapus karakter kontrol ASCII (0-31 dan 127) agar aman untuk JSONEncode
+	local cleaned = s:gsub("[%z\1-\31\127]", " ")
+	return trim(cleaned)
+end
+
+local function safeJsonEncode(value: any): (boolean, string)
+	local ok, encoded = pcall(function()
+		return HttpService:JSONEncode(value)
+	end)
+	if ok and type(encoded) == "string" then
+		return true, encoded
+	end
+	return false, tostring(encoded)
+end
+
 local function normalizeCookie(rawCookie: string): string
 	local c = trim(rawCookie)
 	if c == "" then return "" end
@@ -477,10 +494,8 @@ local function formatStackedJson(rows: {{[string]: any}}): string
 	end
 	local blocks: {string} = {}
 	for _, row in ipairs(rows) do
-		local ok, singleEncoded = pcall(function()
-			return HttpService:JSONEncode(row)
-		end)
-		if ok and type(singleEncoded) == "string" then
+		local ok, singleEncoded = safeJsonEncode(row)
+		if ok then
 			local pretty = singleEncoded
 				:gsub("^%{", "{\n  ")
 				:gsub('%,"', ',\n  "')
@@ -674,13 +689,14 @@ end
 
 local function buildMultipartAssetBody(requestJson: string, payloadContent: string, filename: string)
 	local boundary = "----IkyyStudioBoundary" .. tostring(os.time()) .. tostring(math.random(1000, 9999))
+	local safeFilename = sanitizeFileName(filename):gsub('"', "_")
 	local parts = {
 		"--" .. boundary .. "\r\n",
 		'Content-Disposition: form-data; name="request"\r\n',
 		"Content-Type: application/json\r\n\r\n",
 		requestJson .. "\r\n",
 		"--" .. boundary .. "\r\n",
-		'Content-Disposition: form-data; name="fileContent"; filename="' .. filename .. '"\r\n',
+		'Content-Disposition: form-data; name="fileContent"; filename="' .. safeFilename .. '"\r\n',
 		"Content-Type: application/octet-stream\r\n\r\n",
 		payloadContent .. "\r\n",
 		"--" .. boundary .. "--\r\n",
@@ -950,7 +966,7 @@ NavScroll.Parent = Sidebar
 local NavLayout = Instance.new("UIListLayout")
 NavLayout.Padding = UDim.new(0, 4)
 NavLayout.SortOrder = Enum.SortOrder.LayoutOrder
-NavLayout.Parent = NavList or NavScroll
+NavLayout.Parent = NavScroll
 
 local tabPages: {[string]: Frame} = {}
 local tabButtons: {[string]: TextButton} = {}
@@ -1860,7 +1876,6 @@ PermIdsBox.PlaceholderText = "Asset IDs (id,id,id / spasi / baris) atau path fil
 PermIdsBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 PermIdsBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 PermIdsBox.TextSize = 9
-PermApiKeyBox.Font = Enum.Font.Gotham
 PermIdsBox.Font = Enum.Font.Gotham
 PermIdsBox.ClearTextOnFocus = false
 PermIdsBox.MultiLine = true
@@ -2607,12 +2622,12 @@ local function spoofSingleEntry(entry: SpoofEntry, filterMode: string): (boolean
 
 	local jsonRecord: {[string]: any} = (entry.kind == "rbxm")
 		and {
-			nama = entry.name,
+			nama = sanitizeJsonText(entry.name),
 			id = assetId,
 			status = entry.statusType or "Dance",
 		}
 		or {
-			nama_song = entry.name,
+			nama_song = sanitizeJsonText(entry.name),
 			id = assetId,
 			playbackspeed = entry.playbackSpeed or 1.0,
 		}
@@ -2625,10 +2640,10 @@ local function spoofSingleEntry(entry: SpoofEntry, filterMode: string): (boolean
 			["Origin"] = CONFIG.BaseUrl,
 			["Referer"] = CONFIG.BaseUrl .. "/tools/spoof-audio",
 		},
-		Body = HttpService:JSONEncode({
+		Body = select(2, safeJsonEncode({
 			id = tostring(assetId),
 			session = CONFIG.SessionId,
-		}),
+		})),
 		Retries = 2,
 	})
 
@@ -2814,7 +2829,7 @@ SpoofNowBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
--- Proses Upload Asset (Single atau Multi-File dari Select All)
+-- Proses Upload Asset (Single atau Multi-File dari Select All - Aman dari Can't convert to JSON)
 local isUploading = false
 UploadActionBtn.MouseButton1Click:Connect(function()
 	if isUploading then return end
@@ -2825,8 +2840,8 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 		return
 	end
 
-	local baseAssetName = trim(UploadNameBox.Text)
-	local baseAssetType = trim(UploadTypeBox.Text)
+	local baseAssetName = sanitizeJsonText(UploadNameBox.Text)
+	local baseAssetType = sanitizeJsonText(UploadTypeBox.Text)
 	if baseAssetType == "" then baseAssetType = "Model" end
 	local creatorIdNum = tonumber(trim(UploadCreatorBox.Text):match("%d+")) or LocalPlayer.UserId
 	local isGroup = (trim(UploadOwnerModeBox.Text):lower() == "group")
@@ -2834,15 +2849,15 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 
 	local rawInput = trim(UploadPayloadBox.Text)
 	local targets: {string} = {}
-	if #selectedSpoofFiles > 0 and (rawInput == "" or rawInput:find(",", 1, true)) then
-		targets = table.clone(selectedSpoofFiles)
-	elseif rawInput:find(",", 1, true) then
+	if rawInput:find(",", 1, true) then
 		for part in rawInput:gmatch("([^,]+)") do
 			local p = trim(part)
 			if p ~= "" then
 				table.insert(targets, p)
 			end
 		end
+	elseif #selectedSpoofFiles > 1 then
+		targets = table.clone(selectedSpoofFiles)
 	else
 		table.insert(targets, rawInput)
 	end
@@ -2858,6 +2873,7 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 			local inferredName = (baseAssetName ~= "") and baseAssetName or ("IkyyAsset_" .. tostring(os.time()) .. "_" .. tostring(idx))
 			local inferredType = baseAssetType
 			local uploadFilename = sanitizeFileName(inferredName):gsub("%s+", "_") .. ".lua"
+			local isBinaryFile = false
 
 			if itemTarget ~= "" then
 				local loaded = loadTextFile(itemTarget)
@@ -2866,25 +2882,38 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 					local baseName = itemTarget:match("([^/\\]+)$") or itemTarget
 					uploadFilename = baseName
 					if baseAssetName == "" or #targets > 1 then
-						inferredName = baseName:gsub("%.[^%.]+$", "")
+						inferredName = sanitizeJsonText(baseName:gsub("%.[^%.]+$", ""))
+						if inferredName == "" then
+							inferredName = "Asset_" .. tostring(idx)
+						end
 					end
 					local low = baseName:lower()
 					if low:sub(-4) == ".mp3" or low:sub(-4) == ".ogg" or low:sub(-4) == ".wav" then
 						inferredType = "Audio"
+						isBinaryFile = true
 					elseif low:sub(-5) == ".rbxm" or low:sub(-5) == ".rbxmx" then
 						inferredType = "Model"
+						isBinaryFile = true
 					end
 				else
-					payloadData = itemTarget
+					payloadData = sanitizeJsonText(itemTarget)
 				end
 			end
 
-			local requestPayloadJson = HttpService:JSONEncode({
+			local metaTable = {
 				assetType = inferredType,
-				displayName = inferredName,
+				displayName = inferredName:sub(1, 50),
 				description = "Uploaded via Plugin Studio Lite by Ikyy",
 				creationContext = { creator = creatorObj },
-			})
+			}
+
+			local okMeta, requestPayloadJson = safeJsonEncode(metaTable)
+			if not okMeta then
+				gagal += 1
+				table.insert(logs, string.format("[%d/%d] %s Gagal encode metadata: %s", idx, #targets, inferredName, requestPayloadJson))
+				updateUploadOutcome("err", idx / #targets, table.concat(logs, "\n"))
+				continue
+			end
 
 			local multipartBody, contentTypeHeader = buildMultipartAssetBody(requestPayloadJson, payloadData, uploadFilename)
 			local res, ok, info = apiRequest({
@@ -2898,23 +2927,27 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 				Retries = 2,
 			})
 
-			if not ok then
-				res, ok, info = apiRequest({
-					Url = "https://apis.roblox.com/assets/v1/assets",
-					Method = "POST",
-					Headers = {
-						["x-api-key"] = apiKey,
-						["Content-Type"] = "application/json",
-					},
-					Body = HttpService:JSONEncode({
-						assetType = inferredType,
-						displayName = inferredName,
-						description = "Uploaded via Plugin Studio Lite by Ikyy",
-						creationContext = { creator = creatorObj },
-						payload = payloadData,
-					}),
-					Retries = 1,
+			-- Fallback JSON hanya untuk payload teks non-biner yang aman di-encode JSON
+			if not ok and not isBinaryFile then
+				local okFallback, fallbackJson = safeJsonEncode({
+					assetType = inferredType,
+					displayName = inferredName:sub(1, 50),
+					description = "Uploaded via Plugin Studio Lite by Ikyy",
+					creationContext = { creator = creatorObj },
+					payload = payloadData,
 				})
+				if okFallback then
+					res, ok, info = apiRequest({
+						Url = "https://apis.roblox.com/assets/v1/assets",
+						Method = "POST",
+						Headers = {
+							["x-api-key"] = apiKey,
+							["Content-Type"] = "application/json",
+						},
+						Body = fallbackJson,
+						Retries = 1,
+					})
+				end
 			end
 
 			local bodyStr = res and tostring(res.Body or "") or ""
@@ -2966,7 +2999,7 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 			if grpId and grpId > 0 then
 				bodyTbl.groupId = grpId
 			end
-			local jsonBody = HttpService:JSONEncode(bodyTbl)
+			local _, jsonBody = safeJsonEncode(bodyTbl)
 
 			local function sendCreateRequest(token: string)
 				local hdrs: {[string]: string} = {
@@ -3094,6 +3127,13 @@ GrantPermBtn.MouseButton1Click:Connect(function()
 				end
 			end
 
+			local _, permBodyJson = safeJsonEncode({
+				subjectType = "Universe",
+				subjectId = tostring(univId),
+				action = "Use",
+				requests = reqList,
+			})
+
 			local res, ok, info = apiRequest({
 				Url = "https://apis.roblox.com/asset-permissions-api/v1/assets/permissions",
 				Method = "PATCH",
@@ -3101,12 +3141,7 @@ GrantPermBtn.MouseButton1Click:Connect(function()
 					["x-api-key"] = permKey,
 					["Content-Type"] = "application/json",
 				},
-				Body = HttpService:JSONEncode({
-					subjectType = "Universe",
-					subjectId = tostring(univId),
-					action = "Use",
-					requests = reqList,
-				}),
+				Body = permBodyJson,
 				Retries = 2,
 			})
 
