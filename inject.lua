@@ -1,11 +1,12 @@
 --!strict
 -- Plugin Studio Lite (Delta Executor Edition) by Ikyy
--- Fitur: Spoof (Audio/RBXM), Upload Asset, Place Maker, Asset Permissions, Setting, Close -> Ikon Lingkaran Profile
+-- Fitur: Spoof (Audio/RBXM), Upload Asset, Place Maker, Asset Permissions, Setting, Close -> Ikon Lingkaran Profile (Draggable)
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
+local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -33,11 +34,24 @@ local CONFIG = {
 local WINDOW_SIZE = UDim2.fromOffset(540, 320)
 local WINDOW_POS = UDim2.new(0.5, -270, 0.5, -160)
 local ICON_SIZE = UDim2.fromOffset(42, 42)
-local ICON_POS = UDim2.new(0.5, -21, 0.08, 0)
+local ICON_DEFAULT_POS = UDim2.new(0.5, -21, 0.08, 0)
+local currentIconPos = ICON_DEFAULT_POS
 
 local function trim(s: string?): string
 	if type(s) ~= "string" then return "" end
 	return s:match("^%s*(.-)%s*$") or ""
+end
+
+local function normalizeCookie(rawCookie: string): string
+	local c = trim(rawCookie)
+	if c == "" then return "" end
+	c = c:gsub("^%.ROBLOSECURITY=", "")
+	c = c:gsub("[\r\n]+", "")
+	c = trim(c)
+	if c ~= "" and c:sub(-1) ~= ";" then
+		c = c .. ";"
+	end
+	return c
 end
 
 local function notify(title: string, text: string)
@@ -99,7 +113,7 @@ end
 
 local savedCookie = loadTextFile("cookie.txt")
 local savedApiKey = loadTextFile("apikey.txt")
-if savedCookie and trim(savedCookie) ~= "" then CONFIG.Cookie = trim(savedCookie) end
+if savedCookie and trim(savedCookie) ~= "" then CONFIG.Cookie = normalizeCookie(savedCookie) end
 if savedApiKey and trim(savedApiKey) ~= "" then CONFIG.ApiKey = trim(savedApiKey) end
 
 local function getHttpFunc()
@@ -139,7 +153,7 @@ local function getUserAvatarAsync(userId: number): string
 end
 
 -- ==========================================
--- UI UTAMA (TERKUNCI DI TENGAH, TANPA DRAG)
+-- UI UTAMA (WINDOW TERKUNCI DI TENGAH, IKON BISA DIGESER LUAS)
 -- ==========================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "IkyyPluginStudioLite_GUI"
@@ -148,14 +162,15 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.Parent = PlayerGui
 
--- 1. IKON LINGKARAN PROFILE USER (UKURAN KECIL 42x42)
+-- 1. IKON LINGKARAN PROFILE USER (UKURAN KECIL 42x42, BISA DIGESER KE SELURUH LAYAR)
 local FloatingProfileBtn = Instance.new("ImageButton")
 FloatingProfileBtn.Name = "FloatingProfileToggle"
 FloatingProfileBtn.Size = ICON_SIZE
-FloatingProfileBtn.Position = ICON_POS
+FloatingProfileBtn.Position = ICON_DEFAULT_POS
 FloatingProfileBtn.BackgroundColor3 = Color3.fromRGB(20, 18, 32)
 FloatingProfileBtn.BorderSizePixel = 0
 FloatingProfileBtn.Visible = false
+FloatingProfileBtn.AutoButtonColor = false
 FloatingProfileBtn.ZIndex = 50
 FloatingProfileBtn.Image = getUserAvatarAsync(LocalPlayer.UserId)
 FloatingProfileBtn.Parent = ScreenGui
@@ -284,20 +299,20 @@ local function setMinimized(minimized: boolean)
 	if minimized then
 		local tw = TweenService:Create(MainWindow, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
 			Size = ICON_SIZE,
-			Position = ICON_POS,
+			Position = currentIconPos,
 		})
 		tw:Play()
 		tw.Completed:Connect(function()
 			if CONFIG.IsMinimized then
 				MainWindow.Visible = false
-				FloatingProfileBtn.Position = ICON_POS
+				FloatingProfileBtn.Position = currentIconPos
 				FloatingProfileBtn.Size = ICON_SIZE
 				FloatingProfileBtn.Visible = true
 			end
 		end)
 	else
 		FloatingProfileBtn.Visible = false
-		MainWindow.Position = ICON_POS
+		MainWindow.Position = currentIconPos
 		MainWindow.Size = ICON_SIZE
 		MainWindow.Visible = true
 		TweenService:Create(MainWindow, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
@@ -307,12 +322,71 @@ local function setMinimized(minimized: boolean)
 	end
 end
 
+-- Logika Geser Luas (Drag) & Klik pada Ikon Profil
+do
+	local dragging = false
+	local movedSignificantly = false
+	local dragStart = Vector3.zero
+	local startPos = UDim2.new()
+	local activeInput: InputObject? = nil
+	local DRAG_THRESHOLD = 6
+
+	local function clampToViewport(pos: UDim2): UDim2
+		local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+		local iconW = ICON_SIZE.X.Offset
+		local iconH = ICON_SIZE.Y.Offset
+		local pad = 6
+		local maxX = math.max(pad, viewport.X - iconW - pad)
+		local maxY = math.max(pad, viewport.Y - iconH - pad)
+		local clampedX = math.clamp(pos.X.Offset, pad, maxX)
+		local clampedY = math.clamp(pos.Y.Offset, pad, maxY)
+		return UDim2.fromOffset(clampedX, clampedY)
+	end
+
+	local function getCurrentOffsetPos(): UDim2
+		local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+		local absX = (FloatingProfileBtn.Position.X.Scale * viewport.X) + FloatingProfileBtn.Position.X.Offset
+		local absY = (FloatingProfileBtn.Position.Y.Scale * viewport.Y) + FloatingProfileBtn.Position.Y.Offset
+		return UDim2.fromOffset(absX, absY)
+	end
+
+	FloatingProfileBtn.InputBegan:Connect(function(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			movedSignificantly = false
+			activeInput = input
+			dragStart = input.Position
+			startPos = getCurrentOffsetPos()
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input: InputObject)
+		if not dragging or input ~= activeInput then return end
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			local delta = input.Position - dragStart
+			if delta.Magnitude > DRAG_THRESHOLD then
+				movedSignificantly = true
+			end
+			local nextPos = clampToViewport(UDim2.fromOffset(startPos.X.Offset + delta.X, startPos.Y.Offset + delta.Y))
+			currentIconPos = nextPos
+			FloatingProfileBtn.Position = nextPos
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input: InputObject)
+		if input == activeInput then
+			local wasClick = dragging and not movedSignificantly
+			dragging = false
+			activeInput = nil
+			if wasClick and CONFIG.IsMinimized then
+				setMinimized(false)
+			end
+		end
+	end)
+end
+
 CloseCircleBtn.MouseButton1Click:Connect(function()
 	setMinimized(true)
-end)
-
-FloatingProfileBtn.MouseButton1Click:Connect(function()
-	setMinimized(false)
 end)
 
 -- ==========================================
@@ -892,19 +966,24 @@ Instance.new("UICorner", SaveSettingBtn).CornerRadius = UDim.new(0, 8)
 local setSettingOutcome = createResultBar(SettingPage, 202)
 
 SaveSettingBtn.MouseButton1Click:Connect(function()
-	local c = trim(CookieBox.Text)
+	local c = normalizeCookie(CookieBox.Text)
 	local k = trim(ApiKeyBox.Text)
-	if c ~= "" and c:sub(-1) ~= ";" then
-		c = c .. ";"
-	end
 	CONFIG.Cookie = c
 	CONFIG.ApiKey = k
 	CookieBox.Text = c
+	ApiKeyBox.Text = k
+
+	if not hasFileIO() then
+		setSettingOutcome(true, 1)
+		notify("Plugin Studio Lite", "Berhasil.")
+		return
+	end
+
 	local okC = saveTextFile("cookie.txt", c)
 	local okK = saveTextFile("apikey.txt", k)
 	local ok = (c == "" or okC) and (k == "" or okK)
 	setSettingOutcome(ok, ok and 1 or 0)
-	notify("Plugin Studio Lite", ok and "Berhasil disimpan." or "Gagal menyimpan.")
+	notify("Plugin Studio Lite", ok and "Berhasil." or "Gagal.")
 end)
 
 -- Navigasi Sidebar
@@ -920,7 +999,7 @@ switchTab("Spoof")
 local function parseIds(raw: string): {string}
 	local seen: {[string]: boolean} = {}
 	local out: {string} = {}
-	for digits in raw:gmatch("%d{6,}") do
+	for digits in raw:gmatch("%d{4,}") do
 		if not seen[digits] then
 			seen[digits] = true
 			table.insert(out, digits)
@@ -929,8 +1008,39 @@ local function parseIds(raw: string): {string}
 	return out
 end
 
+local function extractFileNamesFromList(bodyText: string): {string}
+	local names: {string} = {}
+	local okJson, decoded = pcall(function()
+		return HttpService:JSONDecode(bodyText)
+	end)
+	if okJson and type(decoded) == "table" then
+		local listObj = decoded.files or decoded
+		if type(listObj) == "table" then
+			for _, item in ipairs(listObj) do
+				if type(item) == "string" then
+					table.insert(names, item)
+				elseif type(item) == "table" then
+					local fname = item.name or item.filename or item.file
+					if type(fname) == "string" then
+						table.insert(names, fname)
+					end
+				end
+			end
+		end
+	end
+	if #names == 0 then
+		for quoted in bodyText:gmatch('"([^"]+%.%w+)"') do
+			table.insert(names, quoted)
+		end
+	end
+	return names
+end
+
 -- Cek Koneksi
+local isCheckingConn = false
 CekKoneksiBtn.MouseButton1Click:Connect(function()
+	if isCheckingConn then return end
+	isCheckingConn = true
 	task.spawn(function()
 		switchTab("Spoof")
 		local res, ok = httpRequest({
@@ -952,6 +1062,7 @@ CekKoneksiBtn.MouseButton1Click:Connect(function()
 			setSpoofOutcome(false, 0)
 			notify("Koneksi", "Gagal.")
 		end
+		isCheckingConn = false
 	end)
 end)
 
@@ -992,23 +1103,18 @@ SpoofNowBtn.MouseButton1Click:Connect(function()
 				for _ = 1, 15 do
 					local listRes, listOk = httpRequest({ Url = CONFIG.BaseUrl .. "/list-files", Method = "GET" })
 					if listOk and listRes then
-						local okJson, decoded = pcall(function()
-							return HttpService:JSONDecode(tostring(listRes.Body or "{}"))
-						end)
-						if okJson and type(decoded) == "table" and type(decoded.files) == "table" then
-							for _, fname in ipairs(decoded.files) do
-								local sname = tostring(fname)
-								if sname:find(assetId, 1, true) then
-									if isRbxmMode and sname:sub(-5):lower() == ".rbxm" then
-										foundFile = sname
-										break
-									elseif not isRbxmMode and sname:sub(-4):lower() == ".mp3" then
-										foundFile = sname
-										break
-									elseif CONFIG.SpoofFilter == "Auto" then
-										foundFile = sname
-										break
-									end
+						local candidateFiles = extractFileNamesFromList(tostring(listRes.Body or ""))
+						for _, sname in ipairs(candidateFiles) do
+							if sname:find(assetId, 1, true) then
+								if isRbxmMode and sname:sub(-5):lower() == ".rbxm" then
+									foundFile = sname
+									break
+								elseif not isRbxmMode and sname:sub(-4):lower() == ".mp3" then
+									foundFile = sname
+									break
+								elseif CONFIG.SpoofFilter == "Auto" then
+									foundFile = sname
+									break
 								end
 							end
 						end
@@ -1041,7 +1147,8 @@ SpoofNowBtn.MouseButton1Click:Connect(function()
 				if dlOk and dlRes and dlRes.Body and tostring(dlRes.Body) ~= "" then
 					local ext = foundFile:match("%.[^%.]+$") or (isRbxmMode and ".rbxm" or ".mp3")
 					local subDir = (ext:lower() == ".rbxm") and "SPOOF/animasi/" or "SPOOF/music/"
-					itemSuccess = saveTextFile(subDir .. assetId .. ext:lower(), tostring(dlRes.Body))
+					local savedOk = saveTextFile(subDir .. assetId .. ext:lower(), tostring(dlRes.Body))
+					itemSuccess = savedOk or (not hasFileIO())
 				end
 			end
 
@@ -1063,8 +1170,11 @@ SpoofNowBtn.MouseButton1Click:Connect(function()
 end)
 
 -- Upload Asset
+local isUploading = false
 UploadActionBtn.MouseButton1Click:Connect(function()
-	if trim(CONFIG.ApiKey) == "" then
+	if isUploading then return end
+	local apiKey = trim(CONFIG.ApiKey)
+	if apiKey == "" then
 		setUploadOutcome(false, 0)
 		notify("Upload", "Gagal.")
 		return
@@ -1074,8 +1184,7 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 	if assetName == "" then assetName = "IkyyAsset_" .. tostring(os.time()) end
 	local assetType = trim(UploadTypeBox.Text)
 	if assetType == "" then assetType = "Model" end
-	local creatorId = trim(UploadCreatorBox.Text)
-	if creatorId == "" then creatorId = tostring(LocalPlayer.UserId) end
+	local creatorId = trim(UploadCreatorBox.Text):match("%d+") or tostring(LocalPlayer.UserId)
 	local isGroup = (trim(UploadOwnerModeBox.Text):lower() == "group")
 
 	local rawPayload = trim(UploadPayloadBox.Text)
@@ -1088,13 +1197,14 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 		rawPayload = "-- Exported via Ikyy Plugin Studio Lite"
 	end
 
+	isUploading = true
 	task.spawn(function()
 		local creatorTable = isGroup and { groupId = tostring(creatorId) } or { userId = tostring(creatorId) }
 		local res, ok = httpRequest({
 			Url = "https://apis.roblox.com/assets/v1/assets",
 			Method = "POST",
 			Headers = {
-				["x-api-key"] = CONFIG.ApiKey,
+				["x-api-key"] = apiKey,
 				["Content-Type"] = "application/json",
 			},
 			Body = HttpService:JSONEncode({
@@ -1114,21 +1224,26 @@ UploadActionBtn.MouseButton1Click:Connect(function()
 			setUploadOutcome(false, 0)
 			notify("Upload", "Gagal.")
 		end
+		isUploading = false
 	end)
 end)
 
 -- Place Maker
+local isCreatingPlace = false
 CreatePlaceBtn.MouseButton1Click:Connect(function()
-	if trim(CONFIG.Cookie) == "" then
+	if isCreatingPlace then return end
+	local cookieVal = normalizeCookie(CONFIG.Cookie)
+	if cookieVal == "" then
 		setToolsOutcome(false, 0)
 		notify("Place Maker", "Gagal.")
 		return
 	end
 
-	local tplId = tonumber(trim(TemplateIdBox.Text)) or 95206881
-	local grpId = tonumber(trim(GroupIdBox.Text))
-	local count = math.clamp(tonumber(trim(PlaceCountBox.Text)) or 1, 1, 50)
+	local tplId = tonumber(trim(TemplateIdBox.Text):match("%d+")) or 95206881
+	local grpId = tonumber(trim(GroupIdBox.Text):match("%d+"))
+	local count = math.clamp(tonumber(trim(PlaceCountBox.Text):match("%d+")) or 1, 1, 50)
 
+	isCreatingPlace = true
 	task.spawn(function()
 		local csrf = ""
 		local sukses, gagal = 0, 0
@@ -1141,7 +1256,7 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 			local jsonBody = HttpService:JSONEncode(bodyTbl)
 
 			local headers: {[string]: string} = {
-				["Cookie"] = ".ROBLOSECURITY=" .. CONFIG.Cookie,
+				["Cookie"] = ".ROBLOSECURITY=" .. cookieVal,
 				["Content-Type"] = "application/json",
 			}
 			if csrf ~= "" then
@@ -1185,12 +1300,16 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 		local allOk = (sukses > 0 and gagal == 0)
 		setToolsOutcome(allOk, 1)
 		notify("Place Maker", allOk and "Berhasil." or "Gagal.")
+		isCreatingPlace = false
 	end)
 end)
 
 -- Asset Permissions
+local isGrantingPerm = false
 GrantPermBtn.MouseButton1Click:Connect(function()
-	if trim(CONFIG.ApiKey) == "" then
+	if isGrantingPerm then return end
+	local apiKey = trim(CONFIG.ApiKey)
+	if apiKey == "" then
 		setToolsOutcome(false, 0)
 		notify("Permissions", "Gagal.")
 		return
@@ -1204,6 +1323,7 @@ GrantPermBtn.MouseButton1Click:Connect(function()
 		return
 	end
 
+	isGrantingPerm = true
 	task.spawn(function()
 		local batchSize = 50
 		local totalBatches = math.ceil(#ids / batchSize)
@@ -1214,14 +1334,17 @@ GrantPermBtn.MouseButton1Click:Connect(function()
 			bIdx += 1
 			local reqList = {}
 			for j = i, math.min(i + batchSize - 1, #ids) do
-				table.insert(reqList, { assetId = tonumber(ids[j]) })
+				local numId = tonumber(ids[j])
+				if numId then
+					table.insert(reqList, { assetId = numId })
+				end
 			end
 
 			local res, ok = httpRequest({
 				Url = "https://apis.roblox.com/asset-permissions-api/v1/assets/permissions",
 				Method = "PATCH",
 				Headers = {
-					["x-api-key"] = CONFIG.ApiKey,
+					["x-api-key"] = apiKey,
 					["Content-Type"] = "application/json",
 				},
 				Body = HttpService:JSONEncode({
@@ -1248,5 +1371,6 @@ GrantPermBtn.MouseButton1Click:Connect(function()
 		local allOk = (suksesBatch > 0 and gagalBatch == 0)
 		setToolsOutcome(allOk, 1)
 		notify("Permissions", allOk and "Berhasil." or "Gagal.")
+		isGrantingPerm = false
 	end)
 end)
