@@ -1,5 +1,5 @@
 --!strict
--- Plugin Studio Lite (Delta Executor Edition - Create Place, My Places from Profile, Upload Asset ID, Voice Chat, 3rd Party Sales, Setting & Console) by Ikyy
+-- Plugin Studio Lite (Delta Executor Edition - Create Place, My Places from Profile, Voice Chat, 3rd Party Sales, Setting & Console) by Ikyy
 -- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Realtime (Icon Game, Name Game, Status + Console)
 
 local Players = game:GetService("Players")
@@ -22,7 +22,6 @@ end
 local CONFIG = {
 	WorkspaceRoot = "IkyyStudioLite",
 	Cookie = "",
-	ApiKey = "",
 	IsMinimized = false,
 	ActiveTab = "CreatePlace",
 	DefaultUniverseId = "10516113765",
@@ -54,13 +53,6 @@ local function normalizeCookie(rawCookie: string): string
 		c = c .. ";"
 	end
 	return c
-end
-
-local function sanitizeApiKey(rawKey: string): string
-	local k = trim(rawKey)
-	if k == "" then return "" end
-	k = k:gsub("[\r\n]+", "")
-	return trim(k)
 end
 
 local function notify(title: string, text: string)
@@ -130,7 +122,7 @@ local function setClipboardText(text: string): boolean
 	end
 	pcall(function()
 		StarterGui:SetCore("SendNotification", {
-			Title = "Copied Value",
+			Title = "Universe ID",
 			Text = text,
 			Duration = 4,
 		})
@@ -143,14 +135,12 @@ local fnReadFile = type(ENV.readfile) == "function" and ENV.readfile or nil
 local fnIsFile = type(ENV.isfile) == "function" and ENV.isfile or nil
 local fnIsFolder = type(ENV.isfolder) == "function" and ENV.isfolder or nil
 local fnMakeFolder = type(ENV.makefolder) == "function" and ENV.makefolder or nil
-local fnListFiles = type(ENV.listfiles) == "function" and ENV.listfiles or nil
 
 local function ensureFolders()
 	if not fnMakeFolder then return end
 	local folders = {
 		CONFIG.WorkspaceRoot,
 		CONFIG.WorkspaceRoot .. "/Logs",
-		CONFIG.WorkspaceRoot .. "/Assets",
 	}
 	for _, folder in ipairs(folders) do
 		local exists = false
@@ -222,65 +212,9 @@ local function loadTextFile(relPath: string): string?
 	return nil
 end
 
-local function listAssetsFolderFiles(): {string}
-	ensureFolders()
-	local results: {string} = {}
-	local seen: {[string]: boolean} = {}
-
-	local function addAssetRel(rawPath: string)
-		local cleanRel = normalizeWorkspaceRelPath(rawPath)
-		if cleanRel:sub(1, 7) ~= "Assets/" then return end
-		if cleanRel:sub(-1) == "/" then return end
-		local subPart = cleanRel:sub(8)
-		if subPart == "" or subPart:find("/") then return end
-		if not seen[cleanRel] then
-			seen[cleanRel] = true
-			table.insert(results, cleanRel)
-		end
-	end
-
-	if fnListFiles then
-		local assetsFolder = CONFIG.WorkspaceRoot .. "/Assets"
-		local okList, listRes = pcall(fnListFiles, assetsFolder)
-		if okList and type(listRes) == "table" then
-			for _, entry in ipairs(listRes) do
-				if type(entry) == "string" then
-					local cleanRel = normalizeWorkspaceRelPath(entry)
-					if cleanRel:sub(1, 7) ~= "Assets/" then
-						cleanRel = "Assets/" .. cleanRel:gsub("^/+", "")
-					end
-					local isDir = false
-					if fnIsFolder then
-						local okDir, resDir = pcall(fnIsFolder, entry)
-						if not okDir then
-							okDir, resDir = pcall(fnIsFolder, CONFIG.WorkspaceRoot .. "/" .. cleanRel)
-						end
-						isDir = okDir and (resDir == true)
-					end
-					if not isDir then
-						addAssetRel(cleanRel)
-					end
-				end
-			end
-		end
-	end
-
-	for k in pairs(MEMORY_FILES) do
-		addAssetRel(k)
-	end
-
-	table.sort(results)
-	return results
-end
-
 local savedCookie = loadTextFile("cookie.txt")
 if savedCookie and trim(savedCookie) ~= "" then
 	CONFIG.Cookie = normalizeCookie(savedCookie)
-end
-
-local savedApiKey = loadTextFile("apikey.txt")
-if savedApiKey and trim(savedApiKey) ~= "" then
-	CONFIG.ApiKey = sanitizeApiKey(savedApiKey)
 end
 
 -- ==========================================
@@ -622,6 +556,7 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		})
 	end
 
+	-- 1. Ambil dari Profile Creations API (www.roblox.com/users/{uid}/profile -> Creations)
 	local profileApiUrls = {
 		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=All&limit=50&sortOrder=Desc", uid),
 		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=2&limit=50&sortOrder=Desc", uid),
@@ -664,6 +599,7 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
+	-- 2. Parse langsung halaman HTML profil: https://www.roblox.com/users/{uid}/profile
 	local profilePageUrl = string.format("https://www.roblox.com/users/%d/profile", uid)
 	local htmlRes, htmlOk = apiRequest({
 		Url = profilePageUrl,
@@ -718,6 +654,7 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
+	-- 3. Lengkapi nama, rootPlaceId & status (publik / private) tiap universe
 	for _, it in ipairs(rawItems) do
 		local dRes, dOk = apiRequest({
 			Url = "https://develop.roblox.com/v1/universes/" .. it.univId,
@@ -750,6 +687,7 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
+	-- 4. Batch fetch nama & rootPlaceId lewat games.roblox.com
 	local gamesInfoMap: {[string]: {name: string?, rootPlaceId: string?}} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -782,6 +720,7 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
+	-- 5. Batch fetch icon lewat thumbnails.roblox.com
 	local iconMap: {[string]: string} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -838,228 +777,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 
 	local acctLabel = uname and ("@" .. uname) or ("ID:" .. tostring(uid))
 	return true, cards, acctLabel
-end
-
--- ==========================================
--- API UPLOAD ASSET -> DAPAT ASSET ID & CEK STATUS
--- ==========================================
-local function guessMimeType(fileName: string, assetType: string): string
-	local lower = fileName:lower()
-	local lowType = assetType:lower()
-	if lowType == "audio" or lower:match("%.mp3$") then
-		return "audio/mpeg"
-	elseif lower:match("%.ogg$") then
-		return "audio/ogg"
-	elseif lower:match("%.wav$") then
-		return "audio/wav"
-	elseif lower:match("%.png$") then
-		return "image/png"
-	elseif lower:match("%.jpg$") or lower:match("%.jpeg$") then
-		return "image/jpeg"
-	end
-	return "application/octet-stream"
-end
-
-local function buildMultipartAssetBody(
-	boundary: string,
-	requestJson: string,
-	fileContent: string,
-	fileName: string,
-	mimeType: string,
-	includeFilename: boolean
-): string
-	local fileDisp = includeFilename
-		and string.format('Content-Disposition: form-data; name="fileContent"; filename="%s"\r\n', fileName)
-		or 'Content-Disposition: form-data; name="fileContent"\r\n'
-
-	local parts = {
-		"--" .. boundary .. "\r\n",
-		'Content-Disposition: form-data; name="request"\r\n',
-		"Content-Type: application/json\r\n\r\n",
-		requestJson .. "\r\n",
-		"--" .. boundary .. "\r\n",
-		fileDisp,
-		"Content-Type: " .. mimeType .. "\r\n\r\n",
-		fileContent .. "\r\n",
-		"--" .. boundary .. "--\r\n",
-	}
-	return table.concat(parts)
-end
-
-local function uploadAssetAndGetId(params: {
-	apiKey: string,
-	cookieVal: string,
-	assetType: string,
-	displayName: string,
-	description: string,
-	groupId: string?,
-	selectedAssetRelPath: string,
-	requestPublicCatalog: boolean,
-}): (boolean, string?, string, string)
-	local cleanKey = sanitizeApiKey(params.apiKey)
-	local cleanCookie = normalizeCookie(params.cookieVal)
-	if cleanKey == "" then
-		return false, nil, "API_KEY_MISSING", "Open Cloud API Key kosong. Isi di tab Setting."
-	end
-
-	local cleanRelPath = normalizeWorkspaceRelPath(params.selectedAssetRelPath)
-	if cleanRelPath == "" then
-		return false, nil, "NO_FILE_SELECTED", "Belum ada file di folder Assets yang dipilih."
-	end
-
-	local filePayload = loadTextFile(cleanRelPath)
-	if not filePayload or #filePayload == 0 then
-		return false, nil, "EMPTY_PAYLOAD", "File '" .. cleanRelPath .. "' kosong (0 bytes) atau gagal dibaca."
-	end
-	pushConsole("INFO", string.format("Membaca file aset: %s/%s (%d bytes)", CONFIG.WorkspaceRoot, cleanRelPath, #filePayload))
-
-	local creatorTbl: {[string]: any}
-	local cleanGroup = params.groupId and (trim(params.groupId):match("%d+") or "") or ""
-	if cleanGroup ~= "" then
-		creatorTbl = { groupId = tonumber(cleanGroup) }
-	else
-		local uid = getAuthenticatedUserFromCookie(cleanCookie)
-		if not uid then
-			return false, nil, "NO_CREATOR", "Isi Group ID atau pastikan Cookie valid untuk mendeteksi User ID."
-		end
-		creatorTbl = { userId = uid }
-	end
-
-	local baseName = cleanRelPath:match("([^/]+)$") or "asset_payload.mp3"
-	local resolvedAssetType = trim(params.assetType)
-	if resolvedAssetType == "" then
-		resolvedAssetType = baseName:lower():match("%.mp3$") and "Audio" or "Model"
-	end
-
-	local reqObj = {
-		assetType = resolvedAssetType,
-		displayName = trim(params.displayName) ~= "" and trim(params.displayName) or baseName,
-		description = trim(params.description) ~= "" and trim(params.description) or "Uploaded via Plugin Studio Lite",
-		creationContext = {
-			creator = creatorTbl,
-		},
-	}
-
-	local mimeType = guessMimeType(baseName, resolvedAssetType)
-	local encodedRequestJson = HttpService:JSONEncode(reqObj)
-
-	local attemptsPlan = {
-		{ boundary = "RbxBoundary" .. tostring(os.time()) .. "A", includeFilename = true, label = "multipart-filename" },
-		{ boundary = "RbxBoundary" .. tostring(os.time()) .. "B", includeFilename = false, label = "multipart-no-filename" },
-	}
-
-	local res: any = nil
-	local ok = false
-	local info = "Gagal mengirim"
-
-	for idx, plan in ipairs(attemptsPlan) do
-		local multipartBody = buildMultipartAssetBody(
-			plan.boundary,
-			encodedRequestJson,
-			filePayload,
-			baseName,
-			mimeType,
-			plan.includeFilename
-		)
-		pushConsole("INFO", string.format("Payload [%s] siap: field=fileContent (%s, %s), total=%d bytes", plan.label, baseName, mimeType, #multipartBody))
-
-		local hdrs: {[string]: string} = {
-			["x-api-key"] = cleanKey,
-			["Content-Type"] = "multipart/form-data; boundary=" .. plan.boundary,
-			["Accept"] = "application/json",
-		}
-
-		res, ok, info = apiRequest({
-			Url = "https://apis.roblox.com/assets/v1/assets",
-			Method = "POST",
-			Headers = hdrs,
-			Body = multipartBody,
-			Retries = 1,
-		})
-
-		local bodyStr = res and tostring(res.Body or "") or ""
-		if bodyStr ~= "" then
-			saveTextFile("Logs/asset_upload_" .. tostring(os.time()) .. "_" .. tostring(idx) .. ".json", bodyStr)
-		end
-
-		if ok and res then
-			break
-		end
-
-		local missingFileContent = bodyStr:find("FileContent") ~= nil
-		if not missingFileContent or idx == #attemptsPlan then
-			break
-		end
-		pushConsole("WARN", "Percobaan " .. plan.label .. " masih meminta FileContent; mencoba variasi format berikutnya...")
-	end
-
-	if not ok or not res then
-		return false, nil, "UPLOAD_FAILED", info
-	end
-
-	local bodyStr = tostring(res.Body or "")
-	local okDec, decoded = pcall(function()
-		return HttpService:JSONDecode(bodyStr)
-	end)
-
-	local assetId: string? = nil
-	local modState = "MODERATION_PENDING"
-	local opPath: string? = nil
-
-	if okDec and type(decoded) == "table" then
-		if type(decoded.path) == "string" then
-			opPath = decoded.path
-		end
-		if decoded.assetId ~= nil then
-			assetId = tostring(decoded.assetId):match("%d+")
-		end
-		if type(decoded.response) == "table" and decoded.response.assetId ~= nil then
-			assetId = tostring(decoded.response.assetId):match("%d+")
-		end
-	end
-
-	if not assetId then
-		assetId = bodyStr:match('"assetId"%s*:%s*"?(%d+)"?')
-	end
-
-	if opPath and opPath ~= "" and not assetId then
-		for _ = 1, 5 do
-			task.wait(1)
-			local opRes, opOk = apiRequest({
-				Url = "https://apis.roblox.com/assets/v1/" .. opPath:gsub("^/", ""),
-				Method = "GET",
-				Headers = { ["x-api-key"] = cleanKey },
-				Retries = 1,
-			})
-			if opOk and opRes and opRes.Body then
-				local opStr = tostring(opRes.Body)
-				local okOp, opDec = pcall(function()
-					return HttpService:JSONDecode(opStr)
-				end)
-				if okOp and type(opDec) == "table" then
-					if type(opDec.response) == "table" and opDec.response.assetId ~= nil then
-						assetId = tostring(opDec.response.assetId):match("%d+")
-					end
-					if type(opDec.response) == "table" and type(opDec.response.moderationResult) == "table" and type(opDec.response.moderationResult.moderationState) == "string" then
-						modState = opDec.response.moderationResult.moderationState
-					end
-					if opDec.done == true then
-						break
-					end
-				end
-			end
-		end
-	end
-
-	if not assetId or assetId == "" then
-		return false, nil, "NO_ASSET_ID", "Upload terkirim tapi Asset ID belum terbaca (cek Console)."
-	end
-
-	local statusTag = params.requestPublicCatalog
-		and ("ID Ready • " .. modState .. " (Publik: cek/set di Creator Dashboard)")
-		or ("ID Ready • " .. modState .. " (Privat/Terbatas)")
-
-	return true, assetId, statusTag, "Asset ID berhasil dibuat: " .. assetId
 end
 
 -- ==========================================
@@ -1446,10 +1163,10 @@ LogoIcon.Font = Enum.Font.GothamBold
 LogoIcon.Parent = HeaderLogoBox
 
 local SubTitleLabel = Instance.new("TextLabel")
-SubTitleLabel.Size = UDim2.new(0, 320, 0, 11)
+SubTitleLabel.Size = UDim2.new(0, 300, 0, 11)
 SubTitleLabel.Position = UDim2.new(0, 48, 0, 5)
 SubTitleLabel.BackgroundTransparency = 1
-SubTitleLabel.Text = "IKYYSTUDIO • PLACE, ASSET ID, VOICE & 3RD PARTY"
+SubTitleLabel.Text = "IKYYSTUDIO • PLACE, PROFILE PLACES, VOICE & 3RD PARTY"
 SubTitleLabel.TextColor3 = Color3.fromRGB(130, 126, 155)
 SubTitleLabel.TextSize = 8
 SubTitleLabel.Font = Enum.Font.GothamBold
@@ -1600,13 +1317,10 @@ local SideStroke = Instance.new("UIStroke", Sidebar)
 SideStroke.Color = Color3.fromRGB(52, 48, 82)
 SideStroke.Thickness = 1
 
-local NavListFrame = Instance.new("ScrollingFrame")
+local NavListFrame = Instance.new("Frame")
 NavListFrame.Size = UDim2.new(1, -10, 1, -10)
 NavListFrame.Position = UDim2.new(0, 5, 0, 5)
 NavListFrame.BackgroundTransparency = 1
-NavListFrame.ScrollBarThickness = 2
-NavListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-NavListFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 NavListFrame.Parent = Sidebar
 
 local NavLayout = Instance.new("UIListLayout")
@@ -1620,7 +1334,7 @@ local tabButtons: {[string]: TextButton} = {}
 local function createNavButton(name: string, label: string, order: number)
 	local btn = Instance.new("TextButton")
 	btn.Name = "Nav_" .. name
-	btn.Size = UDim2.new(1, 0, 0, 25)
+	btn.Size = UDim2.new(1, 0, 0, 26)
 	btn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
 	btn.Text = "  " .. label
 	btn.TextColor3 = Color3.fromRGB(185, 182, 210)
@@ -1644,7 +1358,6 @@ ContentArea.Size = UDim2.new(1, -152, 1, -54)
 ContentArea.Position = UDim2.new(0, 142, 0, 48)
 ContentArea.BackgroundColor3 = Color3.fromRGB(20, 19, 30)
 ContentArea.BorderSizePixel = 0
-ContentArea.ClipsDescendants = true
 ContentArea.Parent = MainWindow
 Instance.new("UICorner", ContentArea).CornerRadius = UDim.new(0, 10)
 local ContStroke = Instance.new("UIStroke", ContentArea)
@@ -2089,320 +1802,7 @@ MyPlacesEmptyHint.Font = Enum.Font.Gotham
 MyPlacesEmptyHint.Parent = MyPlacesScroll
 
 -- ==========================================
--- HALAMAN 3: UPLOAD ASSET -> DAPAT ASSET ID + LIST FOLDER ASSETS
--- ==========================================
-local UploadAssetPage = Instance.new("Frame")
-UploadAssetPage.Size = UDim2.fromScale(1, 1)
-UploadAssetPage.BackgroundTransparency = 1
-UploadAssetPage.Visible = false
-UploadAssetPage.Parent = ContentArea
-tabPages["UploadAsset"] = UploadAssetPage
-
-local AssetPageTitle = Instance.new("TextLabel")
-AssetPageTitle.Size = UDim2.new(1, -24, 0, 15)
-AssetPageTitle.Position = UDim2.new(0, 12, 0, 3)
-AssetPageTitle.BackgroundTransparency = 1
-AssetPageTitle.Text = "Upload Asset -> Dapat Asset ID"
-AssetPageTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-AssetPageTitle.TextSize = 11
-AssetPageTitle.Font = Enum.Font.GothamBold
-AssetPageTitle.TextXAlignment = Enum.TextXAlignment.Left
-AssetPageTitle.Parent = UploadAssetPage
-
-local AssetNameBox = Instance.new("TextBox")
-AssetNameBox.Size = UDim2.new(0.56, -10, 0, 20)
-AssetNameBox.Position = UDim2.new(0, 12, 0, 19)
-AssetNameBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-AssetNameBox.Text = "StudioLite_Model"
-AssetNameBox.PlaceholderText = "Nama Aset"
-AssetNameBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-AssetNameBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-AssetNameBox.TextSize = 9
-AssetNameBox.Font = Enum.Font.Gotham
-AssetNameBox.ClearTextOnFocus = false
-AssetNameBox.Parent = UploadAssetPage
-Instance.new("UICorner", AssetNameBox).CornerRadius = UDim.new(0, 6)
-
-local AssetTypeBox = Instance.new("TextBox")
-AssetTypeBox.Size = UDim2.new(0.24, -6, 0, 20)
-AssetTypeBox.Position = UDim2.new(0.56, 0, 0, 19)
-AssetTypeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-AssetTypeBox.Text = "Model"
-AssetTypeBox.PlaceholderText = "Model/Audio"
-AssetTypeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-AssetTypeBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-AssetTypeBox.TextSize = 9
-AssetTypeBox.Font = Enum.Font.Gotham
-AssetTypeBox.ClearTextOnFocus = false
-AssetTypeBox.Parent = UploadAssetPage
-Instance.new("UICorner", AssetTypeBox).CornerRadius = UDim.new(0, 6)
-
-local AssetGroupBox = Instance.new("TextBox")
-AssetGroupBox.Size = UDim2.new(0.20, -8, 0, 20)
-AssetGroupBox.Position = UDim2.new(0.80, 0, 0, 19)
-AssetGroupBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-AssetGroupBox.Text = ""
-AssetGroupBox.PlaceholderText = "Group ID"
-AssetGroupBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-AssetGroupBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-AssetGroupBox.TextSize = 9
-AssetGroupBox.Font = Enum.Font.Gotham
-AssetGroupBox.ClearTextOnFocus = false
-AssetGroupBox.Parent = UploadAssetPage
-Instance.new("UICorner", AssetGroupBox).CornerRadius = UDim.new(0, 6)
-
-local selectedAssetRelPath: string? = nil
-
-local AssetFilePickerBtn = Instance.new("TextButton")
-AssetFilePickerBtn.Size = UDim2.new(1, -54, 0, 21)
-AssetFilePickerBtn.Position = UDim2.new(0, 12, 0, 42)
-AssetFilePickerBtn.BackgroundColor3 = Color3.fromRGB(18, 17, 28)
-AssetFilePickerBtn.Text = "  📂 Pilih file dari folder Assets..."
-AssetFilePickerBtn.TextColor3 = Color3.fromRGB(220, 216, 248)
-AssetFilePickerBtn.TextSize = 9
-AssetFilePickerBtn.Font = Enum.Font.GothamBold
-AssetFilePickerBtn.TextXAlignment = Enum.TextXAlignment.Left
-AssetFilePickerBtn.TextTruncate = Enum.TextTruncate.AtEnd
-AssetFilePickerBtn.Parent = UploadAssetPage
-Instance.new("UICorner", AssetFilePickerBtn).CornerRadius = UDim.new(0, 6)
-local PickerStroke = Instance.new("UIStroke", AssetFilePickerBtn)
-PickerStroke.Color = Color3.fromRGB(72, 66, 116)
-PickerStroke.Thickness = 1
-
-local RefreshAssetListBtn = Instance.new("TextButton")
-RefreshAssetListBtn.Size = UDim2.fromOffset(26, 21)
-RefreshAssetListBtn.Position = UDim2.new(1, -38, 0, 42)
-RefreshAssetListBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 52)
-RefreshAssetListBtn.Text = "↻"
-RefreshAssetListBtn.TextColor3 = Color3.fromRGB(220, 216, 248)
-RefreshAssetListBtn.TextSize = 11
-RefreshAssetListBtn.Font = Enum.Font.GothamBold
-RefreshAssetListBtn.Parent = UploadAssetPage
-Instance.new("UICorner", RefreshAssetListBtn).CornerRadius = UDim.new(0, 6)
-
-local AssetPublicRow = Instance.new("Frame")
-AssetPublicRow.Size = UDim2.new(1, -24, 0, 21)
-AssetPublicRow.Position = UDim2.new(0, 12, 0, 66)
-AssetPublicRow.BackgroundColor3 = Color3.fromRGB(17, 16, 26)
-AssetPublicRow.BorderSizePixel = 0
-AssetPublicRow.Parent = UploadAssetPage
-Instance.new("UICorner", AssetPublicRow).CornerRadius = UDim.new(0, 6)
-
-local AssetPublicLbl = Instance.new("TextLabel")
-AssetPublicLbl.Size = UDim2.new(1, -76, 1, 0)
-AssetPublicLbl.Position = UDim2.new(0, 8, 0, 0)
-AssetPublicLbl.BackgroundTransparency = 1
-AssetPublicLbl.Text = "Mode Target Publik (OFF = Privat | ON = Publik)"
-AssetPublicLbl.TextColor3 = Color3.fromRGB(190, 187, 218)
-AssetPublicLbl.TextSize = 9
-AssetPublicLbl.Font = Enum.Font.GothamMedium
-AssetPublicLbl.TextXAlignment = Enum.TextXAlignment.Left
-AssetPublicLbl.Parent = AssetPublicRow
-
-local AssetPublicSwitch = createModernToggleSwitch(AssetPublicRow, false, function(state: boolean)
-	AssetPublicLbl.Text = state
-		and "Mode Publik: ON (set distribusi di Creator Dashboard)"
-		or "Mode Publik: OFF (tetap privat / terbatas)"
-end)
-AssetPublicSwitch.Button.Size = UDim2.fromOffset(58, 17)
-AssetPublicSwitch.Button.Position = UDim2.new(1, -64, 0.5, -8)
-
-local UploadAssetBtn = Instance.new("TextButton")
-UploadAssetBtn.Size = UDim2.new(1, -24, 0, 23)
-UploadAssetBtn.Position = UDim2.new(0, 12, 0, 90)
-UploadAssetBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-UploadAssetBtn.Text = "📦  UPLOAD & GENERATE ASSET ID"
-UploadAssetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-UploadAssetBtn.TextSize = 10
-UploadAssetBtn.Font = Enum.Font.GothamBold
-UploadAssetBtn.Parent = UploadAssetPage
-Instance.new("UICorner", UploadAssetBtn).CornerRadius = UDim.new(0, 7)
-
-local AssetResultCard = Instance.new("Frame")
-AssetResultCard.Size = UDim2.new(1, -24, 1, -121)
-AssetResultCard.Position = UDim2.new(0, 12, 0, 117)
-AssetResultCard.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-AssetResultCard.BorderSizePixel = 0
-AssetResultCard.Parent = UploadAssetPage
-Instance.new("UICorner", AssetResultCard).CornerRadius = UDim.new(0, 8)
-local AssetCardStroke = Instance.new("UIStroke", AssetResultCard)
-AssetCardStroke.Color = Color3.fromRGB(52, 48, 82)
-AssetCardStroke.Thickness = 1
-
-local AssetIdDisplay = Instance.new("TextLabel")
-AssetIdDisplay.Size = UDim2.new(1, -86, 0, 20)
-AssetIdDisplay.Position = UDim2.new(0, 10, 0, 6)
-AssetIdDisplay.BackgroundTransparency = 1
-AssetIdDisplay.Text = "Asset ID: -"
-AssetIdDisplay.TextColor3 = Color3.fromRGB(248, 248, 255)
-AssetIdDisplay.TextSize = 12
-AssetIdDisplay.Font = Enum.Font.GothamBold
-AssetIdDisplay.TextXAlignment = Enum.TextXAlignment.Left
-AssetIdDisplay.Parent = AssetResultCard
-
-local CopyAssetIdBtn = Instance.new("TextButton")
-CopyAssetIdBtn.Size = UDim2.fromOffset(66, 20)
-CopyAssetIdBtn.Position = UDim2.new(1, -74, 0, 6)
-CopyAssetIdBtn.BackgroundColor3 = Color3.fromRGB(42, 38, 72)
-CopyAssetIdBtn.Text = "📋 Copy ID"
-CopyAssetIdBtn.TextColor3 = Color3.fromRGB(220, 215, 255)
-CopyAssetIdBtn.TextSize = 8
-CopyAssetIdBtn.Font = Enum.Font.GothamBold
-CopyAssetIdBtn.Parent = AssetResultCard
-Instance.new("UICorner", CopyAssetIdBtn).CornerRadius = UDim.new(0, 5)
-
-local AssetStatusDetail = Instance.new("TextLabel")
-AssetStatusDetail.Size = UDim2.new(1, -20, 1, -30)
-AssetStatusDetail.Position = UDim2.new(0, 10, 0, 26)
-AssetStatusDetail.BackgroundTransparency = 1
-AssetStatusDetail.Text = "Pilih file dari folder " .. CONFIG.WorkspaceRoot .. "/Assets lalu klik Upload. Butuh Open Cloud API Key (tab Setting)."
-AssetStatusDetail.TextColor3 = Color3.fromRGB(165, 162, 194)
-AssetStatusDetail.TextSize = 9
-AssetStatusDetail.Font = Enum.Font.GothamMedium
-AssetStatusDetail.TextXAlignment = Enum.TextXAlignment.Left
-AssetStatusDetail.TextYAlignment = Enum.TextYAlignment.Top
-AssetStatusDetail.TextWrapped = true
-AssetStatusDetail.Parent = AssetResultCard
-
-local AssetFileDropdown = Instance.new("ScrollingFrame")
-AssetFileDropdown.Name = "AssetFolderList"
-AssetFileDropdown.Size = UDim2.new(1, -24, 0, 116)
-AssetFileDropdown.Position = UDim2.new(0, 12, 0, 65)
-AssetFileDropdown.BackgroundColor3 = Color3.fromRGB(15, 14, 24)
-AssetFileDropdown.BorderSizePixel = 0
-AssetFileDropdown.ScrollBarThickness = 3
-AssetFileDropdown.CanvasSize = UDim2.new(0, 0, 0, 0)
-AssetFileDropdown.AutomaticCanvasSize = Enum.AutomaticSize.Y
-AssetFileDropdown.Visible = false
-AssetFileDropdown.ZIndex = 20
-AssetFileDropdown.Parent = UploadAssetPage
-Instance.new("UICorner", AssetFileDropdown).CornerRadius = UDim.new(0, 7)
-local DropStroke = Instance.new("UIStroke", AssetFileDropdown)
-DropStroke.Color = Color3.fromRGB(108, 86, 245)
-DropStroke.Thickness = 1.2
-
-local DropLayout = Instance.new("UIListLayout")
-DropLayout.Padding = UDim.new(0, 3)
-DropLayout.SortOrder = Enum.SortOrder.LayoutOrder
-DropLayout.Parent = AssetFileDropdown
-
-local DropPad = Instance.new("UIPadding")
-DropPad.PaddingTop = UDim.new(0, 5)
-DropPad.PaddingBottom = UDim.new(0, 5)
-DropPad.PaddingLeft = UDim.new(0, 5)
-DropPad.PaddingRight = UDim.new(0, 5)
-DropPad.Parent = AssetFileDropdown
-
-local function rebuildAssetFileList(autoSelectFirst: boolean)
-	for _, child in ipairs(AssetFileDropdown:GetChildren()) do
-		if child:IsA("TextButton") or child:IsA("TextLabel") then
-			child:Destroy()
-		end
-	end
-
-	local files = listAssetsFolderFiles()
-	if #files == 0 then
-		selectedAssetRelPath = nil
-		AssetFilePickerBtn.Text = "  📂 Folder Assets kosong (" .. CONFIG.WorkspaceRoot .. "/Assets)"
-		local emptyLbl = Instance.new("TextLabel")
-		emptyLbl.Size = UDim2.new(1, 0, 0, 28)
-		emptyLbl.BackgroundTransparency = 1
-		emptyLbl.Text = "Tidak ada file di " .. CONFIG.WorkspaceRoot .. "/Assets"
-		emptyLbl.TextColor3 = Color3.fromRGB(165, 155, 195)
-		emptyLbl.TextSize = 9
-		emptyLbl.Font = Enum.Font.Gotham
-		emptyLbl.ZIndex = 21
-		emptyLbl.Parent = AssetFileDropdown
-		return
-	end
-
-	local stillExists = false
-	if selectedAssetRelPath then
-		for _, f in ipairs(files) do
-			if f == selectedAssetRelPath then
-				stillExists = true
-				break
-			end
-		end
-	end
-
-	if not stillExists and autoSelectFirst then
-		selectedAssetRelPath = files[1]
-	elseif not stillExists then
-		selectedAssetRelPath = nil
-	end
-
-	if selectedAssetRelPath then
-		AssetFilePickerBtn.Text = "  📄 " .. selectedAssetRelPath:match("([^/]+)$") .. " (" .. selectedAssetRelPath .. ")"
-		if selectedAssetRelPath:lower():match("%.mp3$") or selectedAssetRelPath:lower():match("%.ogg$") or selectedAssetRelPath:lower():match("%.wav$") then
-			AssetTypeBox.Text = "Audio"
-		end
-	else
-		AssetFilePickerBtn.Text = string.format("  📂 Pilih file dari folder Assets (%d file)", #files)
-	end
-
-	for idx, relFile in ipairs(files) do
-		local shortName = relFile:match("([^/]+)$") or relFile
-		local isSelected = (relFile == selectedAssetRelPath)
-
-		local itemBtn = Instance.new("TextButton")
-		itemBtn.Name = "AssetFile_" .. tostring(idx)
-		itemBtn.Size = UDim2.new(1, 0, 0, 22)
-		itemBtn.BackgroundColor3 = isSelected and Color3.fromRGB(58, 48, 96) or Color3.fromRGB(24, 22, 38)
-		itemBtn.Text = (isSelected and "  ✓ " or "  📄 ") .. shortName
-		itemBtn.TextColor3 = isSelected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(210, 206, 238)
-		itemBtn.TextSize = 9
-		itemBtn.Font = Enum.Font.GothamBold
-		itemBtn.TextXAlignment = Enum.TextXAlignment.Left
-		itemBtn.TextTruncate = Enum.TextTruncate.AtEnd
-		itemBtn.LayoutOrder = idx
-		itemBtn.ZIndex = 21
-		itemBtn.Parent = AssetFileDropdown
-		Instance.new("UICorner", itemBtn).CornerRadius = UDim.new(0, 5)
-
-		itemBtn.MouseButton1Click:Connect(function()
-			selectedAssetRelPath = relFile
-			AssetFilePickerBtn.Text = "  📄 " .. shortName .. " (" .. relFile .. ")"
-			AssetFileDropdown.Visible = false
-			if shortName:lower():match("%.mp3$") or shortName:lower():match("%.ogg$") or shortName:lower():match("%.wav$") then
-				AssetTypeBox.Text = "Audio"
-			end
-			pushConsole("INFO", "File aset dipilih: " .. CONFIG.WorkspaceRoot .. "/" .. relFile)
-		end)
-	end
-end
-
-AssetFilePickerBtn.MouseButton1Click:Connect(function()
-	local nextVis = not AssetFileDropdown.Visible
-	if nextVis then
-		rebuildAssetFileList(false)
-	end
-	AssetFileDropdown.Visible = nextVis
-end)
-
-RefreshAssetListBtn.MouseButton1Click:Connect(function()
-	rebuildAssetFileList(false)
-	local countFiles = #listAssetsFolderFiles()
-	pushConsole("INFO", string.format("List folder Assets diperbarui (%d file).", countFiles))
-	notify("Folder Assets", tostring(countFiles) .. " file ditemukan.")
-end)
-
-rebuildAssetFileList(true)
-
-local lastGeneratedAssetId: string? = nil
-
-CopyAssetIdBtn.MouseButton1Click:Connect(function()
-	if not lastGeneratedAssetId or lastGeneratedAssetId == "" then
-		notify("Asset ID", "Belum ada Asset ID.")
-		return
-	end
-	local okCopy = setClipboardText(lastGeneratedAssetId)
-	pushConsole("INFO", "Asset ID " .. lastGeneratedAssetId .. (okCopy and " disalin ke clipboard" or " ditampilkan"))
-	notify("Asset ID", (okCopy and "Disalin: " or "ID: ") .. lastGeneratedAssetId)
-end)
-
--- ==========================================
--- HALAMAN 4: VOICE CHAT UNIVERSE
+-- HALAMAN 3: VOICE CHAT UNIVERSE
 -- ==========================================
 local VoicePage = Instance.new("Frame")
 VoicePage.Size = UDim2.fromScale(1, 1)
@@ -2546,7 +1946,7 @@ VoiceStatusText.TextWrapped = true
 VoiceStatusText.Parent = VoicePreviewCard
 
 -- ==========================================
--- HALAMAN 5: ALLOW THIRD PARTY SALES
+-- HALAMAN 4: ALLOW THIRD PARTY SALES
 -- ==========================================
 local ThirdPartyPage = Instance.new("Frame")
 ThirdPartyPage.Size = UDim2.fromScale(1, 1)
@@ -2690,132 +2090,71 @@ SalesStatusText.TextWrapped = true
 SalesStatusText.Parent = SalesPreviewCard
 
 -- ==========================================
--- HALAMAN 6: SETTING (COOKIE & OPEN CLOUD API KEY)
+-- HALAMAN 5: SETTING (COOKIE)
 -- ==========================================
 local SettingPage = Instance.new("Frame")
 SettingPage.Size = UDim2.fromScale(1, 1)
 SettingPage.BackgroundTransparency = 1
-SettingPage.ClipsDescendants = true
 SettingPage.Visible = false
 SettingPage.Parent = ContentArea
 tabPages["Setting"] = SettingPage
 
-local SettingPad = Instance.new("UIPadding")
-SettingPad.PaddingTop = UDim.new(0, 6)
-SettingPad.PaddingBottom = UDim.new(0, 6)
-SettingPad.PaddingLeft = UDim.new(0, 12)
-SettingPad.PaddingRight = UDim.new(0, 12)
-SettingPad.Parent = SettingPage
-
 local SettingTitle = Instance.new("TextLabel")
-SettingTitle.Size = UDim2.new(1, 0, 0, 15)
-SettingTitle.Position = UDim2.new(0, 0, 0, 0)
+SettingTitle.Size = UDim2.new(1, -24, 0, 18)
+SettingTitle.Position = UDim2.new(0, 12, 0, 8)
 SettingTitle.BackgroundTransparency = 1
-SettingTitle.Text = "Pengaturan Cookie & Open Cloud Key"
+SettingTitle.Text = "Pengaturan Cookie"
 SettingTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-SettingTitle.TextSize = 11
+SettingTitle.TextSize = 13
 SettingTitle.Font = Enum.Font.GothamBold
 SettingTitle.TextXAlignment = Enum.TextXAlignment.Left
-SettingTitle.TextTruncate = Enum.TextTruncate.AtEnd
 SettingTitle.Parent = SettingPage
 
 local CookieBox = Instance.new("TextBox")
-CookieBox.Size = UDim2.new(1, 0, 0, 56)
-CookieBox.Position = UDim2.new(0, 0, 0, 18)
+CookieBox.Size = UDim2.new(1, -24, 0, 96)
+CookieBox.Position = UDim2.new(0, 12, 0, 32)
 CookieBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 CookieBox.Text = CONFIG.Cookie
 CookieBox.PlaceholderText = "Tempel .ROBLOSECURITY Cookie di sini..."
 CookieBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 CookieBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-CookieBox.TextSize = 9
+CookieBox.TextSize = 10
 CookieBox.Font = Enum.Font.Gotham
 CookieBox.ClearTextOnFocus = false
 CookieBox.MultiLine = true
 CookieBox.TextWrapped = true
-CookieBox.ClipsDescendants = true
 CookieBox.TextXAlignment = Enum.TextXAlignment.Left
 CookieBox.TextYAlignment = Enum.TextYAlignment.Top
 CookieBox.Parent = SettingPage
 Instance.new("UICorner", CookieBox).CornerRadius = UDim.new(0, 7)
 
-local CookieBoxPad = Instance.new("UIPadding")
-CookieBoxPad.PaddingTop = UDim.new(0, 5)
-CookieBoxPad.PaddingBottom = UDim.new(0, 5)
-CookieBoxPad.PaddingLeft = UDim.new(0, 7)
-CookieBoxPad.PaddingRight = UDim.new(0, 7)
-CookieBoxPad.Parent = CookieBox
-
-local ApiKeyLabel = Instance.new("TextLabel")
-ApiKeyLabel.Size = UDim2.new(1, 0, 0, 12)
-ApiKeyLabel.Position = UDim2.new(0, 0, 0, 78)
-ApiKeyLabel.BackgroundTransparency = 1
-ApiKeyLabel.Text = "Open Cloud API Key"
-ApiKeyLabel.TextColor3 = Color3.fromRGB(175, 172, 204)
-ApiKeyLabel.TextSize = 8
-ApiKeyLabel.Font = Enum.Font.GothamBold
-ApiKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
-ApiKeyLabel.Parent = SettingPage
-
-local ApiKeyBox = Instance.new("TextBox")
-ApiKeyBox.Name = "ApiKeyInputBox"
-ApiKeyBox.Size = UDim2.new(1, 0, 0, 42)
-ApiKeyBox.Position = UDim2.new(0, 0, 0, 92)
-ApiKeyBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-ApiKeyBox.Text = CONFIG.ApiKey
-ApiKeyBox.PlaceholderText = "Tempel Open Cloud API Key di sini..."
-ApiKeyBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-ApiKeyBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-ApiKeyBox.TextSize = 8
-ApiKeyBox.Font = Enum.Font.Code
-ApiKeyBox.ClearTextOnFocus = false
-ApiKeyBox.MultiLine = true
-ApiKeyBox.TextWrapped = true
-ApiKeyBox.ClipsDescendants = true
-ApiKeyBox.TextXAlignment = Enum.TextXAlignment.Left
-ApiKeyBox.TextYAlignment = Enum.TextYAlignment.Top
-ApiKeyBox.Parent = SettingPage
-Instance.new("UICorner", ApiKeyBox).CornerRadius = UDim.new(0, 7)
-local ApiKeyStroke = Instance.new("UIStroke", ApiKeyBox)
-ApiKeyStroke.Color = Color3.fromRGB(64, 58, 104)
-ApiKeyStroke.Thickness = 1
-
-local ApiKeyBoxPad = Instance.new("UIPadding")
-ApiKeyBoxPad.PaddingTop = UDim.new(0, 5)
-ApiKeyBoxPad.PaddingBottom = UDim.new(0, 5)
-ApiKeyBoxPad.PaddingLeft = UDim.new(0, 7)
-ApiKeyBoxPad.PaddingRight = UDim.new(0, 7)
-ApiKeyBoxPad.Parent = ApiKeyBox
-
 local SaveSettingBtn = Instance.new("TextButton")
-SaveSettingBtn.Size = UDim2.new(1, 0, 0, 26)
-SaveSettingBtn.Position = UDim2.new(0, 0, 0, 140)
+SaveSettingBtn.Size = UDim2.new(1, -24, 0, 32)
+SaveSettingBtn.Position = UDim2.new(0, 12, 0, 136)
 SaveSettingBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-SaveSettingBtn.Text = "💾  SIMPAN COOKIE & API KEY"
+SaveSettingBtn.Text = "💾  SIMPAN COOKIE"
 SaveSettingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SaveSettingBtn.TextSize = 9
+SaveSettingBtn.TextSize = 11
 SaveSettingBtn.Font = Enum.Font.GothamBold
 SaveSettingBtn.Parent = SettingPage
 Instance.new("UICorner", SaveSettingBtn).CornerRadius = UDim.new(0, 8)
 
 local SettingStatusLabel = Instance.new("TextLabel")
-SettingStatusLabel.Size = UDim2.new(1, 0, 1, -172)
-SettingStatusLabel.Position = UDim2.new(0, 0, 0, 172)
+SettingStatusLabel.Size = UDim2.new(1, -24, 0, 56)
+SettingStatusLabel.Position = UDim2.new(0, 12, 0, 176)
 SettingStatusLabel.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-SettingStatusLabel.ClipsDescendants = true
-SettingStatusLabel.Text = string.format(
-	"Cookie: %s | API Key: %s",
-	CONFIG.Cookie ~= "" and (tostring(#CONFIG.Cookie) .. " chars") or "Kosong",
-	CONFIG.ApiKey ~= "" and (tostring(#CONFIG.ApiKey) .. " chars") or "Kosong"
-)
+SettingStatusLabel.Text = CONFIG.Cookie ~= ""
+	and ("Status Cookie: Terisi (" .. tostring(#CONFIG.Cookie) .. " karakter)")
+	or ("Status Cookie: Kosong • Simpan ke " .. CONFIG.WorkspaceRoot .. "/cookie.txt")
 SettingStatusLabel.TextColor3 = Color3.fromRGB(185, 205, 255)
-SettingStatusLabel.TextSize = 8
+SettingStatusLabel.TextSize = 9
 SettingStatusLabel.Font = Enum.Font.Code
 SettingStatusLabel.TextWrapped = true
 SettingStatusLabel.Parent = SettingPage
 Instance.new("UICorner", SettingStatusLabel).CornerRadius = UDim.new(0, 7)
 
 -- ==========================================
--- HALAMAN 7: CONSOLE OUTPUT SERVER / PERMINTAAN
+-- HALAMAN 6: CONSOLE OUTPUT SERVER / PERMINTAAN
 -- ==========================================
 local ConsolePage = Instance.new("Frame")
 ConsolePage.Size = UDim2.fromScale(1, 1)
@@ -2942,7 +2281,7 @@ CopyConsoleBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- LOGIKA COOKIE, API KEY & NAVIGASI
+-- LOGIKA COOKIE & NAVIGASI
 -- ==========================================
 local function syncCookieFromInput(): string
 	local boxCookie = normalizeCookie(CookieBox.Text)
@@ -2952,40 +2291,22 @@ local function syncCookieFromInput(): string
 	return CONFIG.Cookie
 end
 
-local function syncApiKeyFromInput(): string
-	local boxKey = sanitizeApiKey(ApiKeyBox.Text)
-	if boxKey ~= "" then
-		CONFIG.ApiKey = boxKey
-	end
-	return CONFIG.ApiKey
-end
-
 CookieBox:GetPropertyChangedSignal("Text"):Connect(function()
 	CONFIG.Cookie = normalizeCookie(CookieBox.Text)
 end)
 
-ApiKeyBox:GetPropertyChangedSignal("Text"):Connect(function()
-	CONFIG.ApiKey = sanitizeApiKey(ApiKeyBox.Text)
-end)
-
 SaveSettingBtn.MouseButton1Click:Connect(function()
 	local c = normalizeCookie(CookieBox.Text)
-	local k = sanitizeApiKey(ApiKeyBox.Text)
 	CONFIG.Cookie = c
-	CONFIG.ApiKey = k
 	CookieBox.Text = c
-	ApiKeyBox.Text = k
 
 	local okC = saveTextFile("cookie.txt", c)
-	local okK = saveTextFile("apikey.txt", k)
-	SettingStatusLabel.Text = string.format(
-		"Cookie: %s | API Key: %s",
-		c ~= "" and (tostring(#c) .. " chars") or "Kosong",
-		k ~= "" and (tostring(#k) .. " chars") or "Kosong"
-	)
-	SettingStatusLabel.TextColor3 = (okC and okK) and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
-	pushConsole((okC and okK) and "OK" or "ERR", "Menyimpan cookie.txt & apikey.txt")
-	notify("Setting", (okC and okK) and "Cookie & API Key tersimpan." or "Gagal menyimpan.")
+	SettingStatusLabel.Text = c ~= ""
+		and ("Status Cookie: Tersimpan (" .. tostring(#c) .. " karakter)")
+		or "Status Cookie: Kosong"
+	SettingStatusLabel.TextColor3 = okC and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+	pushConsole(okC and "OK" or "ERR", okC and ("Cookie disimpan (" .. tostring(#c) .. " chars)") or "Gagal menyimpan cookie.txt")
+	notify("Setting", okC and "Cookie tersimpan." or "Gagal menyimpan cookie.")
 end)
 
 createNavButton("CreatePlace", "🏗  Create Place", 1).MouseButton1Click:Connect(function()
@@ -2994,79 +2315,21 @@ end)
 createNavButton("MyPlaces", "🎮  Place Saya", 2).MouseButton1Click:Connect(function()
 	switchTab("MyPlaces")
 end)
-createNavButton("UploadAsset", "📦  Asset ID", 3).MouseButton1Click:Connect(function()
-	AssetFileDropdown.Visible = false
-	rebuildAssetFileList(true)
-	switchTab("UploadAsset")
-end)
-createNavButton("VoiceChat", "🎙  Voice Chat", 4).MouseButton1Click:Connect(function()
+createNavButton("VoiceChat", "🎙  Voice Chat", 3).MouseButton1Click:Connect(function()
 	switchTab("VoiceChat")
 end)
-createNavButton("ThirdPartySales", "🛒  3rd Party", 5).MouseButton1Click:Connect(function()
+createNavButton("ThirdPartySales", "🛒  3rd Party", 4).MouseButton1Click:Connect(function()
 	switchTab("ThirdPartySales")
 end)
-createNavButton("Setting", "⚙  Setting", 6).MouseButton1Click:Connect(function()
+createNavButton("Setting", "⚙  Setting", 5).MouseButton1Click:Connect(function()
 	switchTab("Setting")
 end)
-createNavButton("Console", "🖥  Console", 7).MouseButton1Click:Connect(function()
+createNavButton("Console", "🖥  Console", 6).MouseButton1Click:Connect(function()
 	switchTab("Console")
 end)
 switchTab("CreatePlace")
 
-pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya, Asset ID, Voice & 3rd Party Sales aktif).")
-
--- ==========================================
--- LOGIKA UPLOAD ASSET -> DAPAT ASSET ID
--- ==========================================
-local isUploadingAsset = false
-
-UploadAssetBtn.MouseButton1Click:Connect(function()
-	if isUploadingAsset then return end
-	AssetFileDropdown.Visible = false
-
-	if not selectedAssetRelPath or selectedAssetRelPath == "" then
-		rebuildAssetFileList(true)
-	end
-
-	local apiKeyVal = syncApiKeyFromInput()
-	local cookieVal = syncCookieFromInput()
-	local wantPublic = AssetPublicSwitch.GetState()
-
-	isUploadingAsset = true
-	UploadAssetBtn.Text = "⏳  MENGUPLOAD ASET..."
-	AssetStatusDetail.TextColor3 = Color3.fromRGB(175, 205, 255)
-	AssetStatusDetail.Text = "Mengirim permintaan upload ke Open Cloud Assets API..."
-
-	task.spawn(function()
-		local okUp, assetIdStr, statusTag, msgUp = uploadAssetAndGetId({
-			apiKey = apiKeyVal,
-			cookieVal = cookieVal,
-			assetType = AssetTypeBox.Text,
-			displayName = AssetNameBox.Text,
-			description = "Uploaded via Ikyy Plugin Studio Lite",
-			groupId = AssetGroupBox.Text,
-			selectedAssetRelPath = selectedAssetRelPath or "",
-			requestPublicCatalog = wantPublic,
-		})
-
-		if okUp and assetIdStr then
-			lastGeneratedAssetId = assetIdStr
-			AssetIdDisplay.Text = "Asset ID: " .. assetIdStr
-			AssetStatusDetail.TextColor3 = Color3.fromRGB(145, 255, 190)
-			AssetStatusDetail.Text = statusTag .. "\n" .. msgUp
-			pushConsole("OK", msgUp .. " [" .. statusTag .. "]")
-			notify("Asset ID", "ID: " .. assetIdStr)
-		else
-			AssetStatusDetail.TextColor3 = Color3.fromRGB(255, 155, 165)
-			AssetStatusDetail.Text = "Gagal: " .. msgUp
-			pushConsole("ERR", "Upload Asset gagal: " .. msgUp)
-			notify("Asset ID", "Gagal upload aset.")
-		end
-
-		UploadAssetBtn.Text = "📦  UPLOAD & GENERATE ASSET ID"
-		isUploadingAsset = false
-	end)
-end)
+pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya dari halaman profile, Voice & 3rd Party Sales aktif).")
 
 -- ==========================================
 -- LOGIKA CEK PLACE SAYA (DARI HALAMAN PROFILE)
