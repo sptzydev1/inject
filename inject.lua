@@ -90,26 +90,70 @@ local function notify(title: string, text: string)
 	end)
 end
 
+local function safeClockString(): string
+	local ok, res = pcall(function()
+		local osLib = (os :: any)
+		if type(osLib) == "table" and type(osLib.date) == "function" then
+			return osLib.date("%H:%M:%S")
+		end
+		return nil
+	end)
+	if ok and type(res) == "string" and res ~= "" then
+		return res
+	end
+	local t = math.floor(os.clock())
+	local h = math.floor(t / 3600) % 24
+	local m = math.floor(t / 60) % 60
+	local s = t % 60
+	return string.format("%02d:%02d:%02d", h, m, s)
+end
+
+local function safeTimestamp(): number
+	local ok, res = pcall(function()
+		local osLib = (os :: any)
+		if type(osLib) == "table" and type(osLib.time) == "function" then
+			return osLib.time()
+		end
+		return nil
+	end)
+	if ok and type(res) == "number" then
+		return res
+	end
+	return math.floor(os.clock())
+end
+
 -- ==========================================
 -- DELTA EXECUTOR ENVIRONMENT BRIDGE
 -- ==========================================
 local function getEnvTable(): {[string]: any}
 	local env: {[string]: any} = {}
 	pcall(function()
-		if type(getgenv) == "function" then
-			local g = getgenv()
+		local gg = (getgenv :: any)
+		if type(gg) == "function" then
+			local g = gg()
 			if type(g) == "table" then
 				for k, v in pairs(g) do
+					if type(k) == "string" then
+						env[k] = v
+					end
+				end
+			end
+		end
+	end)
+	pcall(function()
+		if type(_G) == "table" then
+			for k, v in pairs(_G) do
+				if type(k) == "string" and env[k] == nil then
 					env[k] = v
 				end
 			end
 		end
 	end)
 	pcall(function()
-		local f = getfenv(0)
-		if type(f) == "table" then
-			for k, v in pairs(f) do
-				if env[k] == nil then
+		local sh = (shared :: any)
+		if type(sh) == "table" then
+			for k, v in pairs(sh) do
+				if type(k) == "string" and env[k] == nil then
 					env[k] = v
 				end
 			end
@@ -248,14 +292,15 @@ end
 local appendConsoleLineFn: ((level: string, message: string) -> ())? = nil
 
 local function pushConsole(level: string, message: string)
-	local stamp = os.date("%H:%M:%S")
-	local line = string.format("[%s] [%s] %s", tostring(stamp), level, message)
+	local stamp = safeClockString()
+	local line = string.format("[%s] [%s] %s", stamp, level, message)
 	table.insert(CONSOLE_LINES, line)
 	if #CONSOLE_LINES > 250 then
 		table.remove(CONSOLE_LINES, 1)
 	end
-	if appendConsoleLineFn then
-		appendConsoleLineFn(level, line)
+	local fn = appendConsoleLineFn
+	if type(fn) == "function" then
+		pcall(fn, level, line)
 	end
 end
 
@@ -919,7 +964,7 @@ local function setUniverseVoiceSettings(universeId: string, cookieVal: string, e
 
 	local bodyStr = res and tostring(res.Body or "") or ""
 	if ok then
-		saveTextFile("Logs/voice_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyStr)
+		saveTextFile("Logs/voice_" .. cleanUniv .. "_" .. tostring(safeTimestamp()) .. ".json", bodyStr)
 		return true, "Voice Chat Universe berhasil " .. (enabled and "DIAKTIFKAN" or "DINONAKTIFKAN"), currentCsrf
 	end
 
@@ -1031,7 +1076,7 @@ local function setUniverseThirdPartySales(universeId: string, cookieVal: string,
 	local bodyStr = res and tostring(res.Body or "") or ""
 	if ok then
 		LAST_KNOWN_THIRD_PARTY[cleanUniv] = enabled
-		saveTextFile("Logs/thirdparty_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyStr)
+		saveTextFile("Logs/thirdparty_" .. cleanUniv .. "_" .. tostring(safeTimestamp()) .. ".json", bodyStr)
 		return true, "Allow Third Party Sales berhasil " .. (enabled and "DIAKTIFKAN" or "DINONAKTIFKAN"), currentCsrf
 	end
 
@@ -1146,7 +1191,6 @@ local function updateUniverseDetailStep1(
 	local genreApi, genreTypeEnum = normalizeGenreSelection(selectedGenreApi)
 	local rootPlaceId: string? = nil
 
-	-- Ambil data lama jika field ada yang dikosongkan + ambil rootPlaceId
 	local okGet, _, _, getDec, nextCsrfGet = sendAuthedJsonRequest(
 		"GET",
 		"https://develop.roblox.com/v1/universes/" .. cleanUniv,
@@ -1183,7 +1227,6 @@ local function updateUniverseDetailStep1(
 		genre = genreApi,
 	}
 
-	-- Kirim field genre sekaligus genreType agar server Roblox memperbarui genre universe & rootPlace
 	local payloadJson = HttpService:JSONEncode({
 		name = nameVal,
 		description = descVal,
@@ -1204,7 +1247,7 @@ local function updateUniverseDetailStep1(
 	currentCsrf = csrfV2
 
 	if okV2 then
-		saveTextFile("Logs/perm_step1_detail_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyV2)
+		saveTextFile("Logs/perm_step1_detail_" .. cleanUniv .. "_" .. tostring(safeTimestamp()) .. ".json", bodyV2)
 		if type(decV2) == "table" then
 			detailSummary.name = tostring(decV2.name or nameVal)
 			detailSummary.description = tostring(decV2.description or descVal)
@@ -1214,7 +1257,6 @@ local function updateUniverseDetailStep1(
 			end
 		end
 
-		-- Sinkronkan juga konfigurasi Root Place jika tersedia
 		if rootPlaceId and rootPlaceId ~= "" then
 			local placePayload = HttpService:JSONEncode({
 				name = nameVal,
@@ -1248,7 +1290,7 @@ local function updateUniverseDetailStep1(
 	)
 	currentCsrf = csrfV1
 	if okV1 then
-		saveTextFile("Logs/perm_step1_detail_v1_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyV1)
+		saveTextFile("Logs/perm_step1_detail_v1_" .. cleanUniv .. "_" .. tostring(safeTimestamp()) .. ".json", bodyV1)
 		if type(decV1) == "table" then
 			detailSummary.name = tostring(decV1.name or nameVal)
 			detailSummary.description = tostring(decV1.description or descVal)
@@ -1345,7 +1387,6 @@ local function evaluateQuestionnaireWithCustomLogic(schemaObj: any): ({{[string]
 		local qCat = tostring(qNode.category or qNode.section or qNode.group or inheritedSection or ""):lower()
 		local combined = qIdStr .. " " .. qTitle .. " " .. qCat
 
-		-- 1. Bagian Tipe Aplikasi -> pilih Game
 		if combined:find("application", 1, true)
 			or combined:find("app type", 1, true)
 			or combined:find("describe your", 1, true)
@@ -1355,7 +1396,6 @@ local function evaluateQuestionnaireWithCustomLogic(schemaObj: any): ({{[string]
 			return "Tipe Aplikasi", "Game"
 		end
 
-		-- 2. Bagian Pertanyaan IARC -> semua pilih No
 		if combined:find("iarc", 1, true)
 			or qIdStr:find("^iarc")
 			or qCat:find("iarc", 1, true)
@@ -1363,8 +1403,6 @@ local function evaluateQuestionnaireWithCustomLogic(schemaObj: any): ({{[string]
 			return "IARC", "No"
 		end
 
-		-- 3. Bagian Pertanyaan Roblox:
-		--    Sosial hangout awalan = Yes, lanjutan sosial hangout = No, selanjutnya semua = No
 		local isSocialHangout = combined:find("social hangout", 1, true)
 			or combined:find("social_hangout", 1, true)
 			or combined:find("socialhangout", 1, true)
@@ -1527,7 +1565,6 @@ local function submitContentQuestionnaireStep2(
 
 	pushConsole("INFO", string.format("[Step 2: Form Rating] Mengambil kuesioner Universe #%s (v1beta1)...", cleanUniv))
 
-	-- Endpoint aktif Experience Guidelines v1beta1
 	local fetchTargets = {
 		{
 			method = "POST",
@@ -1538,18 +1575,6 @@ local function submitContentQuestionnaireStep2(
 		{
 			method = "GET",
 			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1beta1/questionnaire",
-			body = nil,
-			query = { universeId = cleanUniv },
-		},
-		{
-			method = "POST",
-			url = "https://apis.roblox.com/experience-guidelines-api/v1beta1/questionnaire",
-			body = HttpService:JSONEncode({ universeId = univNum }),
-			query = nil,
-		},
-		{
-			method = "GET",
-			url = "https://apis.roblox.com/experience-guidelines-api/v1beta1/questionnaire",
 			body = nil,
 			query = { universeId = cleanUniv },
 		},
@@ -1576,7 +1601,7 @@ local function submitContentQuestionnaireStep2(
 		if okF and type(decF) == "table" then
 			loadedSchema = decF
 			schemaLoadedFromServer = true
-			saveTextFile("Logs/perm_step2_schema_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyF)
+			saveTextFile("Logs/perm_step2_schema_" .. cleanUniv .. "_" .. tostring(safeTimestamp()) .. ".json", bodyF)
 			pushConsole("OK", string.format("[Step 2: Form Rating] Schema kuesioner terbaca (HTTP %d)", codeF))
 			break
 		end
@@ -1610,9 +1635,7 @@ local function submitContentQuestionnaireStep2(
 
 	local submitUrls = {
 		"https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1beta1/questionnaire/submit",
-		"https://apis.roblox.com/experience-guidelines-api/v1beta1/questionnaire/submit",
 		"https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1beta1/questionnaire",
-		"https://apis.roblox.com/experience-guidelines-api/v1beta1/questionnaire",
 	}
 
 	local lastErr = "Endpoint submit mengembalikan non-200"
@@ -1628,7 +1651,7 @@ local function submitContentQuestionnaireStep2(
 			)
 			currentCsrf = csrfS
 			if okS then
-				saveTextFile("Logs/perm_step2_submit_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyS)
+				saveTextFile("Logs/perm_step2_submit_" .. cleanUniv .. "_" .. tostring(safeTimestamp()) .. ".json", bodyS)
 				local ratingBadge = ""
 				if type(decS) == "table" then
 					local rec = decS.ageRecommendationDetails or decS.ageRecommendation or decS
@@ -1660,7 +1683,6 @@ local function applyPlacePermissionAction(
 	local cleanUniv = trim(universeId):match("%d+") or ""
 	local currentCsrf = csrfSeed
 
-	-- Cek kepemilikan universe & rootPlaceId terlebih dahulu
 	local okU, _, _, decU, csrfU = sendAuthedJsonRequest(
 		"GET",
 		"https://develop.roblox.com/v1/universes/" .. cleanUniv,
@@ -1676,7 +1698,6 @@ local function applyPlacePermissionAction(
 		rootPlaceId = tostring(decU.rootPlaceId):match("%d+")
 	end
 
-	-- Jika ingin publik, pastikan rootPlace aktif/terkonfigurasi sebelum activate universe
 	if makePublic and rootPlaceId and rootPlaceId ~= "" then
 		local _, _, _, _, csrfP = sendAuthedJsonRequest(
 			"PATCH",
@@ -1704,7 +1725,7 @@ local function applyPlacePermissionAction(
 	currentCsrf = csrfA
 
 	if okA then
-		saveTextFile("Logs/perm_access_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyA)
+		saveTextFile("Logs/perm_access_" .. cleanUniv .. "_" .. tostring(safeTimestamp()) .. ".json", bodyA)
 		local labelOut = makePublic and "PUBLIK" or "PRIVATE"
 		pushConsole("OK", string.format("[Step 3: Akses Place] Status akses Universe #%s berhasil diubah ke %s (HTTP %d)", cleanUniv, labelOut, codeA))
 		return true, "Status akses berhasil diubah ke " .. labelOut .. " (HTTP " .. tostring(codeA) .. ")", currentCsrf
@@ -1795,8 +1816,8 @@ local function createModernToggleSwitch(parent: Instance, initialState: boolean?
 
 	capsule.MouseButton1Click:Connect(function()
 		applyVisual(not isOn, true)
-		if onChanged then
-			onChanged(isOn)
+		if type(onChanged) == "function" then
+			pcall(onChanged, isOn)
 		end
 	end)
 
@@ -1831,8 +1852,15 @@ FloatingProfileBtn.BorderSizePixel = 0
 FloatingProfileBtn.Visible = false
 FloatingProfileBtn.AutoButtonColor = false
 FloatingProfileBtn.ZIndex = 50
-FloatingProfileBtn.Image = getUserAvatarAsync(LocalPlayer.UserId)
+FloatingProfileBtn.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
 FloatingProfileBtn.Parent = ScreenGui
+
+task.spawn(function()
+	local avatarUrl = getUserAvatarAsync(LocalPlayer.UserId)
+	if FloatingProfileBtn and FloatingProfileBtn.Parent then
+		FloatingProfileBtn.Image = avatarUrl
+	end
+end)
 
 Instance.new("UICorner", FloatingProfileBtn).CornerRadius = UDim.new(1, 0)
 local FloatStroke = Instance.new("UIStroke", FloatingProfileBtn)
@@ -1979,7 +2007,8 @@ do
 	local DRAG_THRESHOLD = 6
 
 	local function clampToViewport(pos: UDim2): UDim2
-		local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+		local cam = workspace.CurrentCamera
+		local viewport = cam and cam.ViewportSize or Vector2.new(1280, 720)
 		local iconW = ICON_SIZE.X.Offset
 		local iconH = ICON_SIZE.Y.Offset
 		local pad = 6
@@ -1989,7 +2018,8 @@ do
 	end
 
 	local function getCurrentOffsetPos(): UDim2
-		local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+		local cam = workspace.CurrentCamera
+		local viewport = cam and cam.ViewportSize or Vector2.new(1280, 720)
 		local absX = (FloatingProfileBtn.Position.X.Scale * viewport.X) + FloatingProfileBtn.Position.X.Offset
 		local absY = (FloatingProfileBtn.Position.Y.Scale * viewport.Y) + FloatingProfileBtn.Position.Y.Offset
 		return UDim2.fromOffset(absX, absY)
@@ -2652,7 +2682,7 @@ local VoiceIconImg = Instance.new("ImageLabel")
 VoiceIconImg.Size = UDim2.fromOffset(52, 52)
 VoiceIconImg.Position = UDim2.new(0, 8, 0.5, -26)
 VoiceIconImg.BackgroundColor3 = Color3.fromRGB(20, 19, 32)
-VoiceIconImg.Image = resolveRealtimeGameIcon(CONFIG.DefaultUniverseId, nil, CONFIG.Cookie)
+VoiceIconImg.Image = "rbxthumb://type=GameIcon&id=" .. CONFIG.DefaultUniverseId .. "&w=150&h=150"
 VoiceIconImg.ScaleType = Enum.ScaleType.Crop
 VoiceIconImg.Parent = VoicePreviewCard
 Instance.new("UICorner", VoiceIconImg).CornerRadius = UDim.new(0, 8)
@@ -2796,7 +2826,7 @@ local SalesIconImg = Instance.new("ImageLabel")
 SalesIconImg.Size = UDim2.fromOffset(52, 52)
 SalesIconImg.Position = UDim2.new(0, 8, 0.5, -26)
 SalesIconImg.BackgroundColor3 = Color3.fromRGB(20, 19, 32)
-SalesIconImg.Image = resolveRealtimeGameIcon(CONFIG.DefaultUniverseId, nil, CONFIG.Cookie)
+SalesIconImg.Image = "rbxthumb://type=GameIcon&id=" .. CONFIG.DefaultUniverseId .. "&w=150&h=150"
 SalesIconImg.ScaleType = Enum.ScaleType.Crop
 SalesIconImg.Parent = SalesPreviewCard
 Instance.new("UICorner", SalesIconImg).CornerRadius = UDim.new(0, 8)
@@ -2897,7 +2927,6 @@ local PermAccessSwitch = createModernToggleSwitch(PermTopRow, false, nil)
 PermAccessSwitch.Button.Size = UDim2.fromOffset(62, 24)
 PermAccessSwitch.Button.Position = UDim2.new(1, -62, 0, 0)
 
--- Baris Input 1: Name Game, Description, Dropdown Pilihan Genre
 local selectedGenreApiValue = "All"
 
 local PermMetaRow = Instance.new("Frame")
@@ -2949,7 +2978,6 @@ local GenreBtnStroke = Instance.new("UIStroke", PermGenreDropdownBtn)
 GenreBtnStroke.Color = Color3.fromRGB(84, 76, 134)
 GenreBtnStroke.Thickness = 1
 
--- Panel Daftar Pilihan Genre (Muncul saat tombol Genre diklik)
 local GenreDropdownPanel = Instance.new("ScrollingFrame")
 GenreDropdownPanel.Name = "GenrePickerList"
 GenreDropdownPanel.Size = UDim2.new(1, -4, 0, 96)
@@ -3004,7 +3032,6 @@ PermGenreDropdownBtn.MouseButton1Click:Connect(function()
 	GenreDropdownPanel.Visible = not GenreDropdownPanel.Visible
 end)
 
--- Info Aturan Form Rating
 local PermRuleBanner = Instance.new("TextLabel")
 PermRuleBanner.Size = UDim2.new(1, -4, 0, 14)
 PermRuleBanner.BackgroundTransparency = 1
@@ -3017,7 +3044,6 @@ PermRuleBanner.TextTruncate = Enum.TextTruncate.AtEnd
 PermRuleBanner.LayoutOrder = 5
 PermRuleBanner.Parent = PermScroll
 
--- Baris Tombol Aksi: 1. Detail Place | 2. Form Rating | ⚡ Terapkan
 local PermActionRow = Instance.new("Frame")
 PermActionRow.Size = UDim2.new(1, -4, 0, 24)
 PermActionRow.BackgroundTransparency = 1
@@ -3069,7 +3095,6 @@ PermStatusLbl.TextTruncate = Enum.TextTruncate.AtEnd
 PermStatusLbl.LayoutOrder = 7
 PermStatusLbl.Parent = PermScroll
 
--- Box Output Hasil Langsung
 local PermOutputBox = Instance.new("Frame")
 PermOutputBox.Size = UDim2.new(1, -4, 0, 0)
 PermOutputBox.AutomaticSize = Enum.AutomaticSize.Y
@@ -3100,7 +3125,6 @@ PermOutputText.TextWrapped = true
 PermOutputText.TextXAlignment = Enum.TextXAlignment.Left
 PermOutputText.Parent = PermOutputBox
 
--- Card Preview Game Realtime
 local PermCardHost = Instance.new("Frame")
 PermCardHost.Size = UDim2.new(1, -4, 0, 72)
 PermCardHost.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
@@ -3128,7 +3152,7 @@ end
 renderPermissionPreviewCard({
 	universeId = CONFIG.DefaultUniverseId,
 	rootPlaceId = nil,
-	iconImage = resolveRealtimeGameIcon(CONFIG.DefaultUniverseId, nil, CONFIG.Cookie),
+	iconImage = "rbxthumb://type=GameIcon&id=" .. CONFIG.DefaultUniverseId .. "&w=150&h=150",
 	gameName = "Universe #" .. CONFIG.DefaultUniverseId,
 	status = "tidak diketahui",
 	metaInfo = "Universe: " .. CONFIG.DefaultUniverseId .. " • Siap cek status",
@@ -3433,7 +3457,6 @@ PermCheckBtn.MouseButton1Click:Connect(function()
 	end)
 end)
 
--- TOMBOL 1: DETAIL PLACE (Name, Description, Genre) -> Kirim & Tampil Hasil
 PermStep1Btn.MouseButton1Click:Connect(function()
 	if isRunningPermPlace then return end
 	local univId, cookieVal = validatePermUniverseAndCookie(true)
@@ -3476,7 +3499,6 @@ PermStep1Btn.MouseButton1Click:Connect(function()
 	end)
 end)
 
--- TOMBOL 2: FORM RATING
 PermStep2Btn.MouseButton1Click:Connect(function()
 	if isRunningPermPlace then return end
 	local univId, cookieVal = validatePermUniverseAndCookie(true)
@@ -3521,7 +3543,6 @@ PermStep2Btn.MouseButton1Click:Connect(function()
 	end)
 end)
 
--- TOMBOL 3: TERAPKAN (Jalankan Step 1 -> Step 2 -> Aktifkan/Nonaktifkan Place)
 PermApplyBtn.MouseButton1Click:Connect(function()
 	if isRunningPermPlace then return end
 	local univId, cookieVal = validatePermUniverseAndCookie(true)
@@ -3912,7 +3933,7 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 			local bodyStr = res and tostring(res.Body or "") or ""
 			if ok and res then
 				sukses += 1
-				saveTextFile("Logs/place_" .. tostring(os.time()) .. "_" .. tostring(i) .. ".json", bodyStr)
+				saveTextFile("Logs/place_" .. tostring(safeTimestamp()) .. "_" .. tostring(i) .. ".json", bodyStr)
 
 				local createdUnivId: string? = nil
 				local createdRootPlaceId: string? = nil
