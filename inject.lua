@@ -1,5 +1,5 @@
 --!strict
--- Plugin Studio Lite (Delta Executor Edition - Create Place, My Places from Profile, Voice Chat, 3rd Party Sales, Setting & Console) by Ikyy
+-- Plugin Studio Lite (Delta Executor Edition - Create Place, My Places from Profile, Upload Asset ID, Voice Chat, 3rd Party Sales, Setting & Console) by Ikyy
 -- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Realtime (Icon Game, Name Game, Status + Console)
 
 local Players = game:GetService("Players")
@@ -22,6 +22,7 @@ end
 local CONFIG = {
 	WorkspaceRoot = "IkyyStudioLite",
 	Cookie = "",
+	ApiKey = "",
 	IsMinimized = false,
 	ActiveTab = "CreatePlace",
 	DefaultUniverseId = "10516113765",
@@ -122,7 +123,7 @@ local function setClipboardText(text: string): boolean
 	end
 	pcall(function()
 		StarterGui:SetCore("SendNotification", {
-			Title = "Universe ID",
+			Title = "Copied Value",
 			Text = text,
 			Duration = 4,
 		})
@@ -141,6 +142,7 @@ local function ensureFolders()
 	local folders = {
 		CONFIG.WorkspaceRoot,
 		CONFIG.WorkspaceRoot .. "/Logs",
+		CONFIG.WorkspaceRoot .. "/Assets",
 	}
 	for _, folder in ipairs(folders) do
 		local exists = false
@@ -215,6 +217,11 @@ end
 local savedCookie = loadTextFile("cookie.txt")
 if savedCookie and trim(savedCookie) ~= "" then
 	CONFIG.Cookie = normalizeCookie(savedCookie)
+end
+
+local savedApiKey = loadTextFile("apikey.txt")
+if savedApiKey and trim(savedApiKey) ~= "" then
+	CONFIG.ApiKey = trim(savedApiKey)
 end
 
 -- ==========================================
@@ -556,7 +563,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		})
 	end
 
-	-- 1. Ambil dari Profile Creations API (www.roblox.com/users/{uid}/profile -> Creations)
 	local profileApiUrls = {
 		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=All&limit=50&sortOrder=Desc", uid),
 		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=2&limit=50&sortOrder=Desc", uid),
@@ -599,7 +605,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 2. Parse langsung halaman HTML profil: https://www.roblox.com/users/{uid}/profile
 	local profilePageUrl = string.format("https://www.roblox.com/users/%d/profile", uid)
 	local htmlRes, htmlOk = apiRequest({
 		Url = profilePageUrl,
@@ -654,7 +659,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 3. Lengkapi nama, rootPlaceId & status (publik / private) tiap universe
 	for _, it in ipairs(rawItems) do
 		local dRes, dOk = apiRequest({
 			Url = "https://develop.roblox.com/v1/universes/" .. it.univId,
@@ -687,7 +691,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 4. Batch fetch nama & rootPlaceId lewat games.roblox.com
 	local gamesInfoMap: {[string]: {name: string?, rootPlaceId: string?}} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -720,7 +723,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 5. Batch fetch icon lewat thumbnails.roblox.com
 	local iconMap: {[string]: string} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -777,6 +779,159 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 
 	local acctLabel = uname and ("@" .. uname) or ("ID:" .. tostring(uid))
 	return true, cards, acctLabel
+end
+
+-- ==========================================
+-- API UPLOAD ASSET -> DAPAT ASSET ID & CEK STATUS
+-- ==========================================
+local function buildMultipartAssetBody(boundary: string, requestJson: string, fileContent: string, fileName: string): string
+	local parts = {
+		"--" .. boundary .. "\r\n",
+		'Content-Disposition: form-data; name="request"\r\n',
+		"Content-Type: application/json\r\n\r\n",
+		requestJson .. "\r\n",
+		"--" .. boundary .. "\r\n",
+		string.format('Content-Disposition: form-data; name="fileContent"; filename="%s"\r\n', fileName),
+		"Content-Type: application/octet-stream\r\n\r\n",
+		fileContent .. "\r\n",
+		"--" .. boundary .. "--\r\n",
+	}
+	return table.concat(parts)
+end
+
+local function uploadAssetAndGetId(params: {
+	apiKey: string,
+	cookieVal: string,
+	assetType: string,
+	displayName: string,
+	description: string,
+	groupId: string?,
+	filePathOrContent: string,
+	requestPublicCatalog: boolean,
+}): (boolean, string?, string, string)
+	local cleanKey = trim(params.apiKey)
+	local cleanCookie = normalizeCookie(params.cookieVal)
+	if cleanKey == "" then
+		return false, nil, "API_KEY_MISSING", "Open Cloud API Key kosong. Isi di tab Setting."
+	end
+
+	local filePayload = params.filePathOrContent
+	local loadedFile = loadTextFile(filePayload)
+	if loadedFile then
+		filePayload = loadedFile
+		pushConsole("INFO", "Membaca file aset dari workspace: " .. filePayload:sub(1, 0) .. params.filePathOrContent)
+	end
+
+	if trim(filePayload) == "" then
+		return false, nil, "EMPTY_PAYLOAD", "Konten/path file aset kosong."
+	end
+
+	local creatorTbl: {[string]: any}
+	local cleanGroup = params.groupId and (trim(params.groupId):match("%d+") or "") or ""
+	if cleanGroup ~= "" then
+		creatorTbl = { groupId = tonumber(cleanGroup) }
+	else
+		local uid = getAuthenticatedUserFromCookie(cleanCookie)
+		if not uid then
+			return false, nil, "NO_CREATOR", "Isi Group ID atau pastikan Cookie valid untuk mendeteksi User ID."
+		end
+		creatorTbl = { userId = uid }
+	end
+
+	local reqObj = {
+		assetType = params.assetType,
+		displayName = trim(params.displayName) ~= "" and trim(params.displayName) or "UploadedAsset",
+		description = trim(params.description) ~= "" and trim(params.description) or "Uploaded via Plugin Studio Lite",
+		creationContext = {
+			creator = creatorTbl,
+		},
+	}
+
+	local boundary = "----IkyyStudioLiteBoundary" .. tostring(os.time())
+	local multipartBody = buildMultipartAssetBody(boundary, HttpService:JSONEncode(reqObj), filePayload, "asset_payload.rbxm")
+
+	local hdrs: {[string]: string} = {
+		["x-api-key"] = cleanKey,
+		["Content-Type"] = "multipart/form-data; boundary=" .. boundary,
+	}
+
+	local res, ok, info = apiRequest({
+		Url = "https://apis.roblox.com/assets/v1/assets",
+		Method = "POST",
+		Headers = hdrs,
+		Body = multipartBody,
+		Retries = 1,
+	})
+
+	if not ok or not res then
+		return false, nil, "UPLOAD_FAILED", info
+	end
+
+	local bodyStr = tostring(res.Body or "")
+	saveTextFile("Logs/asset_upload_" .. tostring(os.time()) .. ".json", bodyStr)
+
+	local okDec, decoded = pcall(function()
+		return HttpService:JSONDecode(bodyStr)
+	end)
+
+	local assetId: string? = nil
+	local modState = "MODERATION_PENDING"
+	local opPath: string? = nil
+
+	if okDec and type(decoded) == "table" then
+		if type(decoded.path) == "string" then
+			opPath = decoded.path
+		end
+		if decoded.assetId ~= nil then
+			assetId = tostring(decoded.assetId):match("%d+")
+		end
+		if type(decoded.response) == "table" and decoded.response.assetId ~= nil then
+			assetId = tostring(decoded.response.assetId):match("%d+")
+		end
+	end
+
+	if not assetId then
+		assetId = bodyStr:match('"assetId"%s*:%s*"?(%d+)"?')
+	end
+
+	if opPath and opPath ~= "" and not assetId then
+		for _ = 1, 5 do
+			task.wait(1)
+			local opRes, opOk = apiRequest({
+				Url = "https://apis.roblox.com/assets/v1/" .. opPath:gsub("^/", ""),
+				Method = "GET",
+				Headers = { ["x-api-key"] = cleanKey },
+				Retries = 1,
+			})
+			if opOk and opRes and opRes.Body then
+				local opStr = tostring(opRes.Body)
+				local okOp, opDec = pcall(function()
+					return HttpService:JSONDecode(opStr)
+				end)
+				if okOp and type(opDec) == "table" then
+					if type(opDec.response) == "table" and opDec.response.assetId ~= nil then
+						assetId = tostring(opDec.response.assetId):match("%d+")
+					end
+					if type(opDec.response) == "table" and type(opDec.response.moderationResult) == "table" and type(opDec.response.moderationResult.moderationState) == "string" then
+						modState = opDec.response.moderationResult.moderationState
+					end
+					if opDec.done == true then
+						break
+					end
+				end
+			end
+		end
+	end
+
+	if not assetId or assetId == "" then
+		return false, nil, "NO_ASSET_ID", "Upload terkirim tapi Asset ID belum terbaca (cek Console)."
+	end
+
+	local statusTag = params.requestPublicCatalog
+		and ("ID Ready • " .. modState .. " (Publik: cek/set di Creator Dashboard)")
+		or ("ID Ready • " .. modState .. " (Privat/Terbatas)")
+
+	return true, assetId, statusTag, "Asset ID berhasil dibuat: " .. assetId
 end
 
 -- ==========================================
@@ -1163,10 +1318,10 @@ LogoIcon.Font = Enum.Font.GothamBold
 LogoIcon.Parent = HeaderLogoBox
 
 local SubTitleLabel = Instance.new("TextLabel")
-SubTitleLabel.Size = UDim2.new(0, 300, 0, 11)
+SubTitleLabel.Size = UDim2.new(0, 320, 0, 11)
 SubTitleLabel.Position = UDim2.new(0, 48, 0, 5)
 SubTitleLabel.BackgroundTransparency = 1
-SubTitleLabel.Text = "IKYYSTUDIO • PLACE, PROFILE PLACES, VOICE & 3RD PARTY"
+SubTitleLabel.Text = "IKYYSTUDIO • PLACE, ASSET ID, VOICE & 3RD PARTY"
 SubTitleLabel.TextColor3 = Color3.fromRGB(130, 126, 155)
 SubTitleLabel.TextSize = 8
 SubTitleLabel.Font = Enum.Font.GothamBold
@@ -1317,10 +1472,13 @@ local SideStroke = Instance.new("UIStroke", Sidebar)
 SideStroke.Color = Color3.fromRGB(52, 48, 82)
 SideStroke.Thickness = 1
 
-local NavListFrame = Instance.new("Frame")
+local NavListFrame = Instance.new("ScrollingFrame")
 NavListFrame.Size = UDim2.new(1, -10, 1, -10)
 NavListFrame.Position = UDim2.new(0, 5, 0, 5)
 NavListFrame.BackgroundTransparency = 1
+NavListFrame.ScrollBarThickness = 2
+NavListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+NavListFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 NavListFrame.Parent = Sidebar
 
 local NavLayout = Instance.new("UIListLayout")
@@ -1334,7 +1492,7 @@ local tabButtons: {[string]: TextButton} = {}
 local function createNavButton(name: string, label: string, order: number)
 	local btn = Instance.new("TextButton")
 	btn.Name = "Nav_" .. name
-	btn.Size = UDim2.new(1, 0, 0, 26)
+	btn.Size = UDim2.new(1, 0, 0, 25)
 	btn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
 	btn.Text = "  " .. label
 	btn.TextColor3 = Color3.fromRGB(185, 182, 210)
@@ -1802,7 +1960,180 @@ MyPlacesEmptyHint.Font = Enum.Font.Gotham
 MyPlacesEmptyHint.Parent = MyPlacesScroll
 
 -- ==========================================
--- HALAMAN 3: VOICE CHAT UNIVERSE
+-- HALAMAN 3: UPLOAD ASSET -> DAPAT ASSET ID + TOGGLE PUBLIK
+-- ==========================================
+local UploadAssetPage = Instance.new("Frame")
+UploadAssetPage.Size = UDim2.fromScale(1, 1)
+UploadAssetPage.BackgroundTransparency = 1
+UploadAssetPage.Visible = false
+UploadAssetPage.Parent = ContentArea
+tabPages["UploadAsset"] = UploadAssetPage
+
+local AssetPageTitle = Instance.new("TextLabel")
+AssetPageTitle.Size = UDim2.new(1, -24, 0, 15)
+AssetPageTitle.Position = UDim2.new(0, 12, 0, 3)
+AssetPageTitle.BackgroundTransparency = 1
+AssetPageTitle.Text = "Upload Asset -> Dapat Asset ID"
+AssetPageTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+AssetPageTitle.TextSize = 11
+AssetPageTitle.Font = Enum.Font.GothamBold
+AssetPageTitle.TextXAlignment = Enum.TextXAlignment.Left
+AssetPageTitle.Parent = UploadAssetPage
+
+local AssetNameBox = Instance.new("TextBox")
+AssetNameBox.Size = UDim2.new(0.56, -10, 0, 21)
+AssetNameBox.Position = UDim2.new(0, 12, 0, 20)
+AssetNameBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+AssetNameBox.Text = "StudioLite_Model"
+AssetNameBox.PlaceholderText = "Nama Aset"
+AssetNameBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+AssetNameBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+AssetNameBox.TextSize = 9
+AssetNameBox.Font = Enum.Font.Gotham
+AssetNameBox.ClearTextOnFocus = false
+AssetNameBox.Parent = UploadAssetPage
+Instance.new("UICorner", AssetNameBox).CornerRadius = UDim.new(0, 6)
+
+local AssetTypeBox = Instance.new("TextBox")
+AssetTypeBox.Size = UDim2.new(0.44, -12, 0, 21)
+AssetTypeBox.Position = UDim2.new(0.56, 0, 0, 20)
+AssetTypeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+AssetTypeBox.Text = "Model"
+AssetTypeBox.PlaceholderText = "Model / Audio / Decal"
+AssetTypeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+AssetTypeBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+AssetTypeBox.TextSize = 9
+AssetTypeBox.Font = Enum.Font.Gotham
+AssetTypeBox.ClearTextOnFocus = false
+AssetTypeBox.Parent = UploadAssetPage
+Instance.new("UICorner", AssetTypeBox).CornerRadius = UDim.new(0, 6)
+
+local AssetGroupBox = Instance.new("TextBox")
+AssetGroupBox.Size = UDim2.new(0.36, -10, 0, 21)
+AssetGroupBox.Position = UDim2.new(0, 12, 0, 44)
+AssetGroupBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+AssetGroupBox.Text = ""
+AssetGroupBox.PlaceholderText = "Group ID (opsional)"
+AssetGroupBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+AssetGroupBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+AssetGroupBox.TextSize = 9
+AssetGroupBox.Font = Enum.Font.Gotham
+AssetGroupBox.ClearTextOnFocus = false
+AssetGroupBox.Parent = UploadAssetPage
+Instance.new("UICorner", AssetGroupBox).CornerRadius = UDim.new(0, 6)
+
+local AssetFileBox = Instance.new("TextBox")
+AssetFileBox.Size = UDim2.new(0.64, -12, 0, 21)
+AssetFileBox.Position = UDim2.new(0.36, 0, 0, 44)
+AssetFileBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+AssetFileBox.Text = ""
+AssetFileBox.PlaceholderText = "Path file workspace (misal Assets/test.rbxm) atau isi"
+AssetFileBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+AssetFileBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+AssetFileBox.TextSize = 9
+AssetFileBox.Font = Enum.Font.Gotham
+AssetFileBox.ClearTextOnFocus = false
+AssetFileBox.Parent = UploadAssetPage
+Instance.new("UICorner", AssetFileBox).CornerRadius = UDim.new(0, 6)
+
+local AssetPublicRow = Instance.new("Frame")
+AssetPublicRow.Size = UDim2.new(1, -24, 0, 22)
+AssetPublicRow.Position = UDim2.new(0, 12, 0, 68)
+AssetPublicRow.BackgroundColor3 = Color3.fromRGB(17, 16, 26)
+AssetPublicRow.BorderSizePixel = 0
+AssetPublicRow.Parent = UploadAssetPage
+Instance.new("UICorner", AssetPublicRow).CornerRadius = UDim.new(0, 6)
+
+local AssetPublicLbl = Instance.new("TextLabel")
+AssetPublicLbl.Size = UDim2.new(1, -76, 1, 0)
+AssetPublicLbl.Position = UDim2.new(0, 8, 0, 0)
+AssetPublicLbl.BackgroundTransparency = 1
+AssetPublicLbl.Text = "Mode Target Publik (OFF = Privat | ON = Publik)"
+AssetPublicLbl.TextColor3 = Color3.fromRGB(190, 187, 218)
+AssetPublicLbl.TextSize = 9
+AssetPublicLbl.Font = Enum.Font.GothamMedium
+AssetPublicLbl.TextXAlignment = Enum.TextXAlignment.Left
+AssetPublicLbl.Parent = AssetPublicRow
+
+local AssetPublicSwitch = createModernToggleSwitch(AssetPublicRow, false, function(state: boolean)
+	AssetPublicLbl.Text = state
+		and "Mode Publik: ON (set distribusi di Creator Dashboard)"
+		or "Mode Publik: OFF (tetap privat / terbatas)"
+end)
+AssetPublicSwitch.Button.Size = UDim2.fromOffset(58, 18)
+AssetPublicSwitch.Button.Position = UDim2.new(1, -64, 0.5, -9)
+
+local UploadAssetBtn = Instance.new("TextButton")
+UploadAssetBtn.Size = UDim2.new(1, -24, 0, 24)
+UploadAssetBtn.Position = UDim2.new(0, 12, 0, 93)
+UploadAssetBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+UploadAssetBtn.Text = "📦  UPLOAD & GENERATE ASSET ID"
+UploadAssetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+UploadAssetBtn.TextSize = 10
+UploadAssetBtn.Font = Enum.Font.GothamBold
+UploadAssetBtn.Parent = UploadAssetPage
+Instance.new("UICorner", UploadAssetBtn).CornerRadius = UDim.new(0, 7)
+
+local AssetResultCard = Instance.new("Frame")
+AssetResultCard.Size = UDim2.new(1, -24, 1, -125)
+AssetResultCard.Position = UDim2.new(0, 12, 0, 121)
+AssetResultCard.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+AssetResultCard.BorderSizePixel = 0
+AssetResultCard.Parent = UploadAssetPage
+Instance.new("UICorner", AssetResultCard).CornerRadius = UDim.new(0, 8)
+local AssetCardStroke = Instance.new("UIStroke", AssetResultCard)
+AssetCardStroke.Color = Color3.fromRGB(52, 48, 82)
+AssetCardStroke.Thickness = 1
+
+local AssetIdDisplay = Instance.new("TextLabel")
+AssetIdDisplay.Size = UDim2.new(1, -86, 0, 20)
+AssetIdDisplay.Position = UDim2.new(0, 10, 0, 8)
+AssetIdDisplay.BackgroundTransparency = 1
+AssetIdDisplay.Text = "Asset ID: -"
+AssetIdDisplay.TextColor3 = Color3.fromRGB(248, 248, 255)
+AssetIdDisplay.TextSize = 12
+AssetIdDisplay.Font = Enum.Font.GothamBold
+AssetIdDisplay.TextXAlignment = Enum.TextXAlignment.Left
+AssetIdDisplay.Parent = AssetResultCard
+
+local CopyAssetIdBtn = Instance.new("TextButton")
+CopyAssetIdBtn.Size = UDim2.fromOffset(66, 20)
+CopyAssetIdBtn.Position = UDim2.new(1, -74, 0, 8)
+CopyAssetIdBtn.BackgroundColor3 = Color3.fromRGB(42, 38, 72)
+CopyAssetIdBtn.Text = "📋 Copy ID"
+CopyAssetIdBtn.TextColor3 = Color3.fromRGB(220, 215, 255)
+CopyAssetIdBtn.TextSize = 8
+CopyAssetIdBtn.Font = Enum.Font.GothamBold
+CopyAssetIdBtn.Parent = AssetResultCard
+Instance.new("UICorner", CopyAssetIdBtn).CornerRadius = UDim.new(0, 5)
+
+local AssetStatusDetail = Instance.new("TextLabel")
+AssetStatusDetail.Size = UDim2.new(1, -20, 1, -34)
+AssetStatusDetail.Position = UDim2.new(0, 10, 0, 30)
+AssetStatusDetail.BackgroundTransparency = 1
+AssetStatusDetail.Text = "Butuh Open Cloud API Key (tab Setting). API membuat aset & mengembalikan Asset ID; publikasi penuh ke katalog/Creator Store tetap melewati moderasi & pengaturan distribusi."
+AssetStatusDetail.TextColor3 = Color3.fromRGB(165, 162, 194)
+AssetStatusDetail.TextSize = 9
+AssetStatusDetail.Font = Enum.Font.GothamMedium
+AssetStatusDetail.TextXAlignment = Enum.TextXAlignment.Left
+AssetStatusDetail.TextYAlignment = Enum.TextYAlignment.Top
+AssetStatusDetail.TextWrapped = true
+AssetStatusDetail.Parent = AssetResultCard
+
+local lastGeneratedAssetId: string? = nil
+
+CopyAssetIdBtn.MouseButton1Click:Connect(function()
+	if not lastGeneratedAssetId or lastGeneratedAssetId == "" then
+		notify("Asset ID", "Belum ada Asset ID.")
+		return
+	end
+	local okCopy = setClipboardText(lastGeneratedAssetId)
+	pushConsole("INFO", "Asset ID " .. lastGeneratedAssetId .. (okCopy and " disalin ke clipboard" or " ditampilkan"))
+	notify("Asset ID", (okCopy and "Disalin: " or "ID: ") .. lastGeneratedAssetId)
+end)
+
+-- ==========================================
+-- HALAMAN 4: VOICE CHAT UNIVERSE
 -- ==========================================
 local VoicePage = Instance.new("Frame")
 VoicePage.Size = UDim2.fromScale(1, 1)
@@ -1946,7 +2277,7 @@ VoiceStatusText.TextWrapped = true
 VoiceStatusText.Parent = VoicePreviewCard
 
 -- ==========================================
--- HALAMAN 4: ALLOW THIRD PARTY SALES
+-- HALAMAN 5: ALLOW THIRD PARTY SALES
 -- ==========================================
 local ThirdPartyPage = Instance.new("Frame")
 ThirdPartyPage.Size = UDim2.fromScale(1, 1)
@@ -2090,7 +2421,7 @@ SalesStatusText.TextWrapped = true
 SalesStatusText.Parent = SalesPreviewCard
 
 -- ==========================================
--- HALAMAN 5: SETTING (COOKIE)
+-- HALAMAN 6: SETTING (COOKIE & OPEN CLOUD API KEY)
 -- ==========================================
 local SettingPage = Instance.new("Frame")
 SettingPage.Size = UDim2.fromScale(1, 1)
@@ -2100,25 +2431,25 @@ SettingPage.Parent = ContentArea
 tabPages["Setting"] = SettingPage
 
 local SettingTitle = Instance.new("TextLabel")
-SettingTitle.Size = UDim2.new(1, -24, 0, 18)
-SettingTitle.Position = UDim2.new(0, 12, 0, 8)
+SettingTitle.Size = UDim2.new(1, -24, 0, 16)
+SettingTitle.Position = UDim2.new(0, 12, 0, 6)
 SettingTitle.BackgroundTransparency = 1
-SettingTitle.Text = "Pengaturan Cookie"
+SettingTitle.Text = "Pengaturan Cookie & Open Cloud Key"
 SettingTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-SettingTitle.TextSize = 13
+SettingTitle.TextSize = 12
 SettingTitle.Font = Enum.Font.GothamBold
 SettingTitle.TextXAlignment = Enum.TextXAlignment.Left
 SettingTitle.Parent = SettingPage
 
 local CookieBox = Instance.new("TextBox")
-CookieBox.Size = UDim2.new(1, -24, 0, 96)
-CookieBox.Position = UDim2.new(0, 12, 0, 32)
+CookieBox.Size = UDim2.new(1, -24, 0, 64)
+CookieBox.Position = UDim2.new(0, 12, 0, 26)
 CookieBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 CookieBox.Text = CONFIG.Cookie
 CookieBox.PlaceholderText = "Tempel .ROBLOSECURITY Cookie di sini..."
 CookieBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 CookieBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-CookieBox.TextSize = 10
+CookieBox.TextSize = 9
 CookieBox.Font = Enum.Font.Gotham
 CookieBox.ClearTextOnFocus = false
 CookieBox.MultiLine = true
@@ -2128,24 +2459,40 @@ CookieBox.TextYAlignment = Enum.TextYAlignment.Top
 CookieBox.Parent = SettingPage
 Instance.new("UICorner", CookieBox).CornerRadius = UDim.new(0, 7)
 
+local ApiKeyBox = Instance.new("TextBox")
+ApiKeyBox.Size = UDim2.new(1, -24, 0, 26)
+ApiKeyBox.Position = UDim2.new(0, 12, 0, 96)
+ApiKeyBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+ApiKeyBox.Text = CONFIG.ApiKey
+ApiKeyBox.PlaceholderText = "Open Cloud API Key (untuk Upload Asset ID)..."
+ApiKeyBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+ApiKeyBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+ApiKeyBox.TextSize = 9
+ApiKeyBox.Font = Enum.Font.Gotham
+ApiKeyBox.ClearTextOnFocus = false
+ApiKeyBox.Parent = SettingPage
+Instance.new("UICorner", ApiKeyBox).CornerRadius = UDim.new(0, 7)
+
 local SaveSettingBtn = Instance.new("TextButton")
-SaveSettingBtn.Size = UDim2.new(1, -24, 0, 32)
-SaveSettingBtn.Position = UDim2.new(0, 12, 0, 136)
+SaveSettingBtn.Size = UDim2.new(1, -24, 0, 28)
+SaveSettingBtn.Position = UDim2.new(0, 12, 0, 128)
 SaveSettingBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-SaveSettingBtn.Text = "💾  SIMPAN COOKIE"
+SaveSettingBtn.Text = "💾  SIMPAN COOKIE & API KEY"
 SaveSettingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SaveSettingBtn.TextSize = 11
+SaveSettingBtn.TextSize = 10
 SaveSettingBtn.Font = Enum.Font.GothamBold
 SaveSettingBtn.Parent = SettingPage
 Instance.new("UICorner", SaveSettingBtn).CornerRadius = UDim.new(0, 8)
 
 local SettingStatusLabel = Instance.new("TextLabel")
-SettingStatusLabel.Size = UDim2.new(1, -24, 0, 56)
-SettingStatusLabel.Position = UDim2.new(0, 12, 0, 176)
+SettingStatusLabel.Size = UDim2.new(1, -24, 0, 48)
+SettingStatusLabel.Position = UDim2.new(0, 12, 0, 162)
 SettingStatusLabel.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-SettingStatusLabel.Text = CONFIG.Cookie ~= ""
-	and ("Status Cookie: Terisi (" .. tostring(#CONFIG.Cookie) .. " karakter)")
-	or ("Status Cookie: Kosong • Simpan ke " .. CONFIG.WorkspaceRoot .. "/cookie.txt")
+SettingStatusLabel.Text = string.format(
+	"Cookie: %s | API Key: %s",
+	CONFIG.Cookie ~= "" and (tostring(#CONFIG.Cookie) .. " chars") or "Kosong",
+	CONFIG.ApiKey ~= "" and (tostring(#CONFIG.ApiKey) .. " chars") or "Kosong"
+)
 SettingStatusLabel.TextColor3 = Color3.fromRGB(185, 205, 255)
 SettingStatusLabel.TextSize = 9
 SettingStatusLabel.Font = Enum.Font.Code
@@ -2154,7 +2501,7 @@ SettingStatusLabel.Parent = SettingPage
 Instance.new("UICorner", SettingStatusLabel).CornerRadius = UDim.new(0, 7)
 
 -- ==========================================
--- HALAMAN 6: CONSOLE OUTPUT SERVER / PERMINTAAN
+-- HALAMAN 7: CONSOLE OUTPUT SERVER / PERMINTAAN
 -- ==========================================
 local ConsolePage = Instance.new("Frame")
 ConsolePage.Size = UDim2.fromScale(1, 1)
@@ -2281,7 +2628,7 @@ CopyConsoleBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- LOGIKA COOKIE & NAVIGASI
+-- LOGIKA COOKIE, API KEY & NAVIGASI
 -- ==========================================
 local function syncCookieFromInput(): string
 	local boxCookie = normalizeCookie(CookieBox.Text)
@@ -2291,22 +2638,40 @@ local function syncCookieFromInput(): string
 	return CONFIG.Cookie
 end
 
+local function syncApiKeyFromInput(): string
+	local boxKey = trim(ApiKeyBox.Text)
+	if boxKey ~= "" then
+		CONFIG.ApiKey = boxKey
+	end
+	return CONFIG.ApiKey
+end
+
 CookieBox:GetPropertyChangedSignal("Text"):Connect(function()
 	CONFIG.Cookie = normalizeCookie(CookieBox.Text)
 end)
 
+ApiKeyBox:GetPropertyChangedSignal("Text"):Connect(function()
+	CONFIG.ApiKey = trim(ApiKeyBox.Text)
+end)
+
 SaveSettingBtn.MouseButton1Click:Connect(function()
 	local c = normalizeCookie(CookieBox.Text)
+	local k = trim(ApiKeyBox.Text)
 	CONFIG.Cookie = c
+	CONFIG.ApiKey = k
 	CookieBox.Text = c
+	ApiKeyBox.Text = k
 
 	local okC = saveTextFile("cookie.txt", c)
-	SettingStatusLabel.Text = c ~= ""
-		and ("Status Cookie: Tersimpan (" .. tostring(#c) .. " karakter)")
-		or "Status Cookie: Kosong"
-	SettingStatusLabel.TextColor3 = okC and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
-	pushConsole(okC and "OK" or "ERR", okC and ("Cookie disimpan (" .. tostring(#c) .. " chars)") or "Gagal menyimpan cookie.txt")
-	notify("Setting", okC and "Cookie tersimpan." or "Gagal menyimpan cookie.")
+	local okK = saveTextFile("apikey.txt", k)
+	SettingStatusLabel.Text = string.format(
+		"Cookie: %s | API Key: %s",
+		c ~= "" and (tostring(#c) .. " chars") or "Kosong",
+		k ~= "" and (tostring(#k) .. " chars") or "Kosong"
+	)
+	SettingStatusLabel.TextColor3 = (okC and okK) and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+	pushConsole((okC and okK) and "OK" or "ERR", "Menyimpan cookie.txt & apikey.txt")
+	notify("Setting", (okC and okK) and "Cookie & API Key tersimpan." or "Gagal menyimpan.")
 end)
 
 createNavButton("CreatePlace", "🏗  Create Place", 1).MouseButton1Click:Connect(function()
@@ -2315,21 +2680,71 @@ end)
 createNavButton("MyPlaces", "🎮  Place Saya", 2).MouseButton1Click:Connect(function()
 	switchTab("MyPlaces")
 end)
-createNavButton("VoiceChat", "🎙  Voice Chat", 3).MouseButton1Click:Connect(function()
+createNavButton("UploadAsset", "📦  Asset ID", 3).MouseButton1Click:Connect(function()
+	switchTab("UploadAsset")
+end)
+createNavButton("VoiceChat", "🎙  Voice Chat", 4).MouseButton1Click:Connect(function()
 	switchTab("VoiceChat")
 end)
-createNavButton("ThirdPartySales", "🛒  3rd Party", 4).MouseButton1Click:Connect(function()
+createNavButton("ThirdPartySales", "🛒  3rd Party", 5).MouseButton1Click:Connect(function()
 	switchTab("ThirdPartySales")
 end)
-createNavButton("Setting", "⚙  Setting", 5).MouseButton1Click:Connect(function()
+createNavButton("Setting", "⚙  Setting", 6).MouseButton1Click:Connect(function()
 	switchTab("Setting")
 end)
-createNavButton("Console", "🖥  Console", 6).MouseButton1Click:Connect(function()
+createNavButton("Console", "🖥  Console", 7).MouseButton1Click:Connect(function()
 	switchTab("Console")
 end)
 switchTab("CreatePlace")
 
-pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya dari halaman profile, Voice & 3rd Party Sales aktif).")
+pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya, Asset ID, Voice & 3rd Party Sales aktif).")
+
+-- ==========================================
+-- LOGIKA UPLOAD ASSET -> DAPAT ASSET ID
+-- ==========================================
+local isUploadingAsset = false
+
+UploadAssetBtn.MouseButton1Click:Connect(function()
+	if isUploadingAsset then return end
+	local apiKeyVal = syncApiKeyFromInput()
+	local cookieVal = syncCookieFromInput()
+	local wantPublic = AssetPublicSwitch.GetState()
+
+	isUploadingAsset = true
+	UploadAssetBtn.Text = "⏳  MENGUPLOAD ASET..."
+	AssetStatusDetail.TextColor3 = Color3.fromRGB(175, 205, 255)
+	AssetStatusDetail.Text = "Mengirim permintaan upload ke Open Cloud Assets API..."
+
+	task.spawn(function()
+		local okUp, assetIdStr, statusTag, msgUp = uploadAssetAndGetId({
+			apiKey = apiKeyVal,
+			cookieVal = cookieVal,
+			assetType = AssetTypeBox.Text,
+			displayName = AssetNameBox.Text,
+			description = "Uploaded via Ikyy Plugin Studio Lite",
+			groupId = AssetGroupBox.Text,
+			filePathOrContent = AssetFileBox.Text,
+			requestPublicCatalog = wantPublic,
+		})
+
+		if okUp and assetIdStr then
+			lastGeneratedAssetId = assetIdStr
+			AssetIdDisplay.Text = "Asset ID: " .. assetIdStr
+			AssetStatusDetail.TextColor3 = Color3.fromRGB(145, 255, 190)
+			AssetStatusDetail.Text = statusTag .. "\n" .. msgUp
+			pushConsole("OK", msgUp .. " [" .. statusTag .. "]")
+			notify("Asset ID", "ID: " .. assetIdStr)
+		else
+			AssetStatusDetail.TextColor3 = Color3.fromRGB(255, 155, 165)
+			AssetStatusDetail.Text = "Gagal: " .. msgUp
+			pushConsole("ERR", "Upload Asset gagal: " .. msgUp)
+			notify("Asset ID", "Gagal upload aset.")
+		end
+
+		UploadAssetBtn.Text = "📦  UPLOAD & GENERATE ASSET ID"
+		isUploadingAsset = false
+	end)
+end)
 
 -- ==========================================
 -- LOGIKA CEK PLACE SAYA (DARI HALAMAN PROFILE)
