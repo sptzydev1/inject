@@ -1,5 +1,5 @@
 --!strict
--- Plugin Studio Lite (Delta Executor Edition - Create Place, My Places, Voice Chat, 3rd Party Sales, Setting & Console) by Ikyy
+-- Plugin Studio Lite (Delta Executor Edition - Create Place, My Places from Profile, Voice Chat, 3rd Party Sales, Setting & Console) by Ikyy
 -- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Realtime (Icon Game, Name Game, Status + Console)
 
 local Players = game:GetService("Players")
@@ -464,7 +464,7 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 end
 
 -- ==========================================
--- API CEK PLACE SAYA (MULTI-ENDPOINT FALLBACK • PRIVATE & PUBLIK)
+-- API CEK PLACE SAYA (DARI HALAMAN PROFILE USER)
 -- ==========================================
 local function getAuthenticatedUserFromCookie(cookieVal: string): (number?, string?)
 	local hdrs: {[string]: string} = {
@@ -556,123 +556,131 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		})
 	end
 
-	-- 1. Coba endpoint universe langsung
-	local directUniverseEndpoints = {
-		string.format("https://develop.roblox.com/v1/users/%d/universes?sortOrder=Desc&limit=100", uid),
-		string.format("https://apis.roblox.com/universes/v1/users/%d/universes?sortOrder=Desc&limit=100", uid),
+	-- 1. Ambil dari Profile Creations API (www.roblox.com/users/{uid}/profile -> Creations)
+	local profileApiUrls = {
+		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=All&limit=50&sortOrder=Desc", uid),
+		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=2&limit=50&sortOrder=Desc", uid),
+		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=4&limit=50&sortOrder=Desc", uid),
 	}
 
-	for _, url in ipairs(directUniverseEndpoints) do
-		local res, ok = apiRequest({
-			Url = url,
+	for _, pApiUrl in ipairs(profileApiUrls) do
+		local gRes, gOk = apiRequest({
+			Url = pApiUrl,
+			Method = "GET",
+			Headers = {
+				["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
+				["Referer"] = string.format("https://www.roblox.com/users/%d/profile", uid),
+				["Origin"] = "https://www.roblox.com",
+			},
+			Retries = 1,
+		})
+		if gOk and gRes and gRes.Body then
+			local okG, gDec = pcall(function()
+				return HttpService:JSONDecode(tostring(gRes.Body))
+			end)
+			if okG and type(gDec) == "table" and type(gDec.data) == "table" then
+				for _, entry in ipairs(gDec.data) do
+					if type(entry) == "table" then
+						local univStr = entry.id ~= nil and tostring(entry.id):match("%d+") or nil
+						local rpStr = (type(entry.rootPlace) == "table" and entry.rootPlace.id ~= nil)
+							and tostring(entry.rootPlace.id):match("%d+")
+							or (entry.rootPlaceId ~= nil and tostring(entry.rootPlaceId):match("%d+") or nil)
+						local gName = type(entry.name) == "string" and trim(entry.name) or nil
+						local st: "publik" | "private" | "tidak diketahui" = "tidak diketahui"
+						if pApiUrl:find("accessFilter=2") then
+							st = "publik"
+						elseif pApiUrl:find("accessFilter=4") then
+							st = "private"
+						end
+						addItem(univStr, rpStr, gName, st)
+					end
+				end
+			end
+		end
+	end
+
+	-- 2. Parse langsung halaman HTML profil: https://www.roblox.com/users/{uid}/profile
+	local profilePageUrl = string.format("https://www.roblox.com/users/%d/profile", uid)
+	local htmlRes, htmlOk = apiRequest({
+		Url = profilePageUrl,
+		Method = "GET",
+		Headers = {
+			["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
+			["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			["Referer"] = "https://www.roblox.com/home",
+		},
+		Retries = 1,
+	})
+
+	if htmlOk and htmlRes and htmlRes.Body then
+		local htmlBody = tostring(htmlRes.Body)
+		local discoveredPlaceIds: {string} = {}
+		local seenPlace: {[string]: boolean} = {}
+
+		local function collectPlaceId(pid: string?)
+			local cleanP = pid and trim(pid):match("%d+") or ""
+			if cleanP == "" or seenPlace[cleanP] then return end
+			seenPlace[cleanP] = true
+			table.insert(discoveredPlaceIds, cleanP)
+		end
+
+		for pid in htmlBody:gmatch("/games/(%d+)/") do
+			collectPlaceId(pid)
+		end
+		for pid in htmlBody:gmatch('"placeId"%s*:%s*(%d+)') do
+			collectPlaceId(pid)
+		end
+		for pid in htmlBody:gmatch('data%-place%-id=["\'](%d+)["\']') do
+			collectPlaceId(pid)
+		end
+		for univStr in htmlBody:gmatch('"universeId"%s*:%s*(%d+)') do
+			addItem(univStr, nil, nil, "tidak diketahui")
+		end
+
+		for _, pid in ipairs(discoveredPlaceIds) do
+			local alreadyHasPlace = false
+			for _, existing in ipairs(rawItems) do
+				if existing.rootPlaceId == pid then
+					alreadyHasPlace = true
+					break
+				end
+			end
+			if not alreadyHasPlace then
+				local resolvedUniv = placeIdToUniverseId(pid, hdrs)
+				if resolvedUniv then
+					addItem(resolvedUniv, pid, nil, "tidak diketahui")
+				end
+			end
+		end
+	end
+
+	-- 3. Lengkapi nama, rootPlaceId & status (publik / private) tiap universe
+	for _, it in ipairs(rawItems) do
+		local dRes, dOk = apiRequest({
+			Url = "https://develop.roblox.com/v1/universes/" .. it.univId,
 			Method = "GET",
 			Headers = hdrs,
 			Retries = 1,
 		})
-		if ok and res and res.Body then
-			local okDec, parsed = pcall(function()
-				return HttpService:JSONDecode(tostring(res.Body))
+		if dOk and dRes and dRes.Body then
+			local okD, dDec = pcall(function()
+				return HttpService:JSONDecode(tostring(dRes.Body))
 			end)
-			if okDec and type(parsed) == "table" and type(parsed.data) == "table" then
-				for _, item in ipairs(parsed.data) do
-					if type(item) == "table" then
-						local uidStr = item.id ~= nil and tostring(item.id):match("%d+")
-							or (item.universeId ~= nil and tostring(item.universeId):match("%d+") or "")
-						local rpStr = item.rootPlaceId ~= nil and tostring(item.rootPlaceId):match("%d+") or nil
-						local st: "publik" | "private" | "tidak diketahui" = "tidak diketahui"
-						if type(item.isActive) == "boolean" then
-							st = item.isActive and "publik" or "private"
-						elseif type(item.privacyType) == "string" then
-							local pLow = item.privacyType:lower()
-							if pLow:find("public") or pLow:find("open") then
-								st = "publik"
-							elseif pLow:find("private") or pLow:find("closed") then
-								st = "private"
-							end
-						elseif type(item.isPublic) == "boolean" then
-							st = item.isPublic and "publik" or "private"
-						end
-						addItem(uidStr, rpStr, type(item.name) == "string" and trim(item.name) or nil, st)
-					end
+			if okD and type(dDec) == "table" then
+				if type(dDec.name) == "string" and trim(dDec.name) ~= "" then
+					it.name = trim(dDec.name)
 				end
-			end
-		end
-	end
-
-	-- 2. Fallback: endpoint daftar place/inventory milik user -> resolve ke universeId
-	if #rawItems == 0 then
-		local placeSearchEndpoints = {
-			string.format("https://develop.roblox.com/v1/user/%d/places/inventory?limit=100&sortOrder=Desc", uid),
-			string.format("https://apis.roblox.com/universes/v1/places/search?creatorTargetId=%d&creatorType=User&limit=100&sortOrder=Desc", uid),
-			string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=All&limit=100&sortOrder=Desc", uid),
-		}
-
-		for _, pUrl in ipairs(placeSearchEndpoints) do
-			local pRes, pOk = apiRequest({
-				Url = pUrl,
-				Method = "GET",
-				Headers = hdrs,
-				Retries = 1,
-			})
-			if pOk and pRes and pRes.Body then
-				local okP, pDec = pcall(function()
-					return HttpService:JSONDecode(tostring(pRes.Body))
-				end)
-				if okP and type(pDec) == "table" and type(pDec.data) == "table" then
-					for _, entry in ipairs(pDec.data) do
-						if type(entry) == "table" then
-							local entryName = type(entry.name) == "string" and trim(entry.name) or nil
-							local entryUniv = entry.universeId ~= nil and tostring(entry.universeId):match("%d+")
-								or (entry.id ~= nil and pUrl:find("/games") and tostring(entry.id):match("%d+") or nil)
-							local entryPlace = entry.placeId ~= nil and tostring(entry.placeId):match("%d+")
-								or (entry.rootPlace and type(entry.rootPlace) == "table" and entry.rootPlace.id ~= nil and tostring(entry.rootPlace.id):match("%d+"))
-								or (entry.id ~= nil and not pUrl:find("/games") and tostring(entry.id):match("%d+") or nil)
-
-							if not entryUniv and entryPlace then
-								entryUniv = placeIdToUniverseId(entryPlace, hdrs)
-							end
-							if entryUniv then
-								addItem(entryUniv, entryPlace, entryName, "tidak diketahui")
-							end
-						end
-					end
+				if not it.rootPlaceId and dDec.rootPlaceId ~= nil and tostring(dDec.rootPlaceId):match("%d+") then
+					it.rootPlaceId = tostring(dDec.rootPlaceId):match("%d+")
 				end
-			end
-			if #rawItems > 0 then
-				break
-			end
-		end
-	end
-
-	-- 3. Lengkapi detail tiap universe (terutama status private/publik & rootPlaceId) via develop.roblox.com/v1/universes/{id}
-	for _, it in ipairs(rawItems) do
-		if it.status == "tidak diketahui" or not it.rootPlaceId or not it.name or it.name == "" then
-			local dRes, dOk = apiRequest({
-				Url = "https://develop.roblox.com/v1/universes/" .. it.univId,
-				Method = "GET",
-				Headers = hdrs,
-				Retries = 1,
-			})
-			if dOk and dRes and dRes.Body then
-				local okD, dDec = pcall(function()
-					return HttpService:JSONDecode(tostring(dRes.Body))
-				end)
-				if okD and type(dDec) == "table" then
-					if (not it.name or it.name == "") and type(dDec.name) == "string" and trim(dDec.name) ~= "" then
-						it.name = trim(dDec.name)
-					end
-					if not it.rootPlaceId and dDec.rootPlaceId ~= nil and tostring(dDec.rootPlaceId):match("%d+") then
-						it.rootPlaceId = tostring(dDec.rootPlaceId):match("%d+")
-					end
-					if type(dDec.isActive) == "boolean" then
-						it.status = dDec.isActive and "publik" or "private"
-					elseif type(dDec.privacyType) == "string" then
-						local pLow = dDec.privacyType:lower()
-						if pLow:find("public") or pLow:find("open") then
-							it.status = "publik"
-						elseif pLow:find("private") or pLow:find("closed") then
-							it.status = "private"
-						end
+				if type(dDec.isActive) == "boolean" then
+					it.status = dDec.isActive and "publik" or "private"
+				elseif type(dDec.privacyType) == "string" then
+					local pLow = dDec.privacyType:lower()
+					if pLow:find("public") or pLow:find("open") then
+						it.status = "publik"
+					elseif pLow:find("private") or pLow:find("closed") then
+						it.status = "private"
 					end
 				end
 			end
@@ -1158,7 +1166,7 @@ local SubTitleLabel = Instance.new("TextLabel")
 SubTitleLabel.Size = UDim2.new(0, 300, 0, 11)
 SubTitleLabel.Position = UDim2.new(0, 48, 0, 5)
 SubTitleLabel.BackgroundTransparency = 1
-SubTitleLabel.Text = "IKYYSTUDIO • PLACE, MY PLACES, VOICE & 3RD PARTY"
+SubTitleLabel.Text = "IKYYSTUDIO • PLACE, PROFILE PLACES, VOICE & 3RD PARTY"
 SubTitleLabel.TextColor3 = Color3.fromRGB(130, 126, 155)
 SubTitleLabel.TextSize = 8
 SubTitleLabel.Font = Enum.Font.GothamBold
@@ -1713,7 +1721,7 @@ local function setCreateProgress(state: "idle" | "working" | "ok" | "err", ratio
 end
 
 -- ==========================================
--- HALAMAN 2: CEK PLACE SAYA (OTOMATIS DARI COOKIE)
+-- HALAMAN 2: CEK PLACE SAYA (DARI HALAMAN PROFILE)
 -- ==========================================
 local MyPlacesPage = Instance.new("Frame")
 MyPlacesPage.Size = UDim2.fromScale(1, 1)
@@ -1726,7 +1734,7 @@ local MyPlacesTitle = Instance.new("TextLabel")
 MyPlacesTitle.Size = UDim2.new(1, -24, 0, 15)
 MyPlacesTitle.Position = UDim2.new(0, 12, 0, 3)
 MyPlacesTitle.BackgroundTransparency = 1
-MyPlacesTitle.Text = "Cek Place Saya (Kreasi • Pengalaman Virtual)"
+MyPlacesTitle.Text = "Cek Place Saya (Dari Halaman Profile)"
 MyPlacesTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
 MyPlacesTitle.TextSize = 11
 MyPlacesTitle.Font = Enum.Font.GothamBold
@@ -1738,7 +1746,7 @@ local LoadMyPlacesBtn = Instance.new("TextButton")
 LoadMyPlacesBtn.Size = UDim2.new(1, -24, 0, 24)
 LoadMyPlacesBtn.Position = UDim2.new(0, 12, 0, 21)
 LoadMyPlacesBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-LoadMyPlacesBtn.Text = "🔎  CEK DAFTAR PLACE (OTOMATIS DARI COOKIE)"
+LoadMyPlacesBtn.Text = "🔎  CEK PLACE DARI HALAMAN PROFILE"
 LoadMyPlacesBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 LoadMyPlacesBtn.TextSize = 9
 LoadMyPlacesBtn.Font = Enum.Font.GothamBold
@@ -1749,7 +1757,7 @@ local MyPlacesStatusLbl = Instance.new("TextLabel")
 MyPlacesStatusLbl.Size = UDim2.new(1, -24, 0, 14)
 MyPlacesStatusLbl.Position = UDim2.new(0, 12, 0, 48)
 MyPlacesStatusLbl.BackgroundTransparency = 1
-MyPlacesStatusLbl.Text = "Otomatis membaca akun dari cookie (menampilkan place private & publik)."
+MyPlacesStatusLbl.Text = "Mengambil daftar Creations dari profil akun cookie (private & publik)."
 MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(165, 162, 192)
 MyPlacesStatusLbl.TextSize = 9
 MyPlacesStatusLbl.Font = Enum.Font.GothamMedium
@@ -1787,7 +1795,7 @@ MyPlacesPad.Parent = MyPlacesScroll
 local MyPlacesEmptyHint = Instance.new("TextLabel")
 MyPlacesEmptyHint.Size = UDim2.new(1, 0, 0, 36)
 MyPlacesEmptyHint.BackgroundTransparency = 1
-MyPlacesEmptyHint.Text = "Klik tombol di atas untuk memuat semua place (private & publik).\nTiap card mendukung 📋 Copy ID untuk menyalin Universe ID."
+MyPlacesEmptyHint.Text = "Klik tombol di atas untuk memuat place dari halaman profile.\nTiap card mendukung 📋 Copy ID untuk menyalin Universe ID."
 MyPlacesEmptyHint.TextColor3 = Color3.fromRGB(105, 102, 130)
 MyPlacesEmptyHint.TextSize = 9
 MyPlacesEmptyHint.Font = Enum.Font.Gotham
@@ -2321,10 +2329,10 @@ createNavButton("Console", "🖥  Console", 6).MouseButton1Click:Connect(functio
 end)
 switchTab("CreatePlace")
 
-pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya multi-endpoint fallback, Voice & 3rd Party Sales aktif).")
+pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya dari halaman profile, Voice & 3rd Party Sales aktif).")
 
 -- ==========================================
--- LOGIKA CEK PLACE SAYA (OTOMATIS DARI COOKIE)
+-- LOGIKA CEK PLACE SAYA (DARI HALAMAN PROFILE)
 -- ==========================================
 local isLoadingMyPlaces = false
 
@@ -2349,9 +2357,9 @@ LoadMyPlacesBtn.MouseButton1Click:Connect(function()
 	end
 
 	isLoadingMyPlaces = true
-	LoadMyPlacesBtn.Text = "⏳  MEMUAT DARI COOKIE..."
+	LoadMyPlacesBtn.Text = "⏳  MEMUAT DARI HALAMAN PROFILE..."
 	MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
-	MyPlacesStatusLbl.Text = "Membaca akun dari cookie & memuat Pengalaman Virtual..."
+	MyPlacesStatusLbl.Text = "Membaca Creations dari halaman profile akun..."
 	clearMyPlacesCards()
 
 	task.spawn(function()
@@ -2368,8 +2376,8 @@ LoadMyPlacesBtn.MouseButton1Click:Connect(function()
 
 			if #cards == 0 then
 				MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(255, 215, 130)
-				MyPlacesStatusLbl.Text = string.format("Akun %s: tidak ada place ditemukan.", infoOrAcct)
-				pushConsole("WARN", "Daftar pengalaman virtual kosong untuk " .. infoOrAcct)
+				MyPlacesStatusLbl.Text = string.format("Profile %s: tidak ada place ditemukan.", infoOrAcct)
+				pushConsole("WARN", "Daftar place di halaman profile kosong untuk " .. infoOrAcct)
 			else
 				MyPlacesEmptyHint.Visible = false
 				for idx, cardData in ipairs(cards) do
@@ -2379,7 +2387,7 @@ LoadMyPlacesBtn.MouseButton1Click:Connect(function()
 				end
 				MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(145, 255, 190)
 				MyPlacesStatusLbl.Text = string.format("%s • Total %d place (Publik: %d | Private: %d)", infoOrAcct, #cards, pubCount, privCount)
-				pushConsole("OK", string.format("Memuat %d place untuk %s (Publik: %d, Private: %d).", #cards, infoOrAcct, pubCount, privCount))
+				pushConsole("OK", string.format("Memuat %d place dari profile %s (Publik: %d, Private: %d).", #cards, infoOrAcct, pubCount, privCount))
 			end
 		else
 			MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
@@ -2388,7 +2396,7 @@ LoadMyPlacesBtn.MouseButton1Click:Connect(function()
 			notify("Place Saya", "Gagal memuat daftar place.")
 		end
 
-		LoadMyPlacesBtn.Text = "🔎  CEK DAFTAR PLACE (OTOMATIS DARI COOKIE)"
+		LoadMyPlacesBtn.Text = "🔎  CEK PLACE DARI HALAMAN PROFILE"
 		isLoadingMyPlaces = false
 	end)
 end)
