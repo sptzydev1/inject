@@ -464,9 +464,9 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 end
 
 -- ==========================================
--- API CEK PLACE SAYA (USER / GROUP UNIVERSES)
+-- API CEK PLACE SAYA (OTOMATIS DARI COOKIE • SEMUA PRIVATE & PUBLIK)
 -- ==========================================
-local function getAuthenticatedUserId(cookieVal: string): number?
+local function getAuthenticatedUserFromCookie(cookieVal: string): (number?, string?)
 	local hdrs: {[string]: string} = {
 		["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
 	}
@@ -481,63 +481,98 @@ local function getAuthenticatedUserId(cookieVal: string): number?
 			return HttpService:JSONDecode(tostring(res.Body))
 		end)
 		if okDec and type(decoded) == "table" and decoded.id ~= nil then
-			return tonumber(tostring(decoded.id):match("%d+"))
+			local uidNum = tonumber(tostring(decoded.id):match("%d+"))
+			local uname = type(decoded.name) == "string" and decoded.name or nil
+			return uidNum, uname
 		end
 	end
-	return LocalPlayer.UserId
+	return nil, nil
 end
 
-local function fetchMyPlacesList(cookieVal: string, groupIdNum: number?): (boolean, {GameResultCardData}, string)
+local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardData}, string)
 	local hdrs: {[string]: string} = {
 		["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
 	}
-	local listUrl: string
-	if groupIdNum and groupIdNum > 0 then
-		listUrl = string.format("https://develop.roblox.com/v1/groups/%d/universes?sortOrder=Desc&limit=50", groupIdNum)
-	else
-		local uid = getAuthenticatedUserId(cookieVal)
-		if not uid then
-			return false, {}, "Gagal mendapatkan User ID dari cookie"
+
+	local uid, uname = getAuthenticatedUserFromCookie(cookieVal)
+	if not uid then
+		return false, {}, "Cookie tidak valid atau sesi expired"
+	end
+
+	local endpoints = {
+		string.format("https://develop.roblox.com/v1/users/%d/universes?sortOrder=Desc&limit=100", uid),
+		string.format("https://apis.roblox.com/universes/v1/users/%d/universes?sortOrder=Desc&limit=100", uid),
+	}
+
+	local decoded: any = nil
+	local lastErr = "Gagal mengambil daftar pengalaman virtual"
+
+	for _, url in ipairs(endpoints) do
+		local res, ok, info = apiRequest({
+			Url = url,
+			Method = "GET",
+			Headers = hdrs,
+			Retries = 2,
+		})
+		if ok and res and res.Body then
+			local okDec, parsed = pcall(function()
+				return HttpService:JSONDecode(tostring(res.Body))
+			end)
+			if okDec and type(parsed) == "table" and type(parsed.data) == "table" then
+				decoded = parsed
+				break
+			else
+				lastErr = "Format respons daftar place tidak valid"
+			end
+		else
+			lastErr = info
 		end
-		listUrl = string.format("https://develop.roblox.com/v1/users/%d/universes?sortOrder=Desc&limit=50", uid)
 	end
 
-	local res, ok, info = apiRequest({
-		Url = listUrl,
-		Method = "GET",
-		Headers = hdrs,
-		Retries = 2,
-	})
-	if not ok or not res or not res.Body then
-		return false, {}, info
+	if not decoded then
+		return false, {}, lastErr
 	end
 
-	local okDec, decoded = pcall(function()
-		return HttpService:JSONDecode(tostring(res.Body))
-	end)
-	if not okDec or type(decoded) ~= "table" or type(decoded.data) ~= "table" then
-		return false, {}, "Format respons daftar place tidak valid"
-	end
+	local rawItems: {{
+		univId: string,
+		rootPlaceId: string?,
+		name: string?,
+		status: "publik" | "private" | "tidak diketahui",
+	}} = {}
 
-	local rawItems: {{univId: string, rootPlaceId: string?, name: string?, isActive: boolean?, privacyType: string?}} = {}
 	for _, item in ipairs(decoded.data) do
 		if type(item) == "table" then
-			local uidStr = item.id ~= nil and tostring(item.id):match("%d+") or (item.universeId ~= nil and tostring(item.universeId):match("%d+") or "")
+			local uidStr = item.id ~= nil and tostring(item.id):match("%d+")
+				or (item.universeId ~= nil and tostring(item.universeId):match("%d+") or "")
 			if uidStr ~= "" then
 				local rpStr = item.rootPlaceId ~= nil and tostring(item.rootPlaceId):match("%d+") or nil
+
+				local st: "publik" | "private" | "tidak diketahui" = "tidak diketahui"
+				if type(item.isActive) == "boolean" then
+					st = item.isActive and "publik" or "private"
+				elseif type(item.privacyType) == "string" then
+					local pLow = item.privacyType:lower()
+					if pLow:find("public") or pLow:find("open") then
+						st = "publik"
+					elseif pLow:find("private") or pLow:find("closed") then
+						st = "private"
+					end
+				elseif type(item.isPublic) == "boolean" then
+					st = item.isPublic and "publik" or "private"
+				end
+
 				table.insert(rawItems, {
 					univId = uidStr,
 					rootPlaceId = rpStr,
 					name = type(item.name) == "string" and trim(item.name) or nil,
-					isActive = type(item.isActive) == "boolean" and item.isActive or nil,
-					privacyType = type(item.privacyType) == "string" and item.privacyType or nil,
+					status = st,
 				})
 			end
 		end
 	end
 
-	-- Batch fetch nama & status publik/private lewat games.roblox.com
-	local gamesInfoMap: {[string]: {name: string?, status: "publik" | "private" | "tidak diketahui", rootPlaceId: string?}} = {}
+	-- Batch fetch nama & rootPlaceId lewat games.roblox.com (tanpa menimpa status private dari develop)
+	local gamesInfoMap: {[string]: {name: string?, rootPlaceId: string?}} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
 		for _, it in ipairs(rawItems) do
@@ -558,13 +593,8 @@ local function fetchMyPlacesList(cookieVal: string, groupIdNum: number?): (boole
 					if type(gEntry) == "table" and gEntry.id ~= nil then
 						local gid = tostring(gEntry.id):match("%d+") or ""
 						if gid ~= "" then
-							local st: "publik" | "private" | "tidak diketahui" = "tidak diketahui"
-							if type(gEntry.isPlayable) == "boolean" then
-								st = gEntry.isPlayable and "publik" or "private"
-							end
 							gamesInfoMap[gid] = {
 								name = type(gEntry.name) == "string" and trim(gEntry.name) or nil,
-								status = st,
 								rootPlaceId = gEntry.rootPlaceId ~= nil and tostring(gEntry.rootPlaceId):match("%d+") or nil,
 							}
 						end
@@ -607,22 +637,10 @@ local function fetchMyPlacesList(cookieVal: string, groupIdNum: number?): (boole
 	local cards: {GameResultCardData} = {}
 	for _, it in ipairs(rawItems) do
 		local gInfo = gamesInfoMap[it.univId]
-		local finalName = (gInfo and gInfo.name and gInfo.name ~= "") and gInfo.name or ((it.name and it.name ~= "") and it.name or ("Place #" .. it.univId))
-		local finalPlace = (gInfo and gInfo.rootPlaceId) or it.rootPlaceId
-
-		local finalStatus: "publik" | "private" | "tidak diketahui" = "tidak diketahui"
-		if it.isActive ~= nil then
-			finalStatus = it.isActive and "publik" or "private"
-		elseif it.privacyType then
-			local pLow = it.privacyType:lower()
-			if pLow:find("public") or pLow:find("open") then
-				finalStatus = "publik"
-			elseif pLow:find("private") or pLow:find("closed") then
-				finalStatus = "private"
-			end
-		elseif gInfo and gInfo.status ~= "tidak diketahui" then
-			finalStatus = gInfo.status
-		end
+		local finalName = (it.name and it.name ~= "") and it.name
+			or ((gInfo and gInfo.name and gInfo.name ~= "") and gInfo.name or ("Place #" .. it.univId))
+		local finalPlace = it.rootPlaceId or (gInfo and gInfo.rootPlaceId)
+		local finalStatus = it.status
 
 		local iconUri = iconMap[it.univId]
 			or (finalPlace and ("rbxthumb://type=Asset&id=" .. finalPlace .. "&w=150&h=150"))
@@ -641,7 +659,8 @@ local function fetchMyPlacesList(cookieVal: string, groupIdNum: number?): (boole
 		})
 	end
 
-	return true, cards, "OK"
+	local acctLabel = uname and ("@" .. uname) or ("ID:" .. tostring(uid))
+	return true, cards, acctLabel
 end
 
 -- ==========================================
@@ -1586,7 +1605,7 @@ local function setCreateProgress(state: "idle" | "working" | "ok" | "err", ratio
 end
 
 -- ==========================================
--- HALAMAN 2: CEK PLACE SAYA (CARD + COPY UNIVERSE ID)
+-- HALAMAN 2: CEK PLACE SAYA (OTOMATIS DARI COOKIE)
 -- ==========================================
 local MyPlacesPage = Instance.new("Frame")
 MyPlacesPage.Size = UDim2.fromScale(1, 1)
@@ -1599,32 +1618,19 @@ local MyPlacesTitle = Instance.new("TextLabel")
 MyPlacesTitle.Size = UDim2.new(1, -24, 0, 15)
 MyPlacesTitle.Position = UDim2.new(0, 12, 0, 3)
 MyPlacesTitle.BackgroundTransparency = 1
-MyPlacesTitle.Text = "Cek Place Saya"
+MyPlacesTitle.Text = "Cek Place Saya (Kreasi • Pengalaman Virtual)"
 MyPlacesTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-MyPlacesTitle.TextSize = 12
+MyPlacesTitle.TextSize = 11
 MyPlacesTitle.Font = Enum.Font.GothamBold
 MyPlacesTitle.TextXAlignment = Enum.TextXAlignment.Left
+MyPlacesTitle.TextTruncate = Enum.TextTruncate.AtEnd
 MyPlacesTitle.Parent = MyPlacesPage
 
-local MyPlacesGroupBox = Instance.new("TextBox")
-MyPlacesGroupBox.Size = UDim2.new(0.46, -12, 0, 24)
-MyPlacesGroupBox.Position = UDim2.new(0, 12, 0, 21)
-MyPlacesGroupBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-MyPlacesGroupBox.Text = ""
-MyPlacesGroupBox.PlaceholderText = "Group ID (kosong = akun sendiri)"
-MyPlacesGroupBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-MyPlacesGroupBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-MyPlacesGroupBox.TextSize = 9
-MyPlacesGroupBox.Font = Enum.Font.Gotham
-MyPlacesGroupBox.ClearTextOnFocus = false
-MyPlacesGroupBox.Parent = MyPlacesPage
-Instance.new("UICorner", MyPlacesGroupBox).CornerRadius = UDim.new(0, 6)
-
 local LoadMyPlacesBtn = Instance.new("TextButton")
-LoadMyPlacesBtn.Size = UDim2.new(0.54, -8, 0, 24)
-LoadMyPlacesBtn.Position = UDim2.new(0.46, 4, 0, 21)
+LoadMyPlacesBtn.Size = UDim2.new(1, -24, 0, 24)
+LoadMyPlacesBtn.Position = UDim2.new(0, 12, 0, 21)
 LoadMyPlacesBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-LoadMyPlacesBtn.Text = "🔎  CEK DAFTAR PLACE"
+LoadMyPlacesBtn.Text = "🔎  CEK DAFTAR PLACE (OTOMATIS DARI COOKIE)"
 LoadMyPlacesBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 LoadMyPlacesBtn.TextSize = 9
 LoadMyPlacesBtn.Font = Enum.Font.GothamBold
@@ -1635,7 +1641,7 @@ local MyPlacesStatusLbl = Instance.new("TextLabel")
 MyPlacesStatusLbl.Size = UDim2.new(1, -24, 0, 14)
 MyPlacesStatusLbl.Position = UDim2.new(0, 12, 0, 48)
 MyPlacesStatusLbl.BackgroundTransparency = 1
-MyPlacesStatusLbl.Text = "Klik 'Cek Daftar Place' untuk memuat place & menyalin Universe ID."
+MyPlacesStatusLbl.Text = "Otomatis membaca akun dari cookie (menampilkan place private & publik)."
 MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(165, 162, 192)
 MyPlacesStatusLbl.TextSize = 9
 MyPlacesStatusLbl.Font = Enum.Font.GothamMedium
@@ -1673,7 +1679,7 @@ MyPlacesPad.Parent = MyPlacesScroll
 local MyPlacesEmptyHint = Instance.new("TextLabel")
 MyPlacesEmptyHint.Size = UDim2.new(1, 0, 0, 36)
 MyPlacesEmptyHint.BackgroundTransparency = 1
-MyPlacesEmptyHint.Text = "Belum ada daftar place dimuat.\nSetiap card mendukung 📋 Copy ID untuk menyalin Universe ID."
+MyPlacesEmptyHint.Text = "Klik tombol di atas untuk memuat semua place (private & publik).\nTiap card mendukung 📋 Copy ID untuk menyalin Universe ID."
 MyPlacesEmptyHint.TextColor3 = Color3.fromRGB(105, 102, 130)
 MyPlacesEmptyHint.TextSize = 9
 MyPlacesEmptyHint.Font = Enum.Font.Gotham
@@ -2207,10 +2213,10 @@ createNavButton("Console", "🖥  Console", 6).MouseButton1Click:Connect(functio
 end)
 switchTab("CreatePlace")
 
-pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya, Voice & 3rd Party Sales aktif).")
+pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya otomatis dari cookie, Voice & 3rd Party Sales aktif).")
 
 -- ==========================================
--- LOGIKA CEK PLACE SAYA
+-- LOGIKA CEK PLACE SAYA (OTOMATIS DARI COOKIE)
 -- ==========================================
 local isLoadingMyPlaces = false
 
@@ -2234,20 +2240,28 @@ LoadMyPlacesBtn.MouseButton1Click:Connect(function()
 		return
 	end
 
-	local grpNum = tonumber(trim(MyPlacesGroupBox.Text):match("%d+"))
 	isLoadingMyPlaces = true
-	LoadMyPlacesBtn.Text = "⏳  MEMUAT..."
+	LoadMyPlacesBtn.Text = "⏳  MEMUAT DARI COOKIE..."
 	MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
-	MyPlacesStatusLbl.Text = grpNum and ("Memuat place Group #" .. tostring(grpNum) .. "...") or "Memuat daftar place akun..."
+	MyPlacesStatusLbl.Text = "Membaca akun dari cookie & memuat Pengalaman Virtual..."
 	clearMyPlacesCards()
 
 	task.spawn(function()
-		local okList, cards, errList = fetchMyPlacesList(cookieVal, grpNum)
+		local okList, cards, infoOrAcct = fetchMyPlacesList(cookieVal)
 		if okList then
+			local pubCount, privCount = 0, 0
+			for _, cData in ipairs(cards) do
+				if cData.status == "publik" then
+					pubCount += 1
+				elseif cData.status == "private" then
+					privCount += 1
+				end
+			end
+
 			if #cards == 0 then
 				MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(255, 215, 130)
-				MyPlacesStatusLbl.Text = "Tidak ada place ditemukan."
-				pushConsole("WARN", "Daftar place kosong.")
+				MyPlacesStatusLbl.Text = string.format("Akun %s: tidak ada place ditemukan.", infoOrAcct)
+				pushConsole("WARN", "Daftar pengalaman virtual kosong untuk " .. infoOrAcct)
 			else
 				MyPlacesEmptyHint.Visible = false
 				for idx, cardData in ipairs(cards) do
@@ -2256,17 +2270,17 @@ LoadMyPlacesBtn.MouseButton1Click:Connect(function()
 					end)
 				end
 				MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(145, 255, 190)
-				MyPlacesStatusLbl.Text = string.format("Ditemukan %d place (klik Copy ID untuk salin Universe ID).", #cards)
-				pushConsole("OK", string.format("Berhasil memuat %d place.", #cards))
+				MyPlacesStatusLbl.Text = string.format("%s • Total %d place (Publik: %d | Private: %d)", infoOrAcct, #cards, pubCount, privCount)
+				pushConsole("OK", string.format("Memuat %d place untuk %s (Publik: %d, Private: %d).", #cards, infoOrAcct, pubCount, privCount))
 			end
 		else
 			MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
-			MyPlacesStatusLbl.Text = "Gagal memuat place: " .. errList
-			pushConsole("ERR", "Cek Place Saya gagal: " .. errList)
+			MyPlacesStatusLbl.Text = "Gagal memuat place: " .. infoOrAcct
+			pushConsole("ERR", "Cek Place Saya gagal: " .. infoOrAcct)
 			notify("Place Saya", "Gagal memuat daftar place.")
 		end
 
-		LoadMyPlacesBtn.Text = "🔎  CEK DAFTAR PLACE"
+		LoadMyPlacesBtn.Text = "🔎  CEK DAFTAR PLACE (OTOMATIS DARI COOKIE)"
 		isLoadingMyPlaces = false
 	end)
 end)
