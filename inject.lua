@@ -803,7 +803,7 @@ do
 	end)
 
 	UserInputService.InputEnded:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		if input == activeInput or input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			draggingVol = false
 		end
 	end)
@@ -851,7 +851,7 @@ do
 end
 
 -- ==========================================
--- HALAMAN 2: JAIL (ANTI-STUCK + SWING + TARGET CARRY + LASER BEAM)
+-- HALAMAN 2: JAIL (NO VISUAL • SERVER PHYSICS)
 -- ==========================================
 local JailPage = Instance.new("Frame")
 JailPage.Size = UDim2.fromScale(1, 1)
@@ -1056,7 +1056,7 @@ UserListPad.PaddingLeft = UDim.new(0, 4)
 UserListPad.PaddingRight = UDim.new(0, 4)
 UserListPad.Parent = UserListScroll
 
--- Logika Scan, Swing Release, Anti-Stuck & Laser Beam
+-- Logika Scan, Swing Release & Anti-Stuck (Tanpa Visual Lokal)
 local scannedUnanchoredParts: {BasePart} = {}
 local trackedPartsSet: {[BasePart]: boolean} = {}
 local activeAttackedParts: {[BasePart]: boolean} = {}
@@ -1067,115 +1067,11 @@ local throwCycleClock = 0
 local throwPulseIndex = 0
 local forceScanNow: () -> () = function() end
 
-type LaserVisual = {
-	partAtt: Attachment,
-	beam: Beam,
-}
-
-local laserVisuals: {[BasePart]: LaserVisual} = {}
-local playerLaserAtt: Attachment? = nil
-
 local function getCharacterRoot(player: Player?): BasePart?
 	local plr = player or LocalPlayer
 	local char = plr.Character
 	if not char then return nil end
 	return (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")) :: BasePart?
-end
-
-local function getOrCreatePlayerLaserAttachment(): Attachment?
-	local root = getCharacterRoot(LocalPlayer)
-	if not root then
-		playerLaserAtt = nil
-		return nil
-	end
-
-	if playerLaserAtt and playerLaserAtt.Parent == root then
-		return playerLaserAtt
-	end
-
-	if playerLaserAtt then
-		pcall(function()
-			playerLaserAtt:Destroy()
-		end)
-	end
-
-	local att = Instance.new("Attachment")
-	att.Name = "IkyyJail_PlayerLaserAtt"
-	att.Parent = root
-	playerLaserAtt = att
-	return att
-end
-
-local function setPartLaserEnabled(part: BasePart, enabled: boolean, accentColor: Color3?)
-	if not enabled then
-		local vis = laserVisuals[part]
-		if vis then
-			laserVisuals[part] = nil
-			pcall(function()
-				vis.beam:Destroy()
-				vis.partAtt:Destroy()
-			end)
-		end
-		return
-	end
-
-	if not part.Parent then return end
-	local pAtt = getOrCreatePlayerLaserAttachment()
-	if not pAtt then return end
-
-	local vis = laserVisuals[part]
-	if not vis or not vis.beam.Parent or not vis.partAtt.Parent then
-		if vis then
-			pcall(function()
-				vis.beam:Destroy()
-				vis.partAtt:Destroy()
-			end)
-		end
-
-		local att = Instance.new("Attachment")
-		att.Name = "IkyyJail_PartLaserAtt"
-		att.Parent = part
-
-		local beam = Instance.new("Beam")
-		beam.Name = "IkyyJail_LaserBeam"
-		beam.Attachment0 = att
-		beam.Attachment1 = pAtt
-		beam.FaceCamera = true
-		beam.Width0 = 0.08
-		beam.Width1 = 0.08
-		beam.LightEmission = 0.85
-		beam.LightInfluence = 0
-		beam.Transparency = NumberSequence.new(0.15)
-		beam.Parent = part
-
-		vis = {
-			partAtt = att,
-			beam = beam,
-		}
-		laserVisuals[part] = vis
-	end
-
-	vis.beam.Attachment1 = pAtt
-	vis.beam.Enabled = true
-	if accentColor then
-		vis.beam.Color = ColorSequence.new(accentColor)
-	end
-end
-
-local function clearAllLaserVisuals()
-	for part, vis in pairs(laserVisuals) do
-		laserVisuals[part] = nil
-		pcall(function()
-			vis.beam:Destroy()
-			vis.partAtt:Destroy()
-		end)
-	end
-	if playerLaserAtt then
-		pcall(function()
-			playerLaserAtt:Destroy()
-		end)
-		playerLaserAtt = nil
-	end
 end
 
 local function disableBindingOnContainer(container: Instance, part: BasePart)
@@ -1208,7 +1104,6 @@ local function disableBindingOnContainer(container: Instance, part: BasePart)
 	end
 end
 
--- Mendukung lepas ikatan ayunan / swing (Hinge, Rope, Spring, Weld, dll.) agar part bebas gerak
 local function detachPartFromReturnPull(part: BasePart)
 	pcall(function()
 		disableBindingOnContainer(part, part)
@@ -1296,7 +1191,6 @@ local function releasePartsToFall()
 			part.AssemblyAngularVelocity = Vector3.new(18, 18, 18)
 		end
 	end
-	clearAllLaserVisuals()
 	table.clear(activeAttackedParts)
 	table.clear(scannedUnanchoredParts)
 	table.clear(trackedPartsSet)
@@ -1477,7 +1371,7 @@ do
 	end)
 end
 
--- Loop eksekusi fisika JAIL (Anti-Stuck, Swing Release & Target Carry)
+-- Loop eksekusi fisika JAIL (Server-replicated physics only)
 do
 	local jailClock = 0
 	local scanAccum = 0
@@ -1502,9 +1396,6 @@ do
 	RunService.Heartbeat:Connect(function(dt: number)
 		if not CONFIG.JailEnabled then
 			lastAppliedMode = nil
-			if next(laserVisuals) ~= nil or playerLaserAtt ~= nil then
-				clearAllLaserVisuals()
-			end
 			return
 		end
 
@@ -1526,7 +1417,6 @@ do
 		local targetPlr = getSelectedTargetPlayer()
 		local targetRoot = getCharacterRoot(targetPlr) or myRoot
 		local activeCount = #scannedUnanchoredParts
-		local accentColor = GUI_THEMES[CONFIG.ThemeIndex].accent
 
 		local throwInterval = math.max(0.18, 0.45 / math.max(0.5, speed))
 		throwCycleClock += dt
@@ -1547,7 +1437,6 @@ do
 					trackedPartsSet[part] = nil
 					lastPartPos[part] = nil
 					stuckTimerByPart[part] = nil
-					setPartLaserEnabled(part, false)
 				end
 			else
 				if not activeAttackedParts[part] then
@@ -1559,7 +1448,6 @@ do
 					applyUnstickImpulse(part, i, speed)
 				end
 
-				-- Anti-stuck: jika part hampir tidak berpindah posisi selama >0.35s, beri dorongan pelepasan
 				local curPos = part.Position
 				local prevPos = lastPartPos[part]
 				if prevPos and (curPos - prevPos).Magnitude < 0.08 then
@@ -1573,8 +1461,6 @@ do
 					stuckTimerByPart[part] = 0
 				end
 				lastPartPos[part] = curPos
-
-				setPartLaserEnabled(part, true, accentColor)
 
 				if mode == "OrbitHead" then
 					local center = myPos + Vector3.new(0, 5.5, 0)
@@ -1692,7 +1578,7 @@ AboutText.Text = table.concat({
 	"",
 	"Fitur Aktif:",
 	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
-	"• JAIL        : Akses fisika unanchored part anti-stuck + laser beam (Orbit, Shake, Throw, Pull, Rope, Fall, Carry Target).",
+	"• JAIL        : Fisika unanchored part anti-stuck (Orbit, Shake, Throw, Pull, Rope, Fall, Carry Target) tanpa visual lokal.",
 	"• Settings    : Pengaturan warna tema GUI dan pilihan font secara langsung.",
 	"• About       : Informasi kreator dan versi tools.",
 }, "\n")
@@ -1887,7 +1773,7 @@ applyThemeAndFont = function()
 	JailSwitchBtn.Font = fontPreset.boldFont
 	JailAnchorLockBtn.Font = fontPreset.boldFont
 	JailStatusLabel.Font = fontPreset.font
-	JailSpeedLabel.Font = fontPreset.boldFont
+	JailSpeedLabel.Font = fontPreset.font
 	JailTargetTitle.Font = fontPreset.boldFont
 	RefreshUsersBtn.Font = fontPreset.boldFont
 	PlayerSearchBox.Font = fontPreset.font
