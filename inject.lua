@@ -234,6 +234,28 @@ local function pushConsole(level: string, message: string)
 	end
 end
 
+local function sanitizeHeaders(rawHeaders: {[string]: string}?): {[string]: string}
+	local clean: {[string]: string} = {
+		["User-Agent"] = CONFIG.UserAgent,
+	}
+	local seenLower: {[string]: boolean} = {
+		["user-agent"] = true,
+	}
+	if rawHeaders then
+		for k, v in pairs(rawHeaders) do
+			if type(k) == "string" and type(v) == "string" then
+				local lowK = k:lower()
+				if not seenLower[lowK] then
+					seenLower[lowK] = true
+					local cleanVal = v:match("^%s*([^,]+)") or v
+					clean[k] = cleanVal:match("^%s*(.-)%s*$") or cleanVal
+				end
+			end
+		end
+	end
+	return clean
+end
+
 local function apiRequest(options: {
 	Url: string,
 	Method: string?,
@@ -251,14 +273,7 @@ local function apiRequest(options: {
 	pushConsole("REQ", methodStr .. " " .. options.Url)
 
 	local maxAttempts = math.max(1, options.Retries or 1)
-	local baseHeaders: {[string]: string} = {
-		["User-Agent"] = CONFIG.UserAgent,
-	}
-	if options.Headers then
-		for k, v in pairs(options.Headers) do
-			baseHeaders[k] = v
-		end
-	end
+	local baseHeaders = sanitizeHeaders(options.Headers)
 
 	local lastRes = nil
 	local lastOk = false
@@ -950,7 +965,7 @@ local function setUniverseThirdPartySales(universeId: string, cookieVal: string,
 			["Referer"] = "https://create.roblox.com/",
 		}
 		if token ~= "" then
-			hdrs["x-csrf-token"] = token
+			hdrs["X-CSRF-TOKEN"] = token
 		end
 		return apiRequest({
 			Url = "https://develop.roblox.com/v2/universes/" .. cleanUniv .. "/configuration",
@@ -965,7 +980,7 @@ local function setUniverseThirdPartySales(universeId: string, cookieVal: string,
 	if not ok and res and tonumber(res.StatusCode or res.Status or res.status_code) == 403 then
 		local newToken = getHeaderCaseInsensitive(res.Headers, "x-csrf-token")
 		if newToken and newToken ~= "" then
-			pushConsole("INFO", "Refresh x-csrf-token otomatis untuk develop.roblox.com")
+			pushConsole("INFO", "Refresh X-CSRF-TOKEN otomatis untuk develop.roblox.com")
 			currentCsrf = newToken
 			res, ok, info = sendPatch(currentCsrf)
 		end
@@ -1009,13 +1024,12 @@ local function sendAuthedJsonRequest(
 		local hdrs: {[string]: string} = {
 			["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
 			["Content-Type"] = "application/json",
-			["Accept"] = "application/json, text/plain, */*",
+			["Accept"] = "application/json",
 			["Origin"] = "https://create.roblox.com",
 			["Referer"] = "https://create.roblox.com/",
 		}
 		if token ~= "" then
 			hdrs["X-CSRF-TOKEN"] = token
-			hdrs["x-csrf-token"] = token
 		end
 		return apiRequest({
 			Url = fullUrl,
@@ -1231,16 +1245,28 @@ local function fetchAndSubmitContentQuestionnaire(
 
 	local fetchTargets = {
 		{
-			method = "GET",
-			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1/questionnaire",
-			body = nil,
-			query = { universeId = cleanUniv },
-		},
-		{
 			method = "POST",
 			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/get-age-recommendation",
 			body = HttpService:JSONEncode({ universeId = univNum }),
 			query = nil,
+		},
+		{
+			method = "POST",
+			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1/questionnaire",
+			body = HttpService:JSONEncode({ universeId = univNum }),
+			query = nil,
+		},
+		{
+			method = "GET",
+			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1/questionnaire/questions",
+			body = nil,
+			query = { universeId = cleanUniv },
+		},
+		{
+			method = "GET",
+			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1/questionnaire",
+			body = nil,
+			query = { universeId = cleanUniv },
 		},
 		{
 			method = "POST",
