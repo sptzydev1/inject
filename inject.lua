@@ -144,7 +144,7 @@ local function safeTimestamp(): number
 end
 
 -- ==========================================
--- DELTA EXECUTOR ENVIRONMENT BRIDGE (SAFE)
+-- DELTA EXECUTOR ENVIRONMENT BRIDGE (ENHANCED)
 -- ==========================================
 local function getEnvTable(): {[string]: any}
 	local env: {[string]: any} = {}
@@ -165,20 +165,26 @@ local function getEnvTable(): {[string]: any}
 	pcall(function()
 		local gf = getfenv :: any
 		if type(gf) == "function" then
-			local ok0, fenv0 = pcall(gf, 0)
-			if ok0 and type(fenv0) == "table" then
-				copyFromTable(fenv0)
-				local rawGetGenv = rawget(fenv0, "getgenv")
-				if type(rawGetGenv) == "function" then
-					local okG, g = pcall(rawGetGenv)
-					if okG then
-						copyFromTable(g)
+			for _, lvl in ipairs({ 0, 1 }) do
+				local okL, fenvL = pcall(gf, lvl)
+				if okL and type(fenvL) == "table" then
+					copyFromTable(fenvL)
+					local rawGetGenv = rawget(fenvL, "getgenv")
+					if type(rawGetGenv) == "function" then
+						local okG, g = pcall(rawGetGenv)
+						if okG then
+							copyFromTable(g)
+						end
+					end
+					local rawShared = rawget(fenvL, "shared")
+					if type(rawShared) == "table" then
+						copyFromTable(rawShared)
 					end
 				end
-				local rawShared = rawget(fenv0, "shared")
-				if type(rawShared) == "table" then
-					copyFromTable(rawShared)
-				end
+			end
+			local okCur, fenvCur = pcall(gf)
+			if okCur and type(fenvCur) == "table" then
+				copyFromTable(fenvCur)
 			end
 		end
 	end)
@@ -201,10 +207,14 @@ local function getDeltaHttpFunc(): ((any) -> any)?
 	local candidates: {any} = {
 		ENV.request,
 		ENV.http_request,
+		ENV.httpRequest,
 		type(ENV.syn) == "table" and ENV.syn.request or nil,
 		type(ENV.http) == "table" and ENV.http.request or nil,
 		type(ENV.fluxus) == "table" and ENV.fluxus.request or nil,
 		type(ENV.delta) == "table" and ENV.delta.request or nil,
+		type(ENV.krnl) == "table" and ENV.krnl.request or nil,
+		type(ENV.oxygen) == "table" and ENV.oxygen.request or nil,
+		type(ENV.comet) == "table" and ENV.comet.request or nil,
 	}
 	for _, fn in ipairs(candidates) do
 		local c = getCallable(fn)
@@ -212,6 +222,32 @@ local function getDeltaHttpFunc(): ((any) -> any)?
 			return c :: (any) -> any
 		end
 	end
+
+	-- Fallback ke HttpService:RequestAsync bila tersedia
+	local okHttp, reqAsync = pcall(function()
+		return HttpService.RequestAsync
+	end)
+	if okHttp and type(reqAsync) == "function" then
+		return function(payload: any): any
+			local okR, resR = pcall(function()
+				return HttpService:RequestAsync({
+					Url = payload.Url,
+					Method = payload.Method or "GET",
+					Headers = payload.Headers,
+					Body = payload.Body,
+				})
+			end)
+			if okR and type(resR) == "table" then
+				return {
+					StatusCode = resR.StatusCode,
+					Body = resR.Body,
+					Headers = resR.Headers,
+				}
+			end
+			return nil
+		end
+	end
+
 	return nil
 end
 
@@ -1362,7 +1398,7 @@ FloatingProfileBtn.BackgroundColor3 = Color3.fromRGB(20, 18, 32)
 FloatingProfileBtn.BorderSizePixel = 0
 FloatingProfileBtn.Visible = false
 FloatingProfileBtn.AutoButtonColor = false
-FloatingProfileBtn.ZIndex = 50
+FloatingProfileBtn.ZIndex = 20
 FloatingProfileBtn.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
 FloatingProfileBtn.Parent = ScreenGui
 
@@ -1385,6 +1421,7 @@ MainWindow.Position = WINDOW_POS
 MainWindow.BackgroundColor3 = Color3.fromRGB(16, 15, 24)
 MainWindow.BorderSizePixel = 0
 MainWindow.ClipsDescendants = true
+MainWindow.ZIndex = 10
 MainWindow.Parent = ScreenGui
 
 Instance.new("UICorner", MainWindow).CornerRadius = UDim.new(0, 14)
@@ -1483,6 +1520,7 @@ CloseStroke.Thickness = 1
 local function setMinimized(minimized: boolean)
 	CONFIG.IsMinimized = minimized
 	if minimized then
+		FloatingProfileBtn.Visible = false
 		local tw = TweenService:Create(MainWindow, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
 			Size = ICON_SIZE,
 			Position = currentIconPos,
