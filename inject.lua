@@ -1,5 +1,5 @@
 --!strict
--- Plugin Studio Lite (Delta Executor Edition - Create Place, Voice Chat, Setting & Console) by Ikyy
+-- Plugin Studio Lite (Delta Executor Edition - Create Place, Voice Chat, 3rd Party Sales, Setting & Console) by Ikyy
 -- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Realtime (Icon Game, Name Game, Status + Console)
 
 local Players = game:GetService("Players")
@@ -550,6 +550,97 @@ local function setUniverseVoiceSettings(universeId: string, cookieVal: string, e
 	return false, info .. detail, currentCsrf
 end
 
+-- ==========================================
+-- API ALLOW THIRD PARTY SALES (DEVELOP V2)
+-- ==========================================
+local function getUniverseThirdPartySales(universeId: string, cookieVal: string): (boolean, boolean?, {[string]: any}, string)
+	local cleanUniv = trim(universeId):match("%d+") or ""
+	if cleanUniv == "" then
+		return false, nil, {}, "Universe ID tidak valid"
+	end
+
+	local hdrs: {[string]: string} = {}
+	if trim(cookieVal) ~= "" then
+		hdrs["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal)
+	end
+
+	local res, ok, info = apiRequest({
+		Url = "https://develop.roblox.com/v2/universes/" .. cleanUniv .. "/configuration",
+		Method = "GET",
+		Headers = hdrs,
+		Retries = 1,
+	})
+
+	if not ok or not res then
+		return false, nil, {}, info
+	end
+
+	local bodyStr = tostring(res.Body or "")
+	local okDec, decoded = pcall(function()
+		return HttpService:JSONDecode(bodyStr)
+	end)
+	if not okDec or type(decoded) ~= "table" then
+		return false, nil, {}, "Gagal decode JSON konfigurasi universe"
+	end
+
+	local salesState: boolean? = nil
+	if type(decoded.allowThirdPartySales) == "boolean" then
+		salesState = decoded.allowThirdPartySales
+	end
+
+	return true, salesState, decoded, "OK"
+end
+
+local function setUniverseThirdPartySales(universeId: string, cookieVal: string, enabled: boolean, csrfSeed: string): (boolean, string, string)
+	local cleanUniv = trim(universeId):match("%d+") or ""
+	if cleanUniv == "" then
+		return false, "Universe ID tidak valid", csrfSeed
+	end
+
+	local jsonBody = HttpService:JSONEncode({
+		allowThirdPartySales = enabled,
+	})
+	local currentCsrf = csrfSeed
+
+	local function sendPatch(token: string)
+		local hdrs: {[string]: string} = {
+			["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
+			["Content-Type"] = "application/json",
+			["Origin"] = "https://create.roblox.com",
+			["Referer"] = "https://create.roblox.com/",
+		}
+		if token ~= "" then
+			hdrs["x-csrf-token"] = token
+		end
+		return apiRequest({
+			Url = "https://develop.roblox.com/v2/universes/" .. cleanUniv .. "/configuration",
+			Method = "PATCH",
+			Headers = hdrs,
+			Body = jsonBody,
+			Retries = 1,
+		})
+	end
+
+	local res, ok, info = sendPatch(currentCsrf)
+	if not ok and res and tonumber(res.StatusCode or res.Status or res.status_code) == 403 then
+		local newToken = getHeaderCaseInsensitive(res.Headers, "x-csrf-token")
+		if newToken and newToken ~= "" then
+			pushConsole("INFO", "Refresh x-csrf-token otomatis untuk develop.roblox.com")
+			currentCsrf = newToken
+			res, ok, info = sendPatch(currentCsrf)
+		end
+	end
+
+	local bodyStr = res and tostring(res.Body or "") or ""
+	if ok then
+		saveTextFile("Logs/thirdparty_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyStr)
+		return true, "Allow Third Party Sales berhasil " .. (enabled and "DIAKTIFKAN" or "DINONAKTIFKAN"), currentCsrf
+	end
+
+	local detail = bodyStr ~= "" and (" (" .. bodyStr:sub(1, 120) .. ")") or ""
+	return false, info .. detail, currentCsrf
+end
+
 local function getUserAvatarAsync(userId: number): string
 	local ok, content = pcall(function()
 		return Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
@@ -726,10 +817,10 @@ LogoIcon.Font = Enum.Font.GothamBold
 LogoIcon.Parent = HeaderLogoBox
 
 local SubTitleLabel = Instance.new("TextLabel")
-SubTitleLabel.Size = UDim2.new(0, 240, 0, 11)
+SubTitleLabel.Size = UDim2.new(0, 280, 0, 11)
 SubTitleLabel.Position = UDim2.new(0, 48, 0, 5)
 SubTitleLabel.BackgroundTransparency = 1
-SubTitleLabel.Text = "IKYYSTUDIO • CREATE PLACE & VOICE"
+SubTitleLabel.Text = "IKYYSTUDIO • PLACE, VOICE & 3RD PARTY SALES"
 SubTitleLabel.TextColor3 = Color3.fromRGB(130, 126, 155)
 SubTitleLabel.TextSize = 8
 SubTitleLabel.Font = Enum.Font.GothamBold
@@ -887,7 +978,7 @@ NavListFrame.BackgroundTransparency = 1
 NavListFrame.Parent = Sidebar
 
 local NavLayout = Instance.new("UIListLayout")
-NavLayout.Padding = UDim.new(0, 5)
+NavLayout.Padding = UDim.new(0, 4)
 NavLayout.SortOrder = Enum.SortOrder.LayoutOrder
 NavLayout.Parent = NavListFrame
 
@@ -897,7 +988,7 @@ local tabButtons: {[string]: TextButton} = {}
 local function createNavButton(name: string, label: string, order: number)
 	local btn = Instance.new("TextButton")
 	btn.Name = "Nav_" .. name
-	btn.Size = UDim2.new(1, 0, 0, 32)
+	btn.Size = UDim2.new(1, 0, 0, 29)
 	btn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
 	btn.Text = "  " .. label
 	btn.TextColor3 = Color3.fromRGB(185, 182, 210)
@@ -950,8 +1041,8 @@ CreatePlacePage.Parent = ContentArea
 tabPages["CreatePlace"] = CreatePlacePage
 
 local PageTitle = Instance.new("TextLabel")
-PageTitle.Size = UDim2.new(1, -24, 0, 16)
-PageTitle.Position = UDim2.new(0, 12, 0, 4)
+PageTitle.Size = UDim2.new(1, -24, 0, 15)
+PageTitle.Position = UDim2.new(0, 12, 0, 3)
 PageTitle.BackgroundTransparency = 1
 PageTitle.Text = "Create Place"
 PageTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
@@ -961,8 +1052,8 @@ PageTitle.TextXAlignment = Enum.TextXAlignment.Left
 PageTitle.Parent = CreatePlacePage
 
 local TemplateIdBox = Instance.new("TextBox")
-TemplateIdBox.Size = UDim2.new(0.38, -12, 0, 22)
-TemplateIdBox.Position = UDim2.new(0, 12, 0, 23)
+TemplateIdBox.Size = UDim2.new(0.38, -12, 0, 21)
+TemplateIdBox.Position = UDim2.new(0, 12, 0, 20)
 TemplateIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 TemplateIdBox.Text = "95206881"
 TemplateIdBox.PlaceholderText = "Template ID"
@@ -975,8 +1066,8 @@ TemplateIdBox.Parent = CreatePlacePage
 Instance.new("UICorner", TemplateIdBox).CornerRadius = UDim.new(0, 6)
 
 local GroupIdBox = Instance.new("TextBox")
-GroupIdBox.Size = UDim2.new(0.34, -8, 0, 22)
-GroupIdBox.Position = UDim2.new(0.38, 2, 0, 23)
+GroupIdBox.Size = UDim2.new(0.34, -8, 0, 21)
+GroupIdBox.Position = UDim2.new(0.38, 2, 0, 20)
 GroupIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 GroupIdBox.Text = ""
 GroupIdBox.PlaceholderText = "Group ID (opsional)"
@@ -989,8 +1080,8 @@ GroupIdBox.Parent = CreatePlacePage
 Instance.new("UICorner", GroupIdBox).CornerRadius = UDim.new(0, 6)
 
 local PlaceCountBox = Instance.new("TextBox")
-PlaceCountBox.Size = UDim2.new(0.28, -10, 0, 22)
-PlaceCountBox.Position = UDim2.new(0.72, 0, 0, 23)
+PlaceCountBox.Size = UDim2.new(0.28, -10, 0, 21)
+PlaceCountBox.Position = UDim2.new(0.72, 0, 0, 20)
 PlaceCountBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 PlaceCountBox.Text = "1"
 PlaceCountBox.PlaceholderText = "Jumlah"
@@ -1002,9 +1093,32 @@ PlaceCountBox.ClearTextOnFocus = false
 PlaceCountBox.Parent = CreatePlacePage
 Instance.new("UICorner", PlaceCountBox).CornerRadius = UDim.new(0, 6)
 
+local AutoThirdPartyRow = Instance.new("Frame")
+AutoThirdPartyRow.Size = UDim2.new(1, -24, 0, 22)
+AutoThirdPartyRow.Position = UDim2.new(0, 12, 0, 44)
+AutoThirdPartyRow.BackgroundColor3 = Color3.fromRGB(17, 16, 26)
+AutoThirdPartyRow.BorderSizePixel = 0
+AutoThirdPartyRow.Parent = CreatePlacePage
+Instance.new("UICorner", AutoThirdPartyRow).CornerRadius = UDim.new(0, 6)
+
+local AutoThirdPartyLbl = Instance.new("TextLabel")
+AutoThirdPartyLbl.Size = UDim2.new(1, -76, 1, 0)
+AutoThirdPartyLbl.Position = UDim2.new(0, 8, 0, 0)
+AutoThirdPartyLbl.BackgroundTransparency = 1
+AutoThirdPartyLbl.Text = "Auto Third Party Sales saat buat place"
+AutoThirdPartyLbl.TextColor3 = Color3.fromRGB(190, 187, 218)
+AutoThirdPartyLbl.TextSize = 9
+AutoThirdPartyLbl.Font = Enum.Font.GothamMedium
+AutoThirdPartyLbl.TextXAlignment = Enum.TextXAlignment.Left
+AutoThirdPartyLbl.Parent = AutoThirdPartyRow
+
+local AutoThirdPartySwitch = createModernToggleSwitch(AutoThirdPartyRow, false, nil)
+AutoThirdPartySwitch.Button.Size = UDim2.fromOffset(58, 18)
+AutoThirdPartySwitch.Button.Position = UDim2.new(1, -64, 0.5, -9)
+
 local CreatePlaceBtn = Instance.new("TextButton")
-CreatePlaceBtn.Size = UDim2.new(1, -24, 0, 25)
-CreatePlaceBtn.Position = UDim2.new(0, 12, 0, 49)
+CreatePlaceBtn.Size = UDim2.new(1, -24, 0, 23)
+CreatePlaceBtn.Position = UDim2.new(0, 12, 0, 69)
 CreatePlaceBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
 CreatePlaceBtn.Text = "🏗  CREATE PLACE"
 CreatePlaceBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1015,7 +1129,7 @@ Instance.new("UICorner", CreatePlaceBtn).CornerRadius = UDim.new(0, 7)
 
 local ProgressTrack = Instance.new("Frame")
 ProgressTrack.Size = UDim2.new(1, -24, 0, 4)
-ProgressTrack.Position = UDim2.new(0, 12, 0, 78)
+ProgressTrack.Position = UDim2.new(0, 12, 0, 95)
 ProgressTrack.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
 ProgressTrack.BorderSizePixel = 0
 ProgressTrack.Parent = CreatePlacePage
@@ -1029,8 +1143,8 @@ ProgressFill.Parent = ProgressTrack
 Instance.new("UICorner", ProgressFill).CornerRadius = UDim.new(1, 0)
 
 local StatusBanner = Instance.new("TextLabel")
-StatusBanner.Size = UDim2.new(1, -24, 0, 14)
-StatusBanner.Position = UDim2.new(0, 12, 0, 84)
+StatusBanner.Size = UDim2.new(1, -24, 0, 13)
+StatusBanner.Position = UDim2.new(0, 12, 0, 100)
 StatusBanner.BackgroundTransparency = 1
 StatusBanner.Text = "Siap membuat place."
 StatusBanner.TextColor3 = Color3.fromRGB(165, 162, 192)
@@ -1042,8 +1156,8 @@ StatusBanner.Parent = CreatePlacePage
 
 local ResultsScroll = Instance.new("ScrollingFrame")
 ResultsScroll.Name = "CreatedGamesResults"
-ResultsScroll.Size = UDim2.new(1, -24, 1, -106)
-ResultsScroll.Position = UDim2.new(0, 12, 0, 100)
+ResultsScroll.Size = UDim2.new(1, -24, 1, -121)
+ResultsScroll.Position = UDim2.new(0, 12, 0, 115)
 ResultsScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
 ResultsScroll.BorderSizePixel = 0
 ResultsScroll.ScrollBarThickness = 3
@@ -1372,7 +1486,151 @@ VoiceStatusText.TextWrapped = true
 VoiceStatusText.Parent = VoicePreviewCard
 
 -- ==========================================
--- HALAMAN 3: SETTING (COOKIE)
+-- HALAMAN 3: ALLOW THIRD PARTY SALES
+-- ==========================================
+local ThirdPartyPage = Instance.new("Frame")
+ThirdPartyPage.Size = UDim2.fromScale(1, 1)
+ThirdPartyPage.BackgroundTransparency = 1
+ThirdPartyPage.Visible = false
+ThirdPartyPage.Parent = ContentArea
+tabPages["ThirdPartySales"] = ThirdPartyPage
+
+local ThirdPartyTitle = Instance.new("TextLabel")
+ThirdPartyTitle.Size = UDim2.new(1, -24, 0, 16)
+ThirdPartyTitle.Position = UDim2.new(0, 12, 0, 6)
+ThirdPartyTitle.BackgroundTransparency = 1
+ThirdPartyTitle.Text = "Allow Third Party Sales"
+ThirdPartyTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+ThirdPartyTitle.TextSize = 12
+ThirdPartyTitle.Font = Enum.Font.GothamBold
+ThirdPartyTitle.TextXAlignment = Enum.TextXAlignment.Left
+ThirdPartyTitle.Parent = ThirdPartyPage
+
+local SalesUniverseBox = Instance.new("TextBox")
+SalesUniverseBox.Size = UDim2.new(1, -108, 0, 26)
+SalesUniverseBox.Position = UDim2.new(0, 12, 0, 26)
+SalesUniverseBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+SalesUniverseBox.Text = CONFIG.DefaultUniverseId
+SalesUniverseBox.PlaceholderText = "Masukkan Universe ID..."
+SalesUniverseBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+SalesUniverseBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+SalesUniverseBox.TextSize = 10
+SalesUniverseBox.Font = Enum.Font.Gotham
+SalesUniverseBox.ClearTextOnFocus = false
+SalesUniverseBox.Parent = ThirdPartyPage
+Instance.new("UICorner", SalesUniverseBox).CornerRadius = UDim.new(0, 7)
+
+local SyncSalesBtn = Instance.new("TextButton")
+SyncSalesBtn.Size = UDim2.fromOffset(78, 26)
+SyncSalesBtn.Position = UDim2.new(1, -90, 0, 26)
+SyncSalesBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 52)
+SyncSalesBtn.Text = "↻ Cek Status"
+SyncSalesBtn.TextColor3 = Color3.fromRGB(215, 212, 248)
+SyncSalesBtn.TextSize = 9
+SyncSalesBtn.Font = Enum.Font.GothamBold
+SyncSalesBtn.Parent = ThirdPartyPage
+Instance.new("UICorner", SyncSalesBtn).CornerRadius = UDim.new(0, 7)
+local SyncSalesStroke = Instance.new("UIStroke", SyncSalesBtn)
+SyncSalesStroke.Color = Color3.fromRGB(82, 76, 124)
+SyncSalesStroke.Thickness = 1
+
+local SalesSwitchCard = Instance.new("Frame")
+SalesSwitchCard.Size = UDim2.new(1, -24, 0, 52)
+SalesSwitchCard.Position = UDim2.new(0, 12, 0, 60)
+SalesSwitchCard.BackgroundColor3 = Color3.fromRGB(24, 23, 38)
+SalesSwitchCard.BorderSizePixel = 0
+SalesSwitchCard.Parent = ThirdPartyPage
+Instance.new("UICorner", SalesSwitchCard).CornerRadius = UDim.new(0, 9)
+local SalesSwitchStroke = Instance.new("UIStroke", SalesSwitchCard)
+SalesSwitchStroke.Color = Color3.fromRGB(68, 62, 112)
+SalesSwitchStroke.Thickness = 1
+
+local SalesSwitchTitle = Instance.new("TextLabel")
+SalesSwitchTitle.Size = UDim2.new(1, -104, 0, 16)
+SalesSwitchTitle.Position = UDim2.new(0, 12, 0, 9)
+SalesSwitchTitle.BackgroundTransparency = 1
+SalesSwitchTitle.Text = "Allow Third Party Sales (Aktif / Nonaktif)"
+SalesSwitchTitle.TextColor3 = Color3.fromRGB(248, 248, 255)
+SalesSwitchTitle.TextSize = 11
+SalesSwitchTitle.Font = Enum.Font.GothamBold
+SalesSwitchTitle.TextXAlignment = Enum.TextXAlignment.Left
+SalesSwitchTitle.Parent = SalesSwitchCard
+
+local SalesSwitchDesc = Instance.new("TextLabel")
+SalesSwitchDesc.Size = UDim2.new(1, -104, 0, 14)
+SalesSwitchDesc.Position = UDim2.new(0, 12, 0, 26)
+SalesSwitchDesc.BackgroundTransparency = 1
+SalesSwitchDesc.Text = "Geser kiri/kanan untuk memilih OFF atau ON"
+SalesSwitchDesc.TextColor3 = Color3.fromRGB(150, 146, 182)
+SalesSwitchDesc.TextSize = 9
+SalesSwitchDesc.Font = Enum.Font.GothamMedium
+SalesSwitchDesc.TextXAlignment = Enum.TextXAlignment.Left
+SalesSwitchDesc.Parent = SalesSwitchCard
+
+local SalesSwitch = createModernToggleSwitch(SalesSwitchCard, false, function(state: boolean)
+	SalesSwitchDesc.Text = state
+		and "Target: Third Party Sales DIAKTIFKAN (true)"
+		or "Target: Third Party Sales DINONAKTIFKAN (false)"
+end)
+SalesSwitch.Button.Position = UDim2.new(1, -86, 0.5, -14)
+
+local ApplySalesBtn = Instance.new("TextButton")
+ApplySalesBtn.Size = UDim2.new(1, -24, 0, 28)
+ApplySalesBtn.Position = UDim2.new(0, 12, 0, 120)
+ApplySalesBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+ApplySalesBtn.Text = "⚡  TERAPKAN THIRD PARTY SALES"
+ApplySalesBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ApplySalesBtn.TextSize = 10
+ApplySalesBtn.Font = Enum.Font.GothamBold
+ApplySalesBtn.Parent = ThirdPartyPage
+Instance.new("UICorner", ApplySalesBtn).CornerRadius = UDim.new(0, 7)
+
+local SalesPreviewCard = Instance.new("Frame")
+SalesPreviewCard.Size = UDim2.new(1, -24, 1, -162)
+SalesPreviewCard.Position = UDim2.new(0, 12, 0, 155)
+SalesPreviewCard.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+SalesPreviewCard.BorderSizePixel = 0
+SalesPreviewCard.Parent = ThirdPartyPage
+Instance.new("UICorner", SalesPreviewCard).CornerRadius = UDim.new(0, 8)
+local SalesPrevStroke = Instance.new("UIStroke", SalesPreviewCard)
+SalesPrevStroke.Color = Color3.fromRGB(52, 48, 82)
+SalesPrevStroke.Thickness = 1
+
+local SalesIconImg = Instance.new("ImageLabel")
+SalesIconImg.Size = UDim2.fromOffset(52, 52)
+SalesIconImg.Position = UDim2.new(0, 8, 0.5, -26)
+SalesIconImg.BackgroundColor3 = Color3.fromRGB(20, 19, 32)
+SalesIconImg.Image = resolveRealtimeGameIcon(CONFIG.DefaultUniverseId, nil, CONFIG.Cookie)
+SalesIconImg.ScaleType = Enum.ScaleType.Crop
+SalesIconImg.Parent = SalesPreviewCard
+Instance.new("UICorner", SalesIconImg).CornerRadius = UDim.new(0, 8)
+
+local SalesGameName = Instance.new("TextLabel")
+SalesGameName.Size = UDim2.new(1, -74, 0, 16)
+SalesGameName.Position = UDim2.new(0, 68, 0, 8)
+SalesGameName.BackgroundTransparency = 1
+SalesGameName.Text = "Universe #" .. CONFIG.DefaultUniverseId
+SalesGameName.TextColor3 = Color3.fromRGB(245, 245, 255)
+SalesGameName.TextSize = 11
+SalesGameName.Font = Enum.Font.GothamBold
+SalesGameName.TextXAlignment = Enum.TextXAlignment.Left
+SalesGameName.TextTruncate = Enum.TextTruncate.AtEnd
+SalesGameName.Parent = SalesPreviewCard
+
+local SalesStatusText = Instance.new("TextLabel")
+SalesStatusText.Size = UDim2.new(1, -74, 0, 26)
+SalesStatusText.Position = UDim2.new(0, 68, 0, 26)
+SalesStatusText.BackgroundTransparency = 1
+SalesStatusText.Text = "Siap sinkronisasi status Allow Third Party Sales."
+SalesStatusText.TextColor3 = Color3.fromRGB(165, 162, 194)
+SalesStatusText.TextSize = 9
+SalesStatusText.Font = Enum.Font.GothamMedium
+SalesStatusText.TextXAlignment = Enum.TextXAlignment.Left
+SalesStatusText.TextWrapped = true
+SalesStatusText.Parent = SalesPreviewCard
+
+-- ==========================================
+-- HALAMAN 4: SETTING (COOKIE)
 -- ==========================================
 local SettingPage = Instance.new("Frame")
 SettingPage.Size = UDim2.fromScale(1, 1)
@@ -1436,7 +1694,7 @@ SettingStatusLabel.Parent = SettingPage
 Instance.new("UICorner", SettingStatusLabel).CornerRadius = UDim.new(0, 7)
 
 -- ==========================================
--- HALAMAN 4: CONSOLE OUTPUT SERVER / PERMINTAAN
+-- HALAMAN 5: CONSOLE OUTPUT SERVER / PERMINTAAN
 -- ==========================================
 local ConsolePage = Instance.new("Frame")
 ConsolePage.Size = UDim2.fromScale(1, 1)
@@ -1597,15 +1855,18 @@ end)
 createNavButton("VoiceChat", "🎙  Voice Chat", 2).MouseButton1Click:Connect(function()
 	switchTab("VoiceChat")
 end)
-createNavButton("Setting", "⚙  Setting", 3).MouseButton1Click:Connect(function()
+createNavButton("ThirdPartySales", "🛒  3rd Party", 3).MouseButton1Click:Connect(function()
+	switchTab("ThirdPartySales")
+end)
+createNavButton("Setting", "⚙  Setting", 4).MouseButton1Click:Connect(function()
 	switchTab("Setting")
 end)
-createNavButton("Console", "🖥  Console", 4).MouseButton1Click:Connect(function()
+createNavButton("Console", "🖥  Console", 5).MouseButton1Click:Connect(function()
 	switchTab("Console")
 end)
 switchTab("CreatePlace")
 
-pushConsole("INFO", "Plugin Studio Lite siap (endpoint Voice: voice.roblox.com).")
+pushConsole("INFO", "Plugin Studio Lite siap (Voice + Allow Third Party Sales aktif).")
 
 -- ==========================================
 -- LOGIKA VOICE CHAT UNIVERSE
@@ -1704,6 +1965,102 @@ ApplyVoiceBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
+-- LOGIKA ALLOW THIRD PARTY SALES
+-- ==========================================
+local isSyncingSales = false
+local isApplyingSales = false
+local cachedSalesCsrf = ""
+
+local function refreshSalesUniversePreview(univId: string, cookieVal: string)
+	local cardInfo = fetchRealtimeGameData(univId, cookieVal, nil)
+	SalesIconImg.Image = cardInfo.iconImage
+	SalesGameName.Text = cardInfo.gameName .. " (" .. cardInfo.status .. ")"
+
+	local okSales, salesOn, rawSalesData, errSales = getUniverseThirdPartySales(univId, cookieVal)
+	if okSales and type(salesOn) == "boolean" then
+		SalesSwitch.SetState(salesOn, true)
+		SalesStatusText.TextColor3 = salesOn and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 210, 140)
+		SalesStatusText.Text = "Third Party Sales saat ini: " .. (salesOn and "AKTIF (ON)" or "NONAKTIF (OFF)")
+		pushConsole("OK", string.format("Universe #%s allowThirdPartySales = %s", univId, tostring(salesOn)))
+	elseif okSales then
+		SalesStatusText.TextColor3 = Color3.fromRGB(185, 205, 255)
+		SalesStatusText.Text = "Konfigurasi terbaca (cek Console)"
+		pushConsole("INFO", string.format("Universe #%s config JSON: %s", univId, HttpService:JSONEncode(rawSalesData)))
+	else
+		SalesStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
+		SalesStatusText.Text = "Gagal cek Third Party Sales: " .. errSales
+		pushConsole("ERR", string.format("Universe #%s gagal cek Third Party Sales: %s", univId, errSales))
+	end
+end
+
+SyncSalesBtn.MouseButton1Click:Connect(function()
+	if isSyncingSales or isApplyingSales then return end
+	local cookieVal = syncCookieFromInput()
+	local univId = trim(SalesUniverseBox.Text):match("%d+") or ""
+	if univId == "" then
+		SalesStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
+		SalesStatusText.Text = "Masukkan Universe ID yang valid."
+		pushConsole("WARN", "Cek Status Third Party Sales dibatalkan: Universe ID kosong/tidak valid.")
+		return
+	end
+
+	isSyncingSales = true
+	SyncSalesBtn.Text = "..."
+	task.spawn(function()
+		refreshSalesUniversePreview(univId, cookieVal)
+		SyncSalesBtn.Text = "↻ Cek Status"
+		isSyncingSales = false
+	end)
+end)
+
+ApplySalesBtn.MouseButton1Click:Connect(function()
+	if isApplyingSales or isSyncingSales then return end
+	local cookieVal = syncCookieFromInput()
+	if cookieVal == "" then
+		SalesStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
+		SalesStatusText.Text = "Cookie .ROBLOSECURITY kosong. Isi di tab Setting."
+		pushConsole("ERR", "Apply Third Party Sales gagal: Cookie kosong.")
+		notify("3rd Party Sales", "Cookie belum diisi.")
+		return
+	end
+
+	local univId = trim(SalesUniverseBox.Text):match("%d+") or ""
+	if univId == "" then
+		SalesStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
+		SalesStatusText.Text = "Universe ID tidak valid."
+		pushConsole("ERR", "Apply Third Party Sales gagal: Universe ID tidak valid.")
+		return
+	end
+
+	local targetState = SalesSwitch.GetState()
+	isApplyingSales = true
+	ApplySalesBtn.Text = "⏳  MENGIRIM..."
+	SalesStatusText.TextColor3 = Color3.fromRGB(175, 205, 255)
+	SalesStatusText.Text = "Mengirim allowThirdPartySales = " .. tostring(targetState) .. "..."
+
+	task.spawn(function()
+		local okPatch, msgPatch, nextCsrf = setUniverseThirdPartySales(univId, cookieVal, targetState, cachedSalesCsrf)
+		cachedSalesCsrf = nextCsrf
+
+		if okPatch then
+			SalesStatusText.TextColor3 = Color3.fromRGB(145, 255, 190)
+			SalesStatusText.Text = msgPatch
+			pushConsole("OK", msgPatch .. " (Universe #" .. univId .. ")")
+			notify("3rd Party Sales", msgPatch)
+			refreshSalesUniversePreview(univId, cookieVal)
+		else
+			SalesStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
+			SalesStatusText.Text = "Gagal: " .. msgPatch
+			pushConsole("ERR", "Apply Third Party Sales gagal (#" .. univId .. "): " .. msgPatch)
+			notify("3rd Party Sales", "Gagal mengubah status Third Party Sales.")
+		end
+
+		ApplySalesBtn.Text = "⚡  TERAPKAN THIRD PARTY SALES"
+		isApplyingSales = false
+	end)
+end)
+
+-- ==========================================
 -- LOGIKA CREATE PLACE
 -- ==========================================
 local isCreatingPlace = false
@@ -1720,11 +2077,12 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 	local tplId = tonumber(trim(TemplateIdBox.Text):match("%d+")) or 95206881
 	local grpId = tonumber(trim(GroupIdBox.Text):match("%d+"))
 	local count = math.clamp(tonumber(trim(PlaceCountBox.Text):match("%d+")) or 1, 1, 50)
+	local autoThirdParty = AutoThirdPartySwitch.GetState()
 
 	isCreatingPlace = true
 	clearResultCards()
 	setCreateProgress("working", 0.1, "Membuat " .. tostring(count) .. " place...")
-	pushConsole("INFO", string.format("Mulai Create Place: count=%d, template=%d, group=%s", count, tplId, grpId and tostring(grpId) or "none"))
+	pushConsole("INFO", string.format("Mulai Create Place: count=%d, template=%d, group=%s, auto3rdParty=%s", count, tplId, grpId and tostring(grpId) or "none", tostring(autoThirdParty)))
 
 	task.spawn(function()
 		local csrf = ""
@@ -1797,6 +2155,13 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 
 				if createdUnivId and createdUnivId ~= "" then
 					pushConsole("OK", string.format("Place #%d dibuat -> UniverseId: %s | RootPlaceId: %s", i, createdUnivId, tostring(createdRootPlaceId or "-")))
+
+					if autoThirdParty then
+						local okSalesAuto, msgSalesAuto, nextSalesCsrf = setUniverseThirdPartySales(createdUnivId, cookieVal, true, cachedSalesCsrf)
+						cachedSalesCsrf = nextSalesCsrf
+						pushConsole(okSalesAuto and "OK" or "WARN", string.format("Auto 3rd Party Sales #%s: %s", createdUnivId, msgSalesAuto))
+					end
+
 					local cardData = fetchRealtimeGameData(createdUnivId, cookieVal, createdRootPlaceId)
 					appendResultCard(cardData)
 				else
