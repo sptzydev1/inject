@@ -1,5 +1,3 @@
--- DELTA JAIL
-
 --!strict
 -- Plugin Studio Lite (Delta Executor Edition) by Ikyy
 
@@ -301,7 +299,6 @@ local function setMinimized(minimized: boolean)
 	end
 end
 
--- Geser luas ikon profil
 do
 	local dragging = false
 	local movedSignificantly = false
@@ -442,7 +439,7 @@ local function switchTab(tabName: string)
 end
 
 -- ==========================================
--- HALAMAN 1: MUSIC PLAYER (EQUALIZER + LOOP LOADING + VOLUME + << / ▶⏸ / >>)
+-- HALAMAN 1: MUSIC PLAYER
 -- ==========================================
 local MusicPage = Instance.new("Frame")
 MusicPage.Size = UDim2.fromScale(1, 1)
@@ -472,7 +469,6 @@ MusicStatusLabel.TextSize = 8
 MusicStatusLabel.Font = Enum.Font.GothamMedium
 MusicStatusLabel.Parent = MusicPage
 
--- Equalizer di tengah sesuai beat musik
 local EqFrame = Instance.new("Frame")
 EqFrame.Name = "EqualizerFrame"
 EqFrame.Size = UDim2.new(1, -24, 0, 44)
@@ -507,7 +503,6 @@ for i = 1, eqBarCount do
 	table.insert(eqBars, bar)
 end
 
--- Loop loading bar
 local MusicLoadTrack = Instance.new("Frame")
 MusicLoadTrack.Size = UDim2.new(1, -24, 0, 5)
 MusicLoadTrack.Position = UDim2.new(0, 12, 0, 82)
@@ -523,7 +518,6 @@ MusicLoadFill.BorderSizePixel = 0
 MusicLoadFill.Parent = MusicLoadTrack
 Instance.new("UICorner", MusicLoadFill).CornerRadius = UDim.new(1, 0)
 
--- Slider volume kanan-kiri
 local VolumeRow = Instance.new("Frame")
 VolumeRow.Size = UDim2.new(1, -24, 0, 20)
 VolumeRow.Position = UDim2.new(0, 12, 0, 91)
@@ -564,7 +558,6 @@ VolKnob.AutoButtonColor = false
 VolKnob.Parent = VolSliderBg
 Instance.new("UICorner", VolKnob).CornerRadius = UDim.new(1, 0)
 
--- Tombol kontrol: kiri (<<), tengah (Play/Jeda), kanan (>>)
 local ControlsRow = Instance.new("Frame")
 ControlsRow.Size = UDim2.new(1, -24, 0, 26)
 ControlsRow.Position = UDim2.new(0, 12, 0, 114)
@@ -604,7 +597,6 @@ NextTrackBtn.Font = Enum.Font.GothamBold
 NextTrackBtn.Parent = ControlsRow
 Instance.new("UICorner", NextTrackBtn).CornerRadius = UDim.new(0, 7)
 
--- List Musik
 local PlaylistScroll = Instance.new("ScrollingFrame")
 PlaylistScroll.Size = UDim2.new(1, -24, 0, 108)
 PlaylistScroll.Position = UDim2.new(0, 12, 0, 144)
@@ -782,7 +774,6 @@ NextTrackBtn.MouseButton1Click:Connect(function()
 	loadAndPlayTrack(currentTrackIndex + 1, true)
 end)
 
--- Drag slider volume kanan-kiri
 do
 	local draggingVol = false
 	local function updateVolFromInput(inputPos: Vector2)
@@ -822,7 +813,6 @@ end
 renderMusicPlaylist()
 applyVolume(0.5)
 
--- Animasi Equalizer & Loop Loading
 do
 	local elapsed = 0
 	RunService.RenderStepped:Connect(function(dt: number)
@@ -862,7 +852,7 @@ do
 end
 
 -- ==========================================
--- HALAMAN 2: JAIL (UNANCHORED PART SERVER-SIDE PHYSICS ACCESS)
+-- HALAMAN 2: JAIL (LIGHTWEIGHT + LASER BEAM)
 -- ==========================================
 local JailPage = Instance.new("Frame")
 JailPage.Size = UDim2.fromScale(1, 1)
@@ -914,14 +904,13 @@ local JailStatusLabel = Instance.new("TextLabel")
 JailStatusLabel.Size = UDim2.new(1, -24, 0, 11)
 JailStatusLabel.Position = UDim2.new(0, 12, 0, 29)
 JailStatusLabel.BackgroundTransparency = 1
-JailStatusLabel.Text = "Scan: 0 part • Far(600s) • Mode: OrbitHead"
+JailStatusLabel.Text = "OFF • Far • Mode: OrbitHead"
 JailStatusLabel.TextColor3 = Color3.fromRGB(150, 146, 182)
 JailStatusLabel.TextSize = 8
 JailStatusLabel.Font = Enum.Font.GothamMedium
 JailStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 JailStatusLabel.Parent = JailPage
 
--- Slider Speed (0.5x - 6.0x, default 2.5x)
 local JailSpeedRow = Instance.new("Frame")
 JailSpeedRow.Size = UDim2.new(1, -24, 0, 16)
 JailSpeedRow.Position = UDim2.new(0, 12, 0, 41)
@@ -962,7 +951,6 @@ JailSpeedKnob.AutoButtonColor = false
 JailSpeedKnob.Parent = JailSpeedBg
 Instance.new("UICorner", JailSpeedKnob).CornerRadius = UDim.new(1, 0)
 
--- Pilihan Mode Akses
 local JailModeGrid = Instance.new("Frame")
 JailModeGrid.Size = UDim2.new(1, -24, 0, 44)
 JailModeGrid.Position = UDim2.new(0, 12, 0, 59)
@@ -1003,7 +991,6 @@ for idx, m in ipairs(JAIL_MODES) do
 	end)
 end
 
--- Header Target + Refresh + Search Player
 local JailTargetHeader = Instance.new("Frame")
 JailTargetHeader.Size = UDim2.new(1, -24, 0, 15)
 JailTargetHeader.Position = UDim2.new(0, 12, 0, 106)
@@ -1081,66 +1068,129 @@ UserListPad.PaddingLeft = UDim.new(0, 4)
 UserListPad.PaddingRight = UDim.new(0, 4)
 UserListPad.Parent = UserListScroll
 
--- Logika Scan & Akses Unanchored Part (No Visual)
+-- Logika Scan, Laser Beam & Akses Unanchored Part (Ultra-Lightweight & Zero-Delay)
 local scannedUnanchoredParts: {BasePart} = {}
+local trackedPartsSet: {[BasePart]: boolean} = {}
 local activeAttackedParts: {[BasePart]: boolean} = {}
 local lockedAnchoredParts: {[BasePart]: boolean} = {}
 local throwCycleClock = 0
 local throwPulseIndex = 0
 
+type LaserVisual = {
+	partAtt: Attachment,
+	beam: Beam,
+}
+
+local laserVisuals: {[BasePart]: LaserVisual} = {}
+local playerLaserAtt: Attachment? = nil
+
 local function getCharacterRoot(player: Player?): BasePart?
 	local plr = player or LocalPlayer
 	local char = plr.Character
 	if not char then return nil end
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if hrp and hrp:IsA("BasePart") then
-		return hrp
-	end
-	local head = char:FindFirstChild("Head")
-	if head and head:IsA("BasePart") then
-		return head
-	end
-	return nil
+	return (char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Head")) :: BasePart?
 end
 
-local function isDescendantOfAnyCharacter(inst: Instance): boolean
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr.Character and inst:IsDescendantOf(plr.Character) then
-			return true
-		end
+local function getOrCreatePlayerLaserAttachment(): Attachment?
+	local root = getCharacterRoot(LocalPlayer)
+	if not root then
+		playerLaserAtt = nil
+		return nil
 	end
-	return false
+
+	if playerLaserAtt and playerLaserAtt.Parent == root then
+		return playerLaserAtt
+	end
+
+	if playerLaserAtt then
+		pcall(function()
+			playerLaserAtt:Destroy()
+		end)
+	end
+
+	local att = Instance.new("Attachment")
+	att.Name = "IkyyJail_PlayerLaserAtt"
+	att.Parent = root
+	playerLaserAtt = att
+	return att
 end
 
-local function isConstraintBindingPart(inst: Instance, part: BasePart): boolean
-	if inst:IsA("RopeConstraint") or inst:IsA("AlignPosition") or inst:IsA("AlignOrientation") or inst:IsA("RodConstraint") or inst:IsA("SpringConstraint") or inst:IsA("WeldConstraint") then
-		local c = inst :: any
-		local a0 = c.Attachment0
-		local a1 = c.Attachment1
-		local p0 = c.Part0
-		local p1 = c.Part1
-		if p0 == part or p1 == part then
-			return true
+local function setPartLaserEnabled(part: BasePart, enabled: boolean, accentColor: Color3?)
+	if not enabled then
+		local vis = laserVisuals[part]
+		if vis then
+			laserVisuals[part] = nil
+			pcall(function()
+				vis.beam:Destroy()
+				vis.partAtt:Destroy()
+			end)
 		end
-		if (a0 and a0:IsDescendantOf(part)) or (a1 and a1:IsDescendantOf(part)) then
-			return true
-		end
+		return
 	end
-	return false
+
+	if not part.Parent then return end
+	local pAtt = getOrCreatePlayerLaserAttachment()
+	if not pAtt then return end
+
+	local vis = laserVisuals[part]
+	if not vis or not vis.beam.Parent or not vis.partAtt.Parent then
+		if vis then
+			pcall(function()
+				vis.beam:Destroy()
+				vis.partAtt:Destroy()
+			end)
+		end
+
+		local att = Instance.new("Attachment")
+		att.Name = "IkyyJail_PartLaserAtt"
+		att.Parent = part
+
+		local beam = Instance.new("Beam")
+		beam.Name = "IkyyJail_LaserBeam"
+		beam.Attachment0 = att
+		beam.Attachment1 = pAtt
+		beam.FaceCamera = true
+		beam.Width0 = 0.08
+		beam.Width1 = 0.08
+		beam.LightEmission = 0.85
+		beam.LightInfluence = 0
+		beam.Transparency = NumberSequence.new(0.15)
+		beam.Parent = part
+
+		vis = {
+			partAtt = att,
+			beam = beam,
+		}
+		laserVisuals[part] = vis
+	end
+
+	vis.beam.Attachment1 = pAtt
+	vis.beam.Enabled = true
+	if accentColor then
+		vis.beam.Color = ColorSequence.new(accentColor)
+	end
+end
+
+local function clearAllLaserVisuals()
+	for part, vis in pairs(laserVisuals) do
+		laserVisuals[part] = nil
+		pcall(function()
+			vis.beam:Destroy()
+			vis.partAtt:Destroy()
+		end)
+	end
+	if playerLaserAtt then
+		pcall(function()
+			playerLaserAtt:Destroy()
+		end)
+		playerLaserAtt = nil
+	end
 end
 
 local function detachPartFromReturnPull(part: BasePart)
 	pcall(function()
-		for _, desc in ipairs(part:GetDescendants()) do
-			if desc:IsA("RopeConstraint") or desc:IsA("AlignPosition") or desc:IsA("AlignOrientation") or desc:IsA("RodConstraint") or desc:IsA("SpringConstraint") or desc:IsA("WeldConstraint") then
-				(desc :: any).Enabled = false
-				if desc:IsA("RopeConstraint") then
-					desc.Length = 0.01
-				end
-			end
-		end
-		for _, desc in ipairs(workspace:GetDescendants()) do
-			if isConstraintBindingPart(desc, part) then
+		for _, desc in ipairs(part:GetChildren()) do
+			if desc:IsA("Constraint") or desc:IsA("WeldConstraint") then
 				(desc :: any).Enabled = false
 				if desc:IsA("RopeConstraint") then
 					desc.Length = 0.01
@@ -1151,77 +1201,72 @@ local function detachPartFromReturnPull(part: BasePart)
 end
 
 local function getSelectedTargetPlayer(): Player?
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr.UserId == CONFIG.JailTargetUserId and plr ~= LocalPlayer then
-			return plr
-		end
-	end
-	return nil
+	if CONFIG.JailTargetUserId == 0 then return nil end
+	return Players:GetPlayerByUserId(CONFIG.JailTargetUserId)
 end
 
 local function scanUnanchoredParts()
-	local found: {BasePart} = {}
+	table.clear(scannedUnanchoredParts)
+	table.clear(trackedPartsSet)
+
 	local root = getCharacterRoot(LocalPlayer)
 	local targetPlr = getSelectedTargetPlayer()
 	local targetRoot = getCharacterRoot(targetPlr)
+
 	local originPos = root and root.Position or Vector3.zero
 	local targetPos = targetRoot and targetRoot.Position or originPos
 
-	local maxDist = CONFIG.JailFarScan and 600 or 140
-	local maxParts = CONFIG.JailFarScan and 120 or 48
+	local maxDist = CONFIG.JailFarScan and 250 or 110
+	local maxParts = CONFIG.JailFarScan and 50 or 25
 
-	for _, desc in ipairs(workspace:GetDescendants()) do
-		if desc:IsA("BasePart") and not desc.Anchored and not isDescendantOfAnyCharacter(desc) then
-			local distSelf = (desc.Position - originPos).Magnitude
-			local distTarget = (desc.Position - targetPos).Magnitude
-			if math.min(distSelf, distTarget) <= maxDist then
-				table.insert(found, desc)
-				if #found >= maxParts then
+	local overlapParams = OverlapParams.new()
+	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+	local ignoreList: {Instance} = {}
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr.Character then
+			table.insert(ignoreList, plr.Character)
+		end
+	end
+	overlapParams.FilterDescendantsInstances = ignoreList
+
+	local nearbyParts = workspace:GetPartBoundsInRadius(originPos, maxDist, overlapParams)
+	for _, part in ipairs(nearbyParts) do
+		if part:IsA("BasePart") and not part.Anchored and not trackedPartsSet[part] then
+			trackedPartsSet[part] = true
+			table.insert(scannedUnanchoredParts, part)
+			if #scannedUnanchoredParts >= maxParts then
+				break
+			end
+		end
+	end
+
+	if targetRoot and (targetPos - originPos).Magnitude > 30 and #scannedUnanchoredParts < maxParts then
+		local targetParts = workspace:GetPartBoundsInRadius(targetPos, maxDist, overlapParams)
+		for _, part in ipairs(targetParts) do
+			if part:IsA("BasePart") and not part.Anchored and not trackedPartsSet[part] then
+				trackedPartsSet[part] = true
+				table.insert(scannedUnanchoredParts, part)
+				if #scannedUnanchoredParts >= maxParts then
 					break
 				end
 			end
 		end
 	end
-
-	table.sort(found, function(a: BasePart, b: BasePart): boolean
-		local da = math.min((a.Position - originPos).Magnitude, (a.Position - targetPos).Magnitude)
-		local db = math.min((b.Position - originPos).Magnitude, (b.Position - targetPos).Magnitude)
-		return da < db
-	end)
-
-	scannedUnanchoredParts = found
 end
 
 local function releasePartsToFall()
 	local dropBoost = 65 * CONFIG.JailSpeed
-	for _, part in ipairs(scannedUnanchoredParts) do
-		if part and part.Parent and part:IsA("BasePart") then
-			pcall(function()
-				part.Anchored = false
-				part.AssemblyLinearVelocity = Vector3.new(
-					math.random(-25, 25),
-					-dropBoost,
-					math.random(-25, 25)
-				)
-				part.AssemblyAngularVelocity = Vector3.new(25, 25, 25)
-			end)
+	for i = #scannedUnanchoredParts, 1, -1 do
+		local part = scannedUnanchoredParts[i]
+		if part and part.Parent and not part.Anchored then
+			part.AssemblyLinearVelocity = Vector3.new(math.random(-20, 20), -dropBoost, math.random(-20, 20))
+			part.AssemblyAngularVelocity = Vector3.new(18, 18, 18)
 		end
 	end
-	for part, _ in pairs(activeAttackedParts) do
-		if part and part.Parent and part:IsA("BasePart") then
-			pcall(function()
-				part.Anchored = false
-				part.AssemblyLinearVelocity = Vector3.new(
-					math.random(-25, 25),
-					-dropBoost,
-					math.random(-25, 25)
-				)
-				part.AssemblyAngularVelocity = Vector3.new(25, 25, 25)
-			end)
-		end
-	end
+	clearAllLaserVisuals()
 	table.clear(activeAttackedParts)
 	table.clear(scannedUnanchoredParts)
+	table.clear(trackedPartsSet)
 end
 
 local function setAnchorLock(locked: boolean)
@@ -1229,7 +1274,7 @@ local function setAnchorLock(locked: boolean)
 	if locked then
 		scanUnanchoredParts()
 		for _, part in ipairs(scannedUnanchoredParts) do
-			if part and part.Parent and not part.Anchored then
+			if part.Parent and not part.Anchored then
 				lockedAnchoredParts[part] = true
 				pcall(function()
 					part.Anchored = true
@@ -1238,7 +1283,7 @@ local function setAnchorLock(locked: boolean)
 		end
 	else
 		for part, _ in pairs(lockedAnchoredParts) do
-			if part and part.Parent then
+			if part.Parent then
 				pcall(function()
 					part.Anchored = false
 				end)
@@ -1327,6 +1372,9 @@ end
 JailSwitchBtn.MouseButton1Click:Connect(function()
 	CONFIG.JailEnabled = not CONFIG.JailEnabled
 	if CONFIG.JailEnabled then
+		pcall(function()
+			LocalPlayer.SimulationRadius = 1000
+		end)
 		scanUnanchoredParts()
 	else
 		releasePartsToFall()
@@ -1366,7 +1414,6 @@ Players.PlayerRemoving:Connect(function(plr: Player)
 	renderUserList()
 end)
 
--- Drag slider Jail Speed kanan-kiri
 do
 	local draggingSpeed = false
 	local function updateSpeedFromInput(inputPos: Vector2)
@@ -1403,19 +1450,23 @@ do
 	end)
 end
 
--- Loop eksekusi fisika JAIL (Server-side physics replication, no visual)
+-- Loop eksekusi fisika JAIL (Zero-Delay & Low CPU)
 do
 	local jailClock = 0
 	local scanAccum = 0
+	local statusAccum = 0
 
 	RunService.Heartbeat:Connect(function(dt: number)
-		jailClock += dt
 		if not CONFIG.JailEnabled then
+			if next(laserVisuals) ~= nil or playerLaserAtt ~= nil then
+				clearAllLaserVisuals()
+			end
 			return
 		end
 
+		jailClock += dt
 		scanAccum += dt
-		if scanAccum >= 0.45 then
+		if scanAccum >= 2.0 then
 			scanAccum = 0
 			scanUnanchoredParts()
 		end
@@ -1425,98 +1476,100 @@ do
 		local targetRoot = getCharacterRoot(targetPlr) or myRoot
 		local speed = CONFIG.JailSpeed
 		local activeCount = #scannedUnanchoredParts
+		local mode = CONFIG.JailMode
+		local accentColor = GUI_THEMES[CONFIG.ThemeIndex].accent
 
-		local throwInterval = math.max(0.14, 0.42 / math.max(0.5, speed))
+		local throwInterval = math.max(0.18, 0.45 / math.max(0.5, speed))
 		throwCycleClock += dt
 		if throwCycleClock >= throwInterval then
 			throwCycleClock -= throwInterval
 			throwPulseIndex += 1
 		end
 
-		for i, part in ipairs(scannedUnanchoredParts) do
-			if part and part.Parent and part:IsA("BasePart") and not part.Anchored then
+		local myPos = myRoot and myRoot.Position or Vector3.zero
+		local targetPos = targetRoot and targetRoot.Position or Vector3.zero
+		local myCf = myRoot and myRoot.CFrame or CFrame.new()
+
+		for i = activeCount, 1, -1 do
+			local part = scannedUnanchoredParts[i]
+			if not part or not part.Parent or part.Anchored then
+				table.remove(scannedUnanchoredParts, i)
+				if part then
+					trackedPartsSet[part] = nil
+					setPartLaserEnabled(part, false)
+				end
+			else
 				if not activeAttackedParts[part] then
 					activeAttackedParts[part] = true
 					detachPartFromReturnPull(part)
 				end
 
-				local mode = CONFIG.JailMode
+				setPartLaserEnabled(part, true, accentColor)
+
 				if mode == "OrbitHead" then
-					local center = (myRoot and myRoot.Position or Vector3.zero) + Vector3.new(0, 5.5, 0)
+					local center = myPos + Vector3.new(0, 5.5, 0)
 					local angle = jailClock * (3.2 * speed) + (i * ((math.pi * 2) / math.max(1, activeCount)))
 					local radius = 3.5 + ((i % 3) * 1.1)
 					local desiredPos = center + Vector3.new(math.cos(angle) * radius, math.sin(angle * 1.5) * 0.6, math.sin(angle) * radius)
-					local delta = desiredPos - part.Position
-					part.AssemblyLinearVelocity = delta * (12 * speed)
-					part.AssemblyAngularVelocity = Vector3.new(0, 14 * speed, 0)
+					part.AssemblyLinearVelocity = (desiredPos - part.Position) * (10 * speed)
+					part.AssemblyAngularVelocity = Vector3.new(0, 12 * speed, 0)
 				elseif mode == "ShakePart" then
-					local shakeVec = Vector3.new(
-						math.sin(jailClock * 42 * speed + i) * 28 * speed,
-						math.cos(jailClock * 37 * speed + i * 2) * 28 * speed,
-						math.sin(jailClock * 45 * speed + i * 3) * 28 * speed
+					part.AssemblyLinearVelocity = Vector3.new(
+						math.sin(jailClock * 30 * speed + i) * 22 * speed,
+						math.cos(jailClock * 26 * speed + i * 2) * 22 * speed,
+						math.sin(jailClock * 32 * speed + i * 3) * 22 * speed
 					)
-					part.AssemblyLinearVelocity = shakeVec
-					part.AssemblyAngularVelocity = Vector3.new(26 * speed, -24 * speed, 28 * speed)
+					part.AssemblyAngularVelocity = Vector3.new(18 * speed, -16 * speed, 18 * speed)
 				elseif mode == "GravityThrow" then
-					-- Langsung lempar dari posisi part saat ini ke target berulang-ulang (tidak ditarik ke user dulu)
-					local aimBase = targetRoot and targetRoot.Position or Vector3.zero
 					local spreadPhase = (throwPulseIndex + i) * 1.35
 					local aimJitter = Vector3.new(
 						math.cos(spreadPhase) * 2.4,
 						1.5 + ((throwPulseIndex + i) % 3) * 1.4,
 						math.sin(spreadPhase) * 2.4
 					)
-					local toTarget = (aimBase + aimJitter) - part.Position
+					local toTarget = (targetPos + aimJitter) - part.Position
 					local dist = toTarget.Magnitude
 					local dir = dist > 0.05 and toTarget.Unit or Vector3.new(0, 1, 0)
-					local throwSpeed = math.clamp(dist * 3.8 * speed, 55 * speed, 165 * speed)
-					local arcBoost = 16 * speed
-					local reThrowWave = math.sin((jailClock * 11 * speed) + i + throwPulseIndex) * 14 * speed
-					part.AssemblyLinearVelocity = (dir * throwSpeed) + Vector3.new(reThrowWave, arcBoost, -reThrowWave)
-					part.AssemblyAngularVelocity = Vector3.new(
-						28 * speed * ((i % 2 == 0) and 1 or -1),
-						24 * speed,
-						28 * speed
-					)
+					local throwSpeed = math.clamp(dist * 3.5 * speed, 50 * speed, 145 * speed)
+					part.AssemblyLinearVelocity = (dir * throwSpeed) + Vector3.new(0, 14 * speed, 0)
+					part.AssemblyAngularVelocity = Vector3.new(20 * speed, 18 * speed, 20 * speed)
 				elseif mode == "PullToTarget" then
-					local anchorPos = targetRoot and targetRoot.Position or Vector3.zero
 					local angle = jailClock * (2.2 * speed) + (i * 0.7)
-					local desiredPos = anchorPos + Vector3.new(math.cos(angle) * 2.2, 1.5 + (i % 3), math.sin(angle) * 2.2)
-					local delta = desiredPos - part.Position
-					part.AssemblyLinearVelocity = delta * (14 * speed)
+					local desiredPos = targetPos + Vector3.new(math.cos(angle) * 2.2, 1.5 + (i % 3), math.sin(angle) * 2.2)
+					part.AssemblyLinearVelocity = (desiredPos - part.Position) * (12 * speed)
 				elseif mode == "RopeBreak" then
-					local pullDir = (myRoot and (myRoot.Position - part.Position) or Vector3.new(0, 12, 0))
+					local pullDir = myPos - part.Position
 					local unitDir = pullDir.Magnitude > 0.1 and pullDir.Unit or Vector3.new(0, 1, 0)
-					local yank = unitDir * (75 * speed) + Vector3.new(
-						math.sin(jailClock * 55 * speed + i) * 45 * speed,
-						40 * speed,
-						math.cos(jailClock * 55 * speed + i) * 45 * speed
+					part.AssemblyLinearVelocity = unitDir * (65 * speed) + Vector3.new(
+						math.sin(jailClock * 34 * speed + i) * 28 * speed,
+						30 * speed,
+						math.cos(jailClock * 34 * speed + i) * 28 * speed
 					)
-					part.AssemblyLinearVelocity = yank
-					part.AssemblyAngularVelocity = Vector3.new(45 * speed, 45 * speed, 45 * speed)
+					part.AssemblyAngularVelocity = Vector3.new(24 * speed, 24 * speed, 24 * speed)
 				elseif mode == "AttackFall" then
-					local slamDir = Vector3.new(
-						math.sin(jailClock * 48 * speed + i) * 35 * speed,
-						-95 * speed,
-						math.cos(jailClock * 48 * speed + i) * 35 * speed
+					part.AssemblyLinearVelocity = Vector3.new(
+						math.sin(jailClock * 30 * speed + i) * 24 * speed,
+						-80 * speed,
+						math.cos(jailClock * 30 * speed + i) * 24 * speed
 					)
-					part.AssemblyLinearVelocity = slamDir
-					part.AssemblyAngularVelocity = Vector3.new(55 * speed, -45 * speed, 55 * speed)
+					part.AssemblyAngularVelocity = Vector3.new(26 * speed, -22 * speed, 26 * speed)
 				elseif mode == "CarryPart" then
-					local baseCf = myRoot and myRoot.CFrame or CFrame.new()
 					local col = (i - 1) % 3 - 1
 					local row = math.floor((i - 1) / 3) % 3
-					local carryPos = (baseCf * CFrame.new(col * 2.2, 1.2 + (row * 1.6), -4.5)).Position
-					local toCarry = carryPos - part.Position
-					part.AssemblyLinearVelocity = toCarry * (16 * speed)
+					local carryPos = (myCf * CFrame.new(col * 2.2, 1.2 + (row * 1.6), -4.5)).Position
+					part.AssemblyLinearVelocity = (carryPos - part.Position) * (14 * speed)
 					part.AssemblyAngularVelocity = Vector3.zero
 				end
 			end
 		end
 
-		local targetName = targetPlr and ("@" .. targetPlr.Name) or "Self"
-		local scanTag = CONFIG.JailFarScan and "Far" or "Near"
-		JailStatusLabel.Text = string.format("ON • %d part • %s • %s • %s", activeCount, scanTag, CONFIG.JailMode, targetName)
+		statusAccum += dt
+		if statusAccum >= 0.3 then
+			statusAccum = 0
+			local targetName = targetPlr and ("@" .. targetPlr.Name) or "Self"
+			local scanTag = CONFIG.JailFarScan and "Far" or "Near"
+			JailStatusLabel.Text = string.format("ON • %d part • %s • %s • %s", #scannedUnanchoredParts, scanTag, mode, targetName)
+		end
 	end)
 end
 
@@ -1570,7 +1623,7 @@ AboutText.Text = table.concat({
 	"",
 	"Fitur Aktif:",
 	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
-	"• JAIL        : Akses fisika unanchored part (Orbit, Shake, Throw, Pull, Rope, Fall, Carry, Far Scan, Search Player).",
+	"• JAIL        : Akses fisika unanchored part + laser beam (Orbit, Shake, Throw, Pull, Rope, Fall, Carry, Far Scan, Search Player).",
 	"• Settings    : Pengaturan warna tema GUI dan pilihan font secara langsung.",
 	"• About       : Informasi kreator dan versi tools.",
 }, "\n")
@@ -1618,7 +1671,6 @@ SettingsLayout.Padding = UDim.new(0, 8)
 SettingsLayout.SortOrder = Enum.SortOrder.LayoutOrder
 SettingsLayout.Parent = SettingsScroll
 
--- Bagian 1: Warna GUI
 local ColorSectionLabel = Instance.new("TextLabel")
 ColorSectionLabel.Size = UDim2.new(1, 0, 0, 14)
 ColorSectionLabel.BackgroundTransparency = 1
@@ -1663,7 +1715,6 @@ for idx, theme in ipairs(GUI_THEMES) do
 	table.insert(themeButtons, tBtn)
 end
 
--- Bagian 2: Pilihan Font
 local FontSectionLabel = Instance.new("TextLabel")
 FontSectionLabel.Size = UDim2.new(1, 0, 0, 14)
 FontSectionLabel.BackgroundTransparency = 1
@@ -1719,7 +1770,6 @@ applyThemeAndFont = function()
 	local theme = GUI_THEMES[CONFIG.ThemeIndex]
 	local fontPreset = FONT_PRESETS[CONFIG.FontIndex]
 
-	-- Update warna GUI
 	FloatStroke.Color = theme.accent
 	MainStroke.Color = theme.stroke
 	LogoStroke.Color = theme.stroke
@@ -1760,7 +1810,6 @@ applyThemeAndFont = function()
 		btn.Font = active and fontPreset.boldFont or fontPreset.font
 	end
 
-	-- Update font elemen teks utama
 	SubTitleLabel.Font = fontPreset.boldFont
 	TitleLabel.Font = fontPreset.boldFont
 	MetaLabel.Font = fontPreset.font
