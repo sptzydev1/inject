@@ -1,11 +1,12 @@
 --!strict
--- Plugin Studio Lite (Delta Executor Edition) by Ikyy
+-- Plugin Studio Lite (Delta Executor Edition - Create Place & Setting) by Ikyy
+-- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Hasil (Icon Game, Name Game, Status)
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
-local SoundService = game:GetService("SoundService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -15,120 +16,384 @@ if OLD_GUI then
 	OLD_GUI:Destroy()
 end
 
-local OLD_SOUND_GROUP = SoundService:FindFirstChild("IkyyStudioLite_MusicGroup")
-if OLD_SOUND_GROUP then
-	OLD_SOUND_GROUP:Destroy()
-end
-
 -- ==========================================
--- KONFIGURASI, TEMA & STATE
+-- KONFIGURASI & STATE
 -- ==========================================
-export type GuiTheme = {
-	name: string,
-	accent: Color3,
-	accentSoft: Color3,
-	stroke: Color3,
-	gradStart: Color3,
-	gradEnd: Color3,
-	eqEven: Color3,
-	eqOdd: Color3,
-}
-
-export type FontPreset = {
-	name: string,
-	font: Enum.Font,
-	boldFont: Enum.Font,
-}
-
-export type JailMode = "OrbitHead" | "ShakePart" | "GravityThrow" | "PullToTarget" | "RopeBreak" | "AttackFall" | "CarryPart"
-
-local GUI_THEMES: {GuiTheme} = {
-	{
-		name = "Violet Neon",
-		accent = Color3.fromRGB(108, 86, 245),
-		accentSoft = Color3.fromRGB(52, 46, 86),
-		stroke = Color3.fromRGB(92, 72, 168),
-		gradStart = Color3.fromRGB(22, 20, 34),
-		gradEnd = Color3.fromRGB(13, 12, 20),
-		eqEven = Color3.fromRGB(122, 98, 255),
-		eqOdd = Color3.fromRGB(80, 210, 255),
-	},
-	{
-		name = "Cyan Cyber",
-		accent = Color3.fromRGB(14, 165, 233),
-		accentSoft = Color3.fromRGB(22, 62, 86),
-		stroke = Color3.fromRGB(34, 150, 210),
-		gradStart = Color3.fromRGB(14, 24, 34),
-		gradEnd = Color3.fromRGB(10, 15, 22),
-		eqEven = Color3.fromRGB(34, 211, 238),
-		eqOdd = Color3.fromRGB(59, 130, 246),
-	},
-	{
-		name = "Magenta Glow",
-		accent = Color3.fromRGB(217, 70, 239),
-		accentSoft = Color3.fromRGB(82, 34, 92),
-		stroke = Color3.fromRGB(185, 68, 205),
-		gradStart = Color3.fromRGB(28, 16, 34),
-		gradEnd = Color3.fromRGB(16, 10, 22),
-		eqEven = Color3.fromRGB(232, 121, 249),
-		eqOdd = Color3.fromRGB(251, 113, 133),
-	},
-	{
-		name = "Crimson Dark",
-		accent = Color3.fromRGB(225, 29, 72),
-		accentSoft = Color3.fromRGB(84, 26, 40),
-		stroke = Color3.fromRGB(180, 48, 76),
-		gradStart = Color3.fromRGB(30, 15, 20),
-		gradEnd = Color3.fromRGB(16, 10, 14),
-		eqEven = Color3.fromRGB(244, 63, 94),
-		eqOdd = Color3.fromRGB(251, 146, 60),
-	},
-}
-
-local FONT_PRESETS: {FontPreset} = {
-	{ name = "Gotham", font = Enum.Font.GothamMedium, boldFont = Enum.Font.GothamBold },
-	{ name = "FredokaOne", font = Enum.Font.FredokaOne, boldFont = Enum.Font.FredokaOne },
-	{ name = "RobotoMono", font = Enum.Font.RobotoMono, boldFont = Enum.Font.RobotoMono },
-	{ name = "Arcade", font = Enum.Font.Arcade, boldFont = Enum.Font.Arcade },
-}
-
 local CONFIG = {
 	WorkspaceRoot = "IkyyStudioLite",
+	Cookie = "",
+	ApiKey = "",
 	IsMinimized = false,
-	ActiveTab = "Music",
-	ThemeIndex = 1,
-	FontIndex = 1,
-	JailEnabled = false,
-	JailMode = "OrbitHead" :: JailMode,
-	JailSpeed = 2.5,
-	JailTargetUserId = 0,
-	JailAnchorLocked = false,
-	JailFarScan = true,
-	PlayerSearchQuery = "",
+	ActiveTab = "CreatePlace",
+	UserAgent = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
 }
 
-export type MusicTrack = {
-	name: string,
-	songId: string,
-	playbackSpeed: number,
-}
-
-local DEFAULT_MUSIC_PLAYLIST: {MusicTrack} = {
-	{ name = "ONE NIGHT MORE", songId = "132909271866353", playbackSpeed = 1.0 },
-	{ name = "ALAMAK", songId = "135551858111362", playbackSpeed = 1.0 },
-	{ name = "TANTAE", songId = "116647235474599", playbackSpeed = 1.0 },
-	{ name = "INDO REMIX", songId = "16662832435", playbackSpeed = 1.0 },
-	{ name = "CHICA LOCA", songId = "127933835766961", playbackSpeed = 1.0 },
-	{ name = "BREAKBEAT 1", songId = "115259177751410", playbackSpeed = 1.0 },
-	{ name = "CINTAKU ISTIMEWAH", songId = "77152319144498", playbackSpeed = 1.0 },
-	{ name = "BLOODLINE MENGKANE", songId = "87291197916136", playbackSpeed = 1.0 },
-}
+local MEMORY_FILES: {[string]: string} = {}
 
 local WINDOW_SIZE = UDim2.fromOffset(540, 320)
 local WINDOW_POS = UDim2.new(0.5, -270, 0.5, -160)
 local ICON_SIZE = UDim2.fromOffset(42, 42)
 local ICON_DEFAULT_POS = UDim2.new(0.5, -21, 0.08, 0)
 local currentIconPos = ICON_DEFAULT_POS
+
+local function trim(s: string?): string
+	if type(s) ~= "string" then return "" end
+	return s:match("^%s*(.-)%s*$") or ""
+end
+
+local function normalizeCookie(rawCookie: string): string
+	local c = trim(rawCookie)
+	if c == "" then return "" end
+	c = c:gsub("^%.ROBLOSECURITY=", "")
+	c = c:gsub("[\r\n]+", "")
+	c = trim(c)
+	if c ~= "" and c:sub(-1) ~= ";" then
+		c = c .. ";"
+	end
+	return c
+end
+
+local function notify(title: string, text: string)
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = title,
+			Text = text,
+			Duration = 3,
+		})
+	end)
+end
+
+-- ==========================================
+-- DELTA EXECUTOR ENVIRONMENT BRIDGE
+-- ==========================================
+local function getEnvTable(): {[string]: any}
+	local env: {[string]: any} = {}
+	pcall(function()
+		if type(getgenv) == "function" then
+			local g = getgenv()
+			if type(g) == "table" then
+				for k, v in pairs(g) do
+					env[k] = v
+				end
+			end
+		end
+	end)
+	pcall(function()
+		local f = getfenv(0)
+		if type(f) == "table" then
+			for k, v in pairs(f) do
+				if env[k] == nil then
+					env[k] = v
+				end
+			end
+		end
+	end)
+	return env
+end
+
+local ENV = getEnvTable()
+
+local function getDeltaHttpFunc()
+	local candidates = {
+		ENV.request,
+		ENV.http_request,
+		type(ENV.syn) == "table" and ENV.syn.request or nil,
+		type(ENV.http) == "table" and ENV.http.request or nil,
+		type(ENV.fluxus) == "table" and ENV.fluxus.request or nil,
+		type(ENV.delta) == "table" and ENV.delta.request or nil,
+	}
+	for _, fn in ipairs(candidates) do
+		if type(fn) == "function" then
+			return fn
+		end
+	end
+	return nil
+end
+
+local fnWriteFile = type(ENV.writefile) == "function" and ENV.writefile or nil
+local fnReadFile = type(ENV.readfile) == "function" and ENV.readfile or nil
+local fnIsFile = type(ENV.isfile) == "function" and ENV.isfile or nil
+local fnIsFolder = type(ENV.isfolder) == "function" and ENV.isfolder or nil
+local fnMakeFolder = type(ENV.makefolder) == "function" and ENV.makefolder or nil
+
+local function ensureFolders()
+	if not fnMakeFolder then return end
+	local folders = {
+		CONFIG.WorkspaceRoot,
+		CONFIG.WorkspaceRoot .. "/Logs",
+	}
+	for _, folder in ipairs(folders) do
+		local exists = false
+		if fnIsFolder then
+			local okChk, resChk = pcall(fnIsFolder, folder)
+			exists = okChk and (resChk == true)
+		end
+		if not exists then
+			pcall(fnMakeFolder, folder)
+		end
+	end
+end
+
+local function normalizeWorkspaceRelPath(rawPath: string): string
+	local p = rawPath:gsub("\\", "/"):gsub("^%./", "")
+	local rootPrefix = CONFIG.WorkspaceRoot .. "/"
+	if p:sub(1, #rootPrefix) == rootPrefix then
+		p = p:sub(#rootPrefix + 1)
+	end
+	return p:gsub("^/+", "")
+end
+
+local function saveTextFile(relPath: string, content: string): boolean
+	local cleanRel = normalizeWorkspaceRelPath(relPath)
+	local fullPath = CONFIG.WorkspaceRoot .. "/" .. cleanRel
+	MEMORY_FILES[cleanRel] = content
+	MEMORY_FILES[fullPath] = content
+
+	if not fnWriteFile then
+		return true
+	end
+
+	ensureFolders()
+	local ok = pcall(fnWriteFile, fullPath, content)
+	return ok
+end
+
+local function loadTextFile(relPath: string): string?
+	local cleanRel = normalizeWorkspaceRelPath(relPath)
+	local candidates = {
+		CONFIG.WorkspaceRoot .. "/" .. cleanRel,
+		cleanRel,
+	}
+
+	if fnReadFile then
+		for _, fullPath in ipairs(candidates) do
+			local canRead = true
+			if fnIsFile then
+				local okChk, exists = pcall(fnIsFile, fullPath)
+				canRead = okChk and (exists == true)
+			end
+			if canRead then
+				local okRead, res = pcall(fnReadFile, fullPath)
+				if okRead and type(res) == "string" then
+					return res
+				end
+			end
+		end
+	end
+
+	for _, key in ipairs(candidates) do
+		if type(MEMORY_FILES[key]) == "string" then
+			return MEMORY_FILES[key]
+		end
+	end
+	if type(MEMORY_FILES[cleanRel]) == "string" then
+		return MEMORY_FILES[cleanRel]
+	end
+	return nil
+end
+
+local savedCookie = loadTextFile("cookie.txt")
+local savedApiKey = loadTextFile("apikey.txt")
+if savedCookie and trim(savedCookie) ~= "" then CONFIG.Cookie = normalizeCookie(savedCookie) end
+if savedApiKey and trim(savedApiKey) ~= "" then CONFIG.ApiKey = trim(savedApiKey) end
+
+local function apiRequest(options: {
+	Url: string,
+	Method: string?,
+	Headers: {[string]: string}?,
+	Body: string?,
+	Retries: number?,
+})
+	local reqFn = getDeltaHttpFunc()
+	if not reqFn then
+		return nil, false, "HTTP function tidak tersedia di executor"
+	end
+
+	local maxAttempts = math.max(1, options.Retries or 1)
+	local baseHeaders: {[string]: string} = {
+		["User-Agent"] = CONFIG.UserAgent,
+	}
+	if options.Headers then
+		for k, v in pairs(options.Headers) do
+			baseHeaders[k] = v
+		end
+	end
+
+	local lastRes = nil
+	local lastOk = false
+	local lastErr = "Tidak ada respons"
+
+	for attempt = 1, maxAttempts do
+		local ok, res = pcall(reqFn, {
+			Url = options.Url,
+			Method = options.Method or "GET",
+			Headers = baseHeaders,
+			Body = options.Body,
+		})
+		if ok and type(res) == "table" then
+			lastRes = res
+			local code = tonumber(res.StatusCode or res.Status or res.status_code) or 0
+			lastOk = (code >= 200 and code < 300)
+			if lastOk then
+				return res, true, "HTTP " .. tostring(code)
+			end
+			lastErr = "HTTP " .. tostring(code)
+			if code == 400 or code == 401 or code == 403 or code == 404 then
+				return res, false, lastErr
+			end
+		else
+			lastErr = tostring(res)
+		end
+		if attempt < maxAttempts then
+			task.wait(0.6)
+		end
+	end
+
+	return lastRes, lastOk, lastErr
+end
+
+local function getHeaderCaseInsensitive(headers: any, targetKey: string): string?
+	if type(headers) ~= "table" then return nil end
+	local lowerTarget = targetKey:lower()
+	for k, v in pairs(headers) do
+		if type(k) == "string" and k:lower() == lowerTarget then
+			return tostring(v)
+		end
+	end
+	return nil
+end
+
+-- ==========================================
+-- HELPER INFO & ICON GAME
+-- ==========================================
+export type GameResultCardData = {
+	iconImage: string,
+	gameName: string,
+	status: "publik" | "private",
+	metaInfo: string,
+	isError: boolean?,
+}
+
+local function fetchGameIconUrl(universeId: string, rootPlaceId: string?): string
+	local fallback = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+
+	-- Coba ambil thumbnail icon Universe
+	local uRes, uOk = apiRequest({
+		Url = string.format("https://thumbnails.roblox.com/v1/games/icons?universeIds=%s&size=150x150&format=Png&isCircular=false", universeId),
+		Method = "GET",
+		Retries = 1,
+	})
+	if uOk and uRes and uRes.Body then
+		local okDec, decoded = pcall(function()
+			return HttpService:JSONDecode(tostring(uRes.Body))
+		end)
+		if okDec and type(decoded) == "table" and type(decoded.data) == "table" and type(decoded.data[1]) == "table" then
+			local imgUrl = decoded.data[1].imageUrl
+			if type(imgUrl) == "string" and imgUrl ~= "" then
+				return imgUrl
+			end
+		end
+	end
+
+	-- Fallback ke thumbnail place jika rootPlaceId tersedia
+	if rootPlaceId and rootPlaceId ~= "" then
+		local pRes, pOk = apiRequest({
+			Url = string.format("https://thumbnails.roblox.com/v1/places/gameicons?placeIds=%s&size=150x150&format=Png&isCircular=false", rootPlaceId),
+			Method = "GET",
+			Retries = 1,
+		})
+		if pOk and pRes and pRes.Body then
+			local okDec, decoded = pcall(function()
+				return HttpService:JSONDecode(tostring(pRes.Body))
+			end)
+			if okDec and type(decoded) == "table" and type(decoded.data) == "table" and type(decoded.data[1]) == "table" then
+				local imgUrl = decoded.data[1].imageUrl
+				if type(imgUrl) == "string" and imgUrl ~= "" then
+					return imgUrl
+				end
+			end
+		end
+	end
+
+	return fallback
+end
+
+local function fetchCreatedGameCardData(universeId: string, cookieVal: string): GameResultCardData
+	local cleanUniv = trim(universeId):match("%d+") or ""
+	local nameVal: string? = nil
+	local statusVal: "publik" | "private" = "private"
+	local rootPlaceId: string? = nil
+
+	local devHeaders: {[string]: string} = {}
+	if trim(cookieVal) ~= "" then
+		devHeaders["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal)
+	end
+
+	local devRes, devOk = apiRequest({
+		Url = "https://develop.roblox.com/v1/universes/" .. cleanUniv,
+		Method = "GET",
+		Headers = devHeaders,
+		Retries = 1,
+	})
+
+	if devOk and devRes and devRes.Body then
+		local okDec, decoded = pcall(function()
+			return HttpService:JSONDecode(tostring(devRes.Body))
+		end)
+		if okDec and type(decoded) == "table" then
+			if type(decoded.name) == "string" and trim(decoded.name) ~= "" then
+				nameVal = trim(decoded.name)
+			end
+			if type(decoded.isActive) == "boolean" then
+				statusVal = decoded.isActive and "publik" or "private"
+			elseif type(decoded.privacyType) == "string" then
+				local pLow = decoded.privacyType:lower()
+				if pLow:find("public") or pLow:find("open") then
+					statusVal = "publik"
+				else
+					statusVal = "private"
+				end
+			end
+			if decoded.rootPlaceId ~= nil and tostring(decoded.rootPlaceId):match("%d+") then
+				rootPlaceId = tostring(decoded.rootPlaceId):match("%d+")
+			end
+		end
+	end
+
+	local gameRes, gameOk = apiRequest({
+		Url = "https://games.roblox.com/v1/games?universeIds=" .. cleanUniv,
+		Method = "GET",
+		Retries = 1,
+	})
+
+	if gameOk and gameRes and gameRes.Body then
+		local okDec, decoded = pcall(function()
+			return HttpService:JSONDecode(tostring(gameRes.Body))
+		end)
+		if okDec and type(decoded) == "table" and type(decoded.data) == "table" and type(decoded.data[1]) == "table" then
+			local g = decoded.data[1]
+			if not nameVal and type(g.name) == "string" and trim(g.name) ~= "" then
+				nameVal = trim(g.name)
+			end
+			if g.rootPlaceId ~= nil and tostring(g.rootPlaceId):match("%d+") then
+				rootPlaceId = tostring(g.rootPlaceId):match("%d+")
+			end
+			statusVal = "publik"
+		end
+	end
+
+	local finalName = nameVal or ("Place #" .. cleanUniv)
+	local iconUrl = fetchGameIconUrl(cleanUniv, rootPlaceId)
+	local metaStr = "Universe ID: " .. cleanUniv .. (rootPlaceId and (" • Place ID: " .. rootPlaceId) or "")
+
+	return {
+		iconImage = iconUrl,
+		gameName = finalName,
+		status = statusVal,
+		metaInfo = metaStr,
+		isError = false,
+	}
+end
 
 local function getUserAvatarAsync(userId: number): string
 	local ok, content = pcall(function()
@@ -217,7 +482,7 @@ LogoStroke.Thickness = 1
 local LogoIcon = Instance.new("TextLabel")
 LogoIcon.Size = UDim2.fromScale(1, 1)
 LogoIcon.BackgroundTransparency = 1
-LogoIcon.Text = "🎵"
+LogoIcon.Text = "🏗"
 LogoIcon.TextColor3 = Color3.fromRGB(215, 210, 255)
 LogoIcon.TextSize = 14
 LogoIcon.Font = Enum.Font.GothamBold
@@ -227,7 +492,7 @@ local SubTitleLabel = Instance.new("TextLabel")
 SubTitleLabel.Size = UDim2.new(0, 230, 0, 11)
 SubTitleLabel.Position = UDim2.new(0, 48, 0, 5)
 SubTitleLabel.BackgroundTransparency = 1
-SubTitleLabel.Text = "IKYYSTUDIO • DELTA EDITION"
+SubTitleLabel.Text = "IKYYSTUDIO • CREATE PLACE"
 SubTitleLabel.TextColor3 = Color3.fromRGB(130, 126, 155)
 SubTitleLabel.TextSize = 8
 SubTitleLabel.Font = Enum.Font.GothamBold
@@ -249,7 +514,7 @@ local MetaLabel = Instance.new("TextLabel")
 MetaLabel.Size = UDim2.new(0, 240, 0, 11)
 MetaLabel.Position = UDim2.new(0, 48, 0, 31)
 MetaLabel.BackgroundTransparency = 1
-MetaLabel.Text = "by Ikyy • v1.4.0 • @" .. LocalPlayer.Name
+MetaLabel.Text = "by Ikyy • Create Place • @" .. LocalPlayer.Name
 MetaLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
 MetaLabel.TextSize = 8
 MetaLabel.Font = Enum.Font.GothamMedium
@@ -365,7 +630,7 @@ CloseCircleBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- SIDEBAR KIRI
+-- SIDEBAR KIRI (HANYA CREATE PLACE & SETTING)
 -- ==========================================
 local Sidebar = Instance.new("Frame")
 Sidebar.Name = "Sidebar"
@@ -379,38 +644,33 @@ local SideStroke = Instance.new("UIStroke", Sidebar)
 SideStroke.Color = Color3.fromRGB(52, 48, 82)
 SideStroke.Thickness = 1
 
-local NavScroll = Instance.new("ScrollingFrame")
-NavScroll.Size = UDim2.new(1, -10, 1, -10)
-NavScroll.Position = UDim2.new(0, 5, 0, 5)
-NavScroll.BackgroundTransparency = 1
-NavScroll.BorderSizePixel = 0
-NavScroll.ScrollBarThickness = 2
-NavScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-NavScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-NavScroll.Parent = Sidebar
+local NavListFrame = Instance.new("Frame")
+NavListFrame.Size = UDim2.new(1, -10, 1, -10)
+NavListFrame.Position = UDim2.new(0, 5, 0, 5)
+NavListFrame.BackgroundTransparency = 1
+NavListFrame.Parent = Sidebar
 
 local NavLayout = Instance.new("UIListLayout")
-NavLayout.Padding = UDim.new(0, 4)
+NavLayout.Padding = UDim.new(0, 6)
 NavLayout.SortOrder = Enum.SortOrder.LayoutOrder
-NavLayout.Parent = NavScroll
+NavLayout.Parent = NavListFrame
 
 local tabPages: {[string]: Frame} = {}
 local tabButtons: {[string]: TextButton} = {}
-local applyThemeAndFont: () -> () = function() end
 
 local function createNavButton(name: string, label: string, order: number)
 	local btn = Instance.new("TextButton")
 	btn.Name = "Nav_" .. name
-	btn.Size = UDim2.new(1, 0, 0, 32)
+	btn.Size = UDim2.new(1, 0, 0, 36)
 	btn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
 	btn.Text = "  " .. label
 	btn.TextColor3 = Color3.fromRGB(185, 182, 210)
 	btn.TextSize = 10
-	btn.Font = Enum.Font.GothamMedium
+	btn.Font = Enum.Font.GothamBold
 	btn.TextXAlignment = Enum.TextXAlignment.Left
 	btn.LayoutOrder = order
 	btn.AutoButtonColor = false
-	btn.Parent = NavScroll
+	btn.Parent = NavListFrame
 	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
 	tabButtons[name] = btn
 	return btn
@@ -436,1375 +696,507 @@ local function switchTab(tabName: string)
 	for name, page in pairs(tabPages) do
 		page.Visible = (name == tabName)
 	end
-	applyThemeAndFont()
-end
-
--- ==========================================
--- HALAMAN 1: MUSIC PLAYER (EQUALIZER + LOOP LOADING + VOLUME + << / ▶⏸ / >>)
--- ==========================================
-local MusicPage = Instance.new("Frame")
-MusicPage.Size = UDim2.fromScale(1, 1)
-MusicPage.BackgroundTransparency = 1
-MusicPage.Visible = true
-MusicPage.Parent = ContentArea
-tabPages["Music"] = MusicPage
-
-local MusicTrackLabel = Instance.new("TextLabel")
-MusicTrackLabel.Size = UDim2.new(1, -24, 0, 15)
-MusicTrackLabel.Position = UDim2.new(0, 12, 0, 4)
-MusicTrackLabel.BackgroundTransparency = 1
-MusicTrackLabel.Text = "♪ " .. DEFAULT_MUSIC_PLAYLIST[1].name .. " (" .. DEFAULT_MUSIC_PLAYLIST[1].songId .. ")"
-MusicTrackLabel.TextColor3 = Color3.fromRGB(245, 245, 255)
-MusicTrackLabel.TextSize = 11
-MusicTrackLabel.Font = Enum.Font.GothamBold
-MusicTrackLabel.TextTruncate = Enum.TextTruncate.AtEnd
-MusicTrackLabel.Parent = MusicPage
-
-local MusicStatusLabel = Instance.new("TextLabel")
-MusicStatusLabel.Size = UDim2.new(1, -24, 0, 12)
-MusicStatusLabel.Position = UDim2.new(0, 12, 0, 19)
-MusicStatusLabel.BackgroundTransparency = 1
-MusicStatusLabel.Text = "Siap diputar • Vol: 50%"
-MusicStatusLabel.TextColor3 = Color3.fromRGB(150, 146, 182)
-MusicStatusLabel.TextSize = 8
-MusicStatusLabel.Font = Enum.Font.GothamMedium
-MusicStatusLabel.Parent = MusicPage
-
--- Equalizer di tengah sesuai beat musik
-local EqFrame = Instance.new("Frame")
-EqFrame.Name = "EqualizerFrame"
-EqFrame.Size = UDim2.new(1, -24, 0, 44)
-EqFrame.Position = UDim2.new(0, 12, 0, 34)
-EqFrame.BackgroundColor3 = Color3.fromRGB(13, 12, 21)
-EqFrame.BorderSizePixel = 0
-EqFrame.Parent = MusicPage
-Instance.new("UICorner", EqFrame).CornerRadius = UDim.new(0, 8)
-local EqStroke = Instance.new("UIStroke", EqFrame)
-EqStroke.Color = Color3.fromRGB(64, 56, 108)
-EqStroke.Thickness = 1
-
-local EqBarsContainer = Instance.new("Frame")
-EqBarsContainer.Size = UDim2.new(0, 220, 0, 32)
-EqBarsContainer.Position = UDim2.new(0.5, -110, 0.5, -16)
-EqBarsContainer.BackgroundTransparency = 1
-EqBarsContainer.Parent = EqFrame
-
-local eqBars: {Frame} = {}
-local eqBarCount = 14
-local eqGap = 4
-local eqBarW = math.floor((220 - (eqGap * (eqBarCount - 1))) / eqBarCount)
-
-for i = 1, eqBarCount do
-	local bar = Instance.new("Frame")
-	bar.Size = UDim2.fromOffset(eqBarW, 6)
-	bar.Position = UDim2.fromOffset((i - 1) * (eqBarW + eqGap), 26)
-	bar.BackgroundColor3 = (i % 2 == 0) and Color3.fromRGB(122, 98, 255) or Color3.fromRGB(80, 210, 255)
-	bar.BorderSizePixel = 0
-	bar.Parent = EqBarsContainer
-	Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-	table.insert(eqBars, bar)
-end
-
--- Loop loading bar
-local MusicLoadTrack = Instance.new("Frame")
-MusicLoadTrack.Size = UDim2.new(1, -24, 0, 5)
-MusicLoadTrack.Position = UDim2.new(0, 12, 0, 82)
-MusicLoadTrack.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
-MusicLoadTrack.BorderSizePixel = 0
-MusicLoadTrack.Parent = MusicPage
-Instance.new("UICorner", MusicLoadTrack).CornerRadius = UDim.new(1, 0)
-
-local MusicLoadFill = Instance.new("Frame")
-MusicLoadFill.Size = UDim2.new(0.25, 0, 1, 0)
-MusicLoadFill.BackgroundColor3 = Color3.fromRGB(96, 165, 250)
-MusicLoadFill.BorderSizePixel = 0
-MusicLoadFill.Parent = MusicLoadTrack
-Instance.new("UICorner", MusicLoadFill).CornerRadius = UDim.new(1, 0)
-
--- Slider volume kanan-kiri
-local VolumeRow = Instance.new("Frame")
-VolumeRow.Size = UDim2.new(1, -24, 0, 20)
-VolumeRow.Position = UDim2.new(0, 12, 0, 91)
-VolumeRow.BackgroundTransparency = 1
-VolumeRow.Parent = MusicPage
-
-local VolLabel = Instance.new("TextLabel")
-VolLabel.Size = UDim2.new(0, 74, 1, 0)
-VolLabel.BackgroundTransparency = 1
-VolLabel.Text = "🔊 Vol: 50%"
-VolLabel.TextColor3 = Color3.fromRGB(205, 202, 230)
-VolLabel.TextSize = 9
-VolLabel.Font = Enum.Font.GothamBold
-VolLabel.TextXAlignment = Enum.TextXAlignment.Left
-VolLabel.Parent = VolumeRow
-
-local VolSliderBg = Instance.new("Frame")
-VolSliderBg.Size = UDim2.new(1, -80, 0, 8)
-VolSliderBg.Position = UDim2.new(0, 78, 0.5, -4)
-VolSliderBg.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
-VolSliderBg.BorderSizePixel = 0
-VolSliderBg.Parent = VolumeRow
-Instance.new("UICorner", VolSliderBg).CornerRadius = UDim.new(1, 0)
-
-local VolSliderFill = Instance.new("Frame")
-VolSliderFill.Size = UDim2.new(0.5, 0, 1, 0)
-VolSliderFill.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-VolSliderFill.BorderSizePixel = 0
-VolSliderFill.Parent = VolSliderBg
-Instance.new("UICorner", VolSliderFill).CornerRadius = UDim.new(1, 0)
-
-local VolKnob = Instance.new("TextButton")
-VolKnob.Size = UDim2.fromOffset(14, 14)
-VolKnob.Position = UDim2.new(0.5, -7, 0.5, -7)
-VolKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-VolKnob.Text = ""
-VolKnob.AutoButtonColor = false
-VolKnob.Parent = VolSliderBg
-Instance.new("UICorner", VolKnob).CornerRadius = UDim.new(1, 0)
-
--- Tombol kontrol: kiri (<<), tengah (Play/Jeda), kanan (>>)
-local ControlsRow = Instance.new("Frame")
-ControlsRow.Size = UDim2.new(1, -24, 0, 26)
-ControlsRow.Position = UDim2.new(0, 12, 0, 114)
-ControlsRow.BackgroundTransparency = 1
-ControlsRow.Parent = MusicPage
-
-local PrevTrackBtn = Instance.new("TextButton")
-PrevTrackBtn.Size = UDim2.new(0.28, -4, 1, 0)
-PrevTrackBtn.Position = UDim2.new(0, 0, 0, 0)
-PrevTrackBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
-PrevTrackBtn.Text = "<<"
-PrevTrackBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-PrevTrackBtn.TextSize = 11
-PrevTrackBtn.Font = Enum.Font.GothamBold
-PrevTrackBtn.Parent = ControlsRow
-Instance.new("UICorner", PrevTrackBtn).CornerRadius = UDim.new(0, 7)
-
-local PlayPauseBtn = Instance.new("TextButton")
-PlayPauseBtn.Size = UDim2.new(0.44, -4, 1, 0)
-PlayPauseBtn.Position = UDim2.new(0.28, 2, 0, 0)
-PlayPauseBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-PlayPauseBtn.Text = "▶ PLAY"
-PlayPauseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-PlayPauseBtn.TextSize = 10
-PlayPauseBtn.Font = Enum.Font.GothamBold
-PlayPauseBtn.Parent = ControlsRow
-Instance.new("UICorner", PlayPauseBtn).CornerRadius = UDim.new(0, 7)
-
-local NextTrackBtn = Instance.new("TextButton")
-NextTrackBtn.Size = UDim2.new(0.28, -4, 1, 0)
-NextTrackBtn.Position = UDim2.new(0.72, 2, 0, 0)
-NextTrackBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
-NextTrackBtn.Text = ">>"
-NextTrackBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-NextTrackBtn.TextSize = 11
-NextTrackBtn.Font = Enum.Font.GothamBold
-NextTrackBtn.Parent = ControlsRow
-Instance.new("UICorner", NextTrackBtn).CornerRadius = UDim.new(0, 7)
-
--- List Musik
-local PlaylistScroll = Instance.new("ScrollingFrame")
-PlaylistScroll.Size = UDim2.new(1, -24, 0, 108)
-PlaylistScroll.Position = UDim2.new(0, 12, 0, 144)
-PlaylistScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-PlaylistScroll.BorderSizePixel = 0
-PlaylistScroll.ScrollBarThickness = 3
-PlaylistScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-PlaylistScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-PlaylistScroll.Parent = MusicPage
-Instance.new("UICorner", PlaylistScroll).CornerRadius = UDim.new(0, 7)
-local PlStroke = Instance.new("UIStroke", PlaylistScroll)
-PlStroke.Color = Color3.fromRGB(48, 44, 74)
-PlStroke.Thickness = 1
-
-local PlLayout = Instance.new("UIListLayout")
-PlLayout.Padding = UDim.new(0, 3)
-PlLayout.SortOrder = Enum.SortOrder.LayoutOrder
-PlLayout.Parent = PlaylistScroll
-
-local PlPad = Instance.new("UIPadding")
-PlPad.PaddingTop = UDim.new(0, 4)
-PlPad.PaddingBottom = UDim.new(0, 4)
-PlPad.PaddingLeft = UDim.new(0, 4)
-PlPad.PaddingRight = UDim.new(0, 4)
-PlPad.Parent = PlaylistScroll
-
-local MusicGroup = Instance.new("SoundGroup")
-MusicGroup.Name = "IkyyStudioLite_MusicGroup"
-MusicGroup.Volume = 0.5
-MusicGroup.Parent = SoundService
-
-local MusicSound = Instance.new("Sound")
-MusicSound.Name = "IkyyStudioLite_TrackSound"
-MusicSound.SoundGroup = MusicGroup
-MusicSound.Looped = true
-MusicSound.Parent = MusicGroup
-
-local currentTrackIndex = 1
-local isPlayingMusic = false
-local isLoadingTrack = false
-local currentVolumeRatio = 0.5
-
-local function applyVolume(ratio: number)
-	currentVolumeRatio = math.clamp(ratio, 0, 1)
-	MusicGroup.Volume = currentVolumeRatio
-	MusicSound.Volume = currentVolumeRatio
-	VolSliderFill.Size = UDim2.new(currentVolumeRatio, 0, 1, 0)
-	VolKnob.Position = UDim2.new(currentVolumeRatio, -7, 0.5, -7)
-	local pct = math.floor(currentVolumeRatio * 100 + 0.5)
-	VolLabel.Text = "🔊 Vol: " .. tostring(pct) .. "%"
-	if not isLoadingTrack then
-		MusicStatusLabel.Text = (isPlayingMusic and "Memutar" or "Dijeda") .. " • Vol: " .. tostring(pct) .. "%"
+	for name, btn in pairs(tabButtons) do
+		local active = (name == tabName)
+		btn.BackgroundColor3 = active and Color3.fromRGB(45, 42, 68) or Color3.fromRGB(28, 27, 42)
+		btn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(185, 182, 210)
 	end
 end
 
-local function renderMusicPlaylist()
-	local theme = GUI_THEMES[CONFIG.ThemeIndex]
-	local fontPreset = FONT_PRESETS[CONFIG.FontIndex]
+-- ==========================================
+-- HALAMAN 1: CREATE PLACE
+-- ==========================================
+local CreatePlacePage = Instance.new("Frame")
+CreatePlacePage.Size = UDim2.fromScale(1, 1)
+CreatePlacePage.BackgroundTransparency = 1
+CreatePlacePage.Visible = true
+CreatePlacePage.Parent = ContentArea
+tabPages["CreatePlace"] = CreatePlacePage
 
-	for _, child in ipairs(PlaylistScroll:GetChildren()) do
-		if child:IsA("TextButton") then
+local PageTitle = Instance.new("TextLabel")
+PageTitle.Size = UDim2.new(1, -24, 0, 16)
+PageTitle.Position = UDim2.new(0, 12, 0, 4)
+PageTitle.BackgroundTransparency = 1
+PageTitle.Text = "Create Place"
+PageTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+PageTitle.TextSize = 12
+PageTitle.Font = Enum.Font.GothamBold
+PageTitle.TextXAlignment = Enum.TextXAlignment.Left
+PageTitle.Parent = CreatePlacePage
+
+local TemplateIdBox = Instance.new("TextBox")
+TemplateIdBox.Size = UDim2.new(0.38, -12, 0, 22)
+TemplateIdBox.Position = UDim2.new(0, 12, 0, 23)
+TemplateIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+TemplateIdBox.Text = "95206881"
+TemplateIdBox.PlaceholderText = "Template ID"
+TemplateIdBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+TemplateIdBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+TemplateIdBox.TextSize = 10
+TemplateIdBox.Font = Enum.Font.Gotham
+TemplateIdBox.ClearTextOnFocus = false
+TemplateIdBox.Parent = CreatePlacePage
+Instance.new("UICorner", TemplateIdBox).CornerRadius = UDim.new(0, 6)
+
+local GroupIdBox = Instance.new("TextBox")
+GroupIdBox.Size = UDim2.new(0.34, -8, 0, 22)
+GroupIdBox.Position = UDim2.new(0.38, 2, 0, 23)
+GroupIdBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+GroupIdBox.Text = ""
+GroupIdBox.PlaceholderText = "Group ID (opsional)"
+GroupIdBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+GroupIdBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+GroupIdBox.TextSize = 10
+GroupIdBox.Font = Enum.Font.Gotham
+GroupIdBox.ClearTextOnFocus = false
+GroupIdBox.Parent = CreatePlacePage
+Instance.new("UICorner", GroupIdBox).CornerRadius = UDim.new(0, 6)
+
+local PlaceCountBox = Instance.new("TextBox")
+PlaceCountBox.Size = UDim2.new(0.28, -10, 0, 22)
+PlaceCountBox.Position = UDim2.new(0.72, 0, 0, 23)
+PlaceCountBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+PlaceCountBox.Text = "1"
+PlaceCountBox.PlaceholderText = "Jumlah"
+PlaceCountBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+PlaceCountBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+PlaceCountBox.TextSize = 10
+PlaceCountBox.Font = Enum.Font.Gotham
+PlaceCountBox.ClearTextOnFocus = false
+PlaceCountBox.Parent = CreatePlacePage
+Instance.new("UICorner", PlaceCountBox).CornerRadius = UDim.new(0, 6)
+
+local CreatePlaceBtn = Instance.new("TextButton")
+CreatePlaceBtn.Size = UDim2.new(1, -24, 0, 25)
+CreatePlaceBtn.Position = UDim2.new(0, 12, 0, 49)
+CreatePlaceBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+CreatePlaceBtn.Text = "🏗  CREATE PLACE"
+CreatePlaceBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CreatePlaceBtn.TextSize = 10
+CreatePlaceBtn.Font = Enum.Font.GothamBold
+CreatePlaceBtn.Parent = CreatePlacePage
+Instance.new("UICorner", CreatePlaceBtn).CornerRadius = UDim.new(0, 7)
+
+-- Progress Bar
+local ProgressTrack = Instance.new("Frame")
+ProgressTrack.Size = UDim2.new(1, -24, 0, 4)
+ProgressTrack.Position = UDim2.new(0, 12, 0, 78)
+ProgressTrack.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
+ProgressTrack.BorderSizePixel = 0
+ProgressTrack.Parent = CreatePlacePage
+Instance.new("UICorner", ProgressTrack).CornerRadius = UDim.new(1, 0)
+
+local ProgressFill = Instance.new("Frame")
+ProgressFill.Size = UDim2.new(0, 0, 1, 0)
+ProgressFill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
+ProgressFill.BorderSizePixel = 0
+ProgressFill.Parent = ProgressTrack
+Instance.new("UICorner", ProgressFill).CornerRadius = UDim.new(1, 0)
+
+local StatusBanner = Instance.new("TextLabel")
+StatusBanner.Size = UDim2.new(1, -24, 0, 14)
+StatusBanner.Position = UDim2.new(0, 12, 0, 84)
+StatusBanner.BackgroundTransparency = 1
+StatusBanner.Text = "Siap membuat place."
+StatusBanner.TextColor3 = Color3.fromRGB(165, 162, 192)
+StatusBanner.TextSize = 9
+StatusBanner.Font = Enum.Font.GothamMedium
+StatusBanner.TextXAlignment = Enum.TextXAlignment.Left
+StatusBanner.TextTruncate = Enum.TextTruncate.AtEnd
+StatusBanner.Parent = CreatePlacePage
+
+-- Area Hasil Format: [Icon Game (ukuran sedang)] | [Name Game] | [Status: private / publik]
+local ResultsScroll = Instance.new("ScrollingFrame")
+ResultsScroll.Name = "CreatedGamesResults"
+ResultsScroll.Size = UDim2.new(1, -24, 1, -106)
+ResultsScroll.Position = UDim2.new(0, 12, 0, 100)
+ResultsScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+ResultsScroll.BorderSizePixel = 0
+ResultsScroll.ScrollBarThickness = 3
+ResultsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ResultsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ResultsScroll.Parent = CreatePlacePage
+Instance.new("UICorner", ResultsScroll).CornerRadius = UDim.new(0, 8)
+local ResStroke = Instance.new("UIStroke", ResultsScroll)
+ResStroke.Color = Color3.fromRGB(52, 48, 82)
+ResStroke.Thickness = 1
+
+local ResultsLayout = Instance.new("UIListLayout")
+ResultsLayout.Padding = UDim.new(0, 6)
+ResultsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ResultsLayout.Parent = ResultsScroll
+
+local ResultsPad = Instance.new("UIPadding")
+ResultsPad.PaddingTop = UDim.new(0, 6)
+ResultsPad.PaddingBottom = UDim.new(0, 6)
+ResultsPad.PaddingLeft = UDim.new(0, 6)
+ResultsPad.PaddingRight = UDim.new(0, 6)
+ResultsPad.Parent = ResultsScroll
+
+local EmptyResultHint = Instance.new("TextLabel")
+EmptyResultHint.Size = UDim2.new(1, 0, 0, 36)
+EmptyResultHint.BackgroundTransparency = 1
+EmptyResultHint.Text = "Hasil place akan tampil di sini:\nicon game • name game • status (private / publik)"
+EmptyResultHint.TextColor3 = Color3.fromRGB(105, 102, 130)
+EmptyResultHint.TextSize = 9
+EmptyResultHint.Font = Enum.Font.Gotham
+EmptyResultHint.Parent = ResultsScroll
+
+local resultCardOrder = 0
+
+local function clearResultCards()
+	resultCardOrder = 0
+	for _, child in ipairs(ResultsScroll:GetChildren()) do
+		if child:IsA("Frame") then
 			child:Destroy()
 		end
 	end
-
-	for idx, tr in ipairs(DEFAULT_MUSIC_PLAYLIST) do
-		local active = (idx == currentTrackIndex)
-		local itemBtn = Instance.new("TextButton")
-		itemBtn.Size = UDim2.new(1, -4, 0, 22)
-		itemBtn.BackgroundColor3 = active and theme.accentSoft or Color3.fromRGB(22, 21, 34)
-		itemBtn.Text = string.format("  %d. %s  [%s]", idx, tr.name, tr.songId)
-		itemBtn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 188, 215)
-		itemBtn.TextSize = 9
-		itemBtn.Font = active and fontPreset.boldFont or fontPreset.font
-		itemBtn.TextXAlignment = Enum.TextXAlignment.Left
-		itemBtn.TextTruncate = Enum.TextTruncate.AtEnd
-		itemBtn.LayoutOrder = idx
-		itemBtn.Parent = PlaylistScroll
-		Instance.new("UICorner", itemBtn).CornerRadius = UDim.new(0, 5)
-
-		itemBtn.MouseButton1Click:Connect(function()
-			currentTrackIndex = idx
-			isPlayingMusic = true
-			PlayPauseBtn.Text = "⏸ JEDA"
-			renderMusicPlaylist()
-			local chosen = DEFAULT_MUSIC_PLAYLIST[currentTrackIndex]
-			MusicTrackLabel.Text = "♪ " .. chosen.name .. " (" .. chosen.songId .. ")"
-			isLoadingTrack = true
-			MusicStatusLabel.Text = "Memuat audio " .. chosen.songId .. "..."
-			MusicSound.SoundId = "rbxassetid://" .. chosen.songId
-			MusicSound.PlaybackSpeed = chosen.playbackSpeed
-			MusicSound.Volume = currentVolumeRatio
-			pcall(function()
-				MusicSound:Play()
-			end)
-			task.delay(0.8, function()
-				if currentTrackIndex == idx then
-					isLoadingTrack = false
-					local pct = math.floor(currentVolumeRatio * 100 + 0.5)
-					MusicStatusLabel.Text = (isPlayingMusic and "Memutar" or "Dijeda") .. " • Vol: " .. tostring(pct) .. "%"
-				end
-			end)
-		end)
-	end
+	EmptyResultHint.Visible = true
 end
 
-local function loadAndPlayTrack(index: number, shouldPlay: boolean)
-	if index < 1 then
-		index = #DEFAULT_MUSIC_PLAYLIST
-	elseif index > #DEFAULT_MUSIC_PLAYLIST then
-		index = 1
-	end
-	currentTrackIndex = index
-	local tr = DEFAULT_MUSIC_PLAYLIST[currentTrackIndex]
-	MusicTrackLabel.Text = "♪ " .. tr.name .. " (" .. tr.songId .. ")"
-	isPlayingMusic = shouldPlay
-	PlayPauseBtn.Text = shouldPlay and "⏸ JEDA" or "▶ PLAY"
-	renderMusicPlaylist()
+local function appendResultCard(data: GameResultCardData)
+	EmptyResultHint.Visible = false
+	resultCardOrder += 1
 
-	isLoadingTrack = true
-	MusicStatusLabel.Text = "Memuat lagu: " .. tr.name .. "..."
-	MusicSound.SoundId = "rbxassetid://" .. tr.songId
-	MusicSound.PlaybackSpeed = tr.playbackSpeed
-	MusicSound.Volume = currentVolumeRatio
+	local card = Instance.new("Frame")
+	card.Name = "GameCard_" .. tostring(resultCardOrder)
+	card.Size = UDim2.new(1, -2, 0, 68)
+	card.BackgroundColor3 = data.isError and Color3.fromRGB(34, 18, 24) or Color3.fromRGB(21, 20, 33)
+	card.BorderSizePixel = 0
+	card.LayoutOrder = resultCardOrder
+	card.Parent = ResultsScroll
+	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+	local cardStroke = Instance.new("UIStroke", card)
+	cardStroke.Color = data.isError and Color3.fromRGB(165, 65, 85) or Color3.fromRGB(64, 58, 104)
+	cardStroke.Thickness = 1
 
-	if shouldPlay then
-		pcall(function()
-			MusicSound:Play()
-		end)
+	-- 1. Icon Game (ukuran agak sedang: 54x54 px)
+	local iconFrame = Instance.new("Frame")
+	iconFrame.Size = UDim2.fromOffset(54, 54)
+	iconFrame.Position = UDim2.new(0, 7, 0.5, -27)
+	iconFrame.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+	iconFrame.BorderSizePixel = 0
+	iconFrame.Parent = card
+	Instance.new("UICorner", iconFrame).CornerRadius = UDim.new(0, 8)
+	local iconStroke = Instance.new("UIStroke", iconFrame)
+	iconStroke.Color = Color3.fromRGB(92, 82, 148)
+	iconStroke.Thickness = 1
+
+	local gameIconImg = Instance.new("ImageLabel")
+	gameIconImg.Size = UDim2.fromScale(1, 1)
+	gameIconImg.BackgroundTransparency = 1
+	gameIconImg.Image = data.iconImage
+	gameIconImg.ScaleType = Enum.ScaleType.Crop
+	gameIconImg.Parent = iconFrame
+	Instance.new("UICorner", gameIconImg).CornerRadius = UDim.new(0, 8)
+
+	-- 2. Name Game
+	local gameNameLabel = Instance.new("TextLabel")
+	gameNameLabel.Size = UDim2.new(1, -76, 0, 18)
+	gameNameLabel.Position = UDim2.new(0, 68, 0, 7)
+	gameNameLabel.BackgroundTransparency = 1
+	gameNameLabel.Text = data.gameName
+	gameNameLabel.TextColor3 = data.isError and Color3.fromRGB(255, 160, 170) or Color3.fromRGB(248, 248, 255)
+	gameNameLabel.TextSize = 11
+	gameNameLabel.Font = Enum.Font.GothamBold
+	gameNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	gameNameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	gameNameLabel.Parent = card
+
+	-- 3. Status (private / publik)
+	local isPublik = (data.status == "publik")
+	local statusBadge = Instance.new("TextLabel")
+	statusBadge.Size = UDim2.fromOffset(66, 17)
+	statusBadge.Position = UDim2.new(0, 68, 0, 27)
+	statusBadge.BackgroundColor3 = data.isError
+		and Color3.fromRGB(115, 32, 45)
+		or (isPublik and Color3.fromRGB(24, 92, 56) or Color3.fromRGB(88, 62, 24))
+	statusBadge.Text = data.isError and "gagal" or data.status
+	statusBadge.TextColor3 = data.isError
+		and Color3.fromRGB(255, 200, 208)
+		or (isPublik and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 222, 145))
+	statusBadge.TextSize = 9
+	statusBadge.Font = Enum.Font.GothamBold
+	statusBadge.Parent = card
+	Instance.new("UICorner", statusBadge).CornerRadius = UDim.new(0, 5)
+
+	local metaLabel = Instance.new("TextLabel")
+	metaLabel.Size = UDim2.new(1, -76, 0, 14)
+	metaLabel.Position = UDim2.new(0, 68, 0, 47)
+	metaLabel.BackgroundTransparency = 1
+	metaLabel.Text = data.metaInfo
+	metaLabel.TextColor3 = Color3.fromRGB(150, 146, 178)
+	metaLabel.TextSize = 8
+	metaLabel.Font = Enum.Font.Code
+	metaLabel.TextXAlignment = Enum.TextXAlignment.Left
+	metaLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	metaLabel.Parent = card
+end
+
+local function setCreateProgress(state: "idle" | "working" | "ok" | "err", ratio: number, msg: string)
+	local clamped = math.clamp(ratio, 0, 1)
+	if state == "idle" then
+		ProgressFill.BackgroundColor3 = Color3.fromRGB(122, 98, 255)
+		StatusBanner.TextColor3 = Color3.fromRGB(165, 162, 192)
+	elseif state == "working" then
+		ProgressFill.BackgroundColor3 = Color3.fromRGB(96, 165, 250)
+		StatusBanner.TextColor3 = Color3.fromRGB(175, 205, 255)
+	elseif state == "ok" then
+		ProgressFill.BackgroundColor3 = Color3.fromRGB(56, 239, 125)
+		StatusBanner.TextColor3 = Color3.fromRGB(145, 255, 190)
 	else
-		pcall(function()
-			MusicSound:Pause()
-		end)
+		ProgressFill.BackgroundColor3 = Color3.fromRGB(255, 86, 102)
+		StatusBanner.TextColor3 = Color3.fromRGB(255, 155, 165)
 	end
-
-	task.delay(0.8, function()
-		if currentTrackIndex == index then
-			isLoadingTrack = false
-			local pct = math.floor(currentVolumeRatio * 100 + 0.5)
-			MusicStatusLabel.Text = (isPlayingMusic and "Memutar" or "Dijeda") .. " • Vol: " .. tostring(pct) .. "%"
-		end
-	end)
-end
-
-PlayPauseBtn.MouseButton1Click:Connect(function()
-	if not isPlayingMusic then
-		if MusicSound.SoundId == "" then
-			loadAndPlayTrack(currentTrackIndex, true)
-		else
-			isPlayingMusic = true
-			PlayPauseBtn.Text = "⏸ JEDA"
-			MusicSound.Volume = currentVolumeRatio
-			pcall(function()
-				MusicSound:Play()
-			end)
-			local pct = math.floor(currentVolumeRatio * 100 + 0.5)
-			MusicStatusLabel.Text = "Memutar • Vol: " .. tostring(pct) .. "%"
-		end
-	else
-		isPlayingMusic = false
-		PlayPauseBtn.Text = "▶ PLAY"
-		pcall(function()
-			MusicSound:Pause()
-		end)
-		local pct = math.floor(currentVolumeRatio * 100 + 0.5)
-		MusicStatusLabel.Text = "Dijeda • Vol: " .. tostring(pct) .. "%"
-	end
-end)
-
-PrevTrackBtn.MouseButton1Click:Connect(function()
-	loadAndPlayTrack(currentTrackIndex - 1, true)
-end)
-
-NextTrackBtn.MouseButton1Click:Connect(function()
-	loadAndPlayTrack(currentTrackIndex + 1, true)
-end)
-
--- Drag slider volume kanan-kiri
-do
-	local draggingVol = false
-	local function updateVolFromInput(inputPos: Vector2)
-		local absPos = VolSliderBg.AbsolutePosition.X
-		local absW = math.max(1, VolSliderBg.AbsoluteSize.X)
-		local ratio = math.clamp((inputPos.X - absPos) / absW, 0, 1)
-		applyVolume(ratio)
-	end
-
-	VolSliderBg.InputBegan:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			draggingVol = true
-			updateVolFromInput(input.Position)
-		end
-	end)
-
-	VolKnob.InputBegan:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			draggingVol = true
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input: InputObject)
-		if not draggingVol then return end
-		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-			updateVolFromInput(input.Position)
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			draggingVol = false
-		end
-	end)
-end
-
-renderMusicPlaylist()
-applyVolume(0.5)
-
--- Animasi Equalizer & Loop Loading
-do
-	local elapsed = 0
-	RunService.RenderStepped:Connect(function(dt: number)
-		elapsed += dt
-		local theme = GUI_THEMES[CONFIG.ThemeIndex]
-		if isLoadingTrack then
-			local pos = (elapsed * 0.65) % 1
-			MusicLoadFill.Size = UDim2.new(0.28, 0, 1, 0)
-			MusicLoadFill.Position = UDim2.new(pos * 0.72, 0, 0, 0)
-			MusicLoadFill.BackgroundColor3 = Color3.fromRGB(96, 165, 250)
-		elseif isPlayingMusic then
-			MusicLoadFill.Size = UDim2.new(1, 0, 1, 0)
-			MusicLoadFill.Position = UDim2.new(0, 0, 0, 0)
-			MusicLoadFill.BackgroundColor3 = Color3.fromRGB(56, 239, 125)
-		else
-			MusicLoadFill.Size = UDim2.new(0, 0, 1, 0)
-			MusicLoadFill.Position = UDim2.new(0, 0, 0, 0)
-		end
-
-		local activeBeat = isPlayingMusic and (not isLoadingTrack)
-		local volBoost = math.max(0.25, currentVolumeRatio * 1.4)
-		for i, bar in ipairs(eqBars) do
-			bar.BackgroundColor3 = (i % 2 == 0) and theme.eqEven or theme.eqOdd
-			local targetH = 5
-			if activeBeat then
-				local waveA = math.abs(math.sin(elapsed * 9.5 + i * 0.65))
-				local waveB = math.abs(math.cos(elapsed * 5.2 - i * 0.4))
-				local amp = math.clamp((waveA * 0.7 + waveB * 0.3) * volBoost, 0.18, 1.0)
-				targetH = math.floor(5 + amp * 25)
-			else
-				targetH = 5
-			end
-			bar.Size = UDim2.fromOffset(eqBarW, targetH)
-			bar.Position = UDim2.fromOffset((i - 1) * (eqBarW + eqGap), 32 - targetH)
-		end
-	end)
+	TweenService:Create(ProgressFill, TweenInfo.new(0.15), {
+		Size = UDim2.new(clamped, 0, 1, 0),
+	}):Play()
+	StatusBanner.Text = msg
 end
 
 -- ==========================================
--- HALAMAN 2: JAIL (UNANCHORED PART SERVER-SIDE PHYSICS ACCESS)
+-- HALAMAN 2: SETTING
 -- ==========================================
-local JailPage = Instance.new("Frame")
-JailPage.Size = UDim2.fromScale(1, 1)
-JailPage.BackgroundTransparency = 1
-JailPage.Visible = false
-JailPage.Parent = ContentArea
-tabPages["Jail"] = JailPage
+local SettingPage = Instance.new("Frame")
+SettingPage.Size = UDim2.fromScale(1, 1)
+SettingPage.BackgroundTransparency = 1
+SettingPage.Visible = false
+SettingPage.Parent = ContentArea
+tabPages["Setting"] = SettingPage
 
-local JailTopRow = Instance.new("Frame")
-JailTopRow.Size = UDim2.new(1, -24, 0, 22)
-JailTopRow.Position = UDim2.new(0, 12, 0, 5)
-JailTopRow.BackgroundTransparency = 1
-JailTopRow.Parent = JailPage
+local SettingTitle = Instance.new("TextLabel")
+SettingTitle.Size = UDim2.new(1, -24, 0, 18)
+SettingTitle.Position = UDim2.new(0, 12, 0, 8)
+SettingTitle.BackgroundTransparency = 1
+SettingTitle.Text = "Pengaturan"
+SettingTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+SettingTitle.TextSize = 13
+SettingTitle.Font = Enum.Font.GothamBold
+SettingTitle.TextXAlignment = Enum.TextXAlignment.Left
+SettingTitle.Parent = SettingPage
 
-local JailSwitchBtn = Instance.new("TextButton")
-JailSwitchBtn.Size = UDim2.new(0.36, -3, 1, 0)
-JailSwitchBtn.Position = UDim2.new(0, 0, 0, 0)
-JailSwitchBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 50)
-JailSwitchBtn.Text = "⚡ JAIL: OFF"
-JailSwitchBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-JailSwitchBtn.TextSize = 8
-JailSwitchBtn.Font = Enum.Font.GothamBold
-JailSwitchBtn.Parent = JailTopRow
-Instance.new("UICorner", JailSwitchBtn).CornerRadius = UDim.new(0, 6)
+local CookieBox = Instance.new("TextBox")
+CookieBox.Size = UDim2.new(1, -24, 0, 56)
+CookieBox.Position = UDim2.new(0, 12, 0, 32)
+CookieBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+CookieBox.Text = CONFIG.Cookie
+CookieBox.PlaceholderText = ".ROBLOSECURITY Cookie..."
+CookieBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+CookieBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+CookieBox.TextSize = 10
+CookieBox.Font = Enum.Font.Gotham
+CookieBox.ClearTextOnFocus = false
+CookieBox.MultiLine = true
+CookieBox.TextWrapped = true
+CookieBox.TextXAlignment = Enum.TextXAlignment.Left
+CookieBox.TextYAlignment = Enum.TextYAlignment.Top
+CookieBox.Parent = SettingPage
+Instance.new("UICorner", CookieBox).CornerRadius = UDim.new(0, 7)
 
-local JailFarScanBtn = Instance.new("TextButton")
-JailFarScanBtn.Size = UDim2.new(0.32, -3, 1, 0)
-JailFarScanBtn.Position = UDim2.new(0.36, 2, 0, 0)
-JailFarScanBtn.BackgroundColor3 = Color3.fromRGB(52, 46, 86)
-JailFarScanBtn.Text = "📡 Far Scan: ON"
-JailFarScanBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-JailFarScanBtn.TextSize = 8
-JailFarScanBtn.Font = Enum.Font.GothamBold
-JailFarScanBtn.Parent = JailTopRow
-Instance.new("UICorner", JailFarScanBtn).CornerRadius = UDim.new(0, 6)
+local ApiKeyBox = Instance.new("TextBox")
+ApiKeyBox.Size = UDim2.new(1, -24, 0, 56)
+ApiKeyBox.Position = UDim2.new(0, 12, 0, 96)
+ApiKeyBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+ApiKeyBox.Text = CONFIG.ApiKey
+ApiKeyBox.PlaceholderText = "Roblox Open Cloud API Key (opsional)..."
+ApiKeyBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+ApiKeyBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+ApiKeyBox.TextSize = 10
+ApiKeyBox.Font = Enum.Font.Gotham
+ApiKeyBox.ClearTextOnFocus = false
+ApiKeyBox.MultiLine = true
+ApiKeyBox.TextWrapped = true
+ApiKeyBox.TextXAlignment = Enum.TextXAlignment.Left
+ApiKeyBox.TextYAlignment = Enum.TextYAlignment.Top
+ApiKeyBox.Parent = SettingPage
+Instance.new("UICorner", ApiKeyBox).CornerRadius = UDim.new(0, 7)
 
-local JailAnchorLockBtn = Instance.new("TextButton")
-JailAnchorLockBtn.Size = UDim2.new(0.32, -2, 1, 0)
-JailAnchorLockBtn.Position = UDim2.new(0.68, 2, 0, 0)
-JailAnchorLockBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
-JailAnchorLockBtn.Text = "🔒 Anchor: OFF"
-JailAnchorLockBtn.TextColor3 = Color3.fromRGB(220, 218, 245)
-JailAnchorLockBtn.TextSize = 8
-JailAnchorLockBtn.Font = Enum.Font.GothamBold
-JailAnchorLockBtn.Parent = JailTopRow
-Instance.new("UICorner", JailAnchorLockBtn).CornerRadius = UDim.new(0, 6)
+local SaveSettingBtn = Instance.new("TextButton")
+SaveSettingBtn.Size = UDim2.new(1, -24, 0, 32)
+SaveSettingBtn.Position = UDim2.new(0, 12, 0, 160)
+SaveSettingBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+SaveSettingBtn.Text = "💾  SIMPAN PENGATURAN"
+SaveSettingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+SaveSettingBtn.TextSize = 11
+SaveSettingBtn.Font = Enum.Font.GothamBold
+SaveSettingBtn.Parent = SettingPage
+Instance.new("UICorner", SaveSettingBtn).CornerRadius = UDim.new(0, 8)
 
-local JailStatusLabel = Instance.new("TextLabel")
-JailStatusLabel.Size = UDim2.new(1, -24, 0, 11)
-JailStatusLabel.Position = UDim2.new(0, 12, 0, 29)
-JailStatusLabel.BackgroundTransparency = 1
-JailStatusLabel.Text = "Scan: 0 part • Far(600s) • Mode: OrbitHead"
-JailStatusLabel.TextColor3 = Color3.fromRGB(150, 146, 182)
-JailStatusLabel.TextSize = 8
-JailStatusLabel.Font = Enum.Font.GothamMedium
-JailStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-JailStatusLabel.Parent = JailPage
+local SettingStatusLabel = Instance.new("TextLabel")
+SettingStatusLabel.Size = UDim2.new(1, -24, 0, 44)
+SettingStatusLabel.Position = UDim2.new(0, 12, 0, 200)
+SettingStatusLabel.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+SettingStatusLabel.Text = "Cookie dan API Key tersimpan di workspace " .. CONFIG.WorkspaceRoot .. "/."
+SettingStatusLabel.TextColor3 = Color3.fromRGB(185, 205, 255)
+SettingStatusLabel.TextSize = 9
+SettingStatusLabel.Font = Enum.Font.Code
+SettingStatusLabel.TextWrapped = true
+SettingStatusLabel.Parent = SettingPage
+Instance.new("UICorner", SettingStatusLabel).CornerRadius = UDim.new(0, 7)
 
--- Slider Speed (0.5x - 6.0x, default 2.5x)
-local JailSpeedRow = Instance.new("Frame")
-JailSpeedRow.Size = UDim2.new(1, -24, 0, 16)
-JailSpeedRow.Position = UDim2.new(0, 12, 0, 41)
-JailSpeedRow.BackgroundTransparency = 1
-JailSpeedRow.Parent = JailPage
-
-local JailSpeedLabel = Instance.new("TextLabel")
-JailSpeedLabel.Size = UDim2.new(0, 84, 1, 0)
-JailSpeedLabel.BackgroundTransparency = 1
-JailSpeedLabel.Text = "🚀 Speed: 2.5x"
-JailSpeedLabel.TextColor3 = Color3.fromRGB(205, 202, 230)
-JailSpeedLabel.TextSize = 8
-JailSpeedLabel.Font = Enum.Font.GothamBold
-JailSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
-JailSpeedLabel.Parent = JailSpeedRow
-
-local JailSpeedBg = Instance.new("Frame")
-JailSpeedBg.Size = UDim2.new(1, -90, 0, 7)
-JailSpeedBg.Position = UDim2.new(0, 88, 0.5, -3)
-JailSpeedBg.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
-JailSpeedBg.BorderSizePixel = 0
-JailSpeedBg.Parent = JailSpeedRow
-Instance.new("UICorner", JailSpeedBg).CornerRadius = UDim.new(1, 0)
-
-local JailSpeedFill = Instance.new("Frame")
-JailSpeedFill.Size = UDim2.new(0.36, 0, 1, 0)
-JailSpeedFill.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-JailSpeedFill.BorderSizePixel = 0
-JailSpeedFill.Parent = JailSpeedBg
-Instance.new("UICorner", JailSpeedFill).CornerRadius = UDim.new(1, 0)
-
-local JailSpeedKnob = Instance.new("TextButton")
-JailSpeedKnob.Size = UDim2.fromOffset(12, 12)
-JailSpeedKnob.Position = UDim2.new(0.36, -6, 0.5, -6)
-JailSpeedKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-JailSpeedKnob.Text = ""
-JailSpeedKnob.AutoButtonColor = false
-JailSpeedKnob.Parent = JailSpeedBg
-Instance.new("UICorner", JailSpeedKnob).CornerRadius = UDim.new(1, 0)
-
--- Pilihan Mode Akses
-local JailModeGrid = Instance.new("Frame")
-JailModeGrid.Size = UDim2.new(1, -24, 0, 44)
-JailModeGrid.Position = UDim2.new(0, 12, 0, 59)
-JailModeGrid.BackgroundTransparency = 1
-JailModeGrid.Parent = JailPage
-
-local JailModeLayout = Instance.new("UIGridLayout")
-JailModeLayout.CellSize = UDim2.new(0.25, -4, 0, 20)
-JailModeLayout.CellPadding = UDim2.fromOffset(4, 3)
-JailModeLayout.SortOrder = Enum.SortOrder.LayoutOrder
-JailModeLayout.Parent = JailModeGrid
-
-local JAIL_MODES: {{id: JailMode, label: string}} = {
-	{ id = "OrbitHead", label = "🌀 Orbit" },
-	{ id = "ShakePart", label = "💥 Shake" },
-	{ id = "GravityThrow", label = "🎯 Throw" },
-	{ id = "PullToTarget", label = "🧲 Pull" },
-	{ id = "RopeBreak", label = "⛓ Rope" },
-	{ id = "AttackFall", label = "⬇ Fall" },
-	{ id = "CarryPart", label = "🧳 Carry" },
-}
-
-local modeButtons: {[JailMode]: TextButton} = {}
-for idx, m in ipairs(JAIL_MODES) do
-	local btn = Instance.new("TextButton")
-	btn.Text = m.label
-	btn.TextColor3 = Color3.fromRGB(220, 218, 245)
-	btn.TextSize = 8
-	btn.BackgroundColor3 = Color3.fromRGB(24, 23, 36)
-	btn.LayoutOrder = idx
-	btn.Parent = JailModeGrid
-	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-	modeButtons[m.id] = btn
-
-	btn.MouseButton1Click:Connect(function()
-		CONFIG.JailMode = m.id
-		applyThemeAndFont()
-	end)
+local function syncCredentialsFromInputs(): (string, string)
+	local boxCookie = normalizeCookie(CookieBox.Text)
+	local boxApiKey = trim(ApiKeyBox.Text)
+	if boxCookie ~= "" then
+		CONFIG.Cookie = boxCookie
+	end
+	if boxApiKey ~= "" then
+		CONFIG.ApiKey = boxApiKey
+	end
+	return CONFIG.Cookie, CONFIG.ApiKey
 end
 
--- Header Target + Refresh + Search Player
-local JailTargetHeader = Instance.new("Frame")
-JailTargetHeader.Size = UDim2.new(1, -24, 0, 15)
-JailTargetHeader.Position = UDim2.new(0, 12, 0, 106)
-JailTargetHeader.BackgroundTransparency = 1
-JailTargetHeader.Parent = JailPage
+CookieBox:GetPropertyChangedSignal("Text"):Connect(function()
+	CONFIG.Cookie = normalizeCookie(CookieBox.Text)
+end)
 
-local JailTargetTitle = Instance.new("TextLabel")
-JailTargetTitle.Size = UDim2.new(0.75, 0, 1, 0)
-JailTargetTitle.BackgroundTransparency = 1
-JailTargetTitle.Text = "👤 Target User (Throw / Pull)"
-JailTargetTitle.TextColor3 = Color3.fromRGB(205, 202, 230)
-JailTargetTitle.TextSize = 8
-JailTargetTitle.Font = Enum.Font.GothamBold
-JailTargetTitle.TextXAlignment = Enum.TextXAlignment.Left
-JailTargetTitle.Parent = JailTargetHeader
+ApiKeyBox:GetPropertyChangedSignal("Text"):Connect(function()
+	CONFIG.ApiKey = trim(ApiKeyBox.Text)
+end)
 
-local RefreshUsersBtn = Instance.new("TextButton")
-RefreshUsersBtn.Size = UDim2.new(0.24, 0, 1, 0)
-RefreshUsersBtn.Position = UDim2.new(0.76, 0, 0, 0)
-RefreshUsersBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
-RefreshUsersBtn.Text = "↻ List"
-RefreshUsersBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-RefreshUsersBtn.TextSize = 8
-RefreshUsersBtn.Font = Enum.Font.GothamBold
-RefreshUsersBtn.Parent = JailTargetHeader
-Instance.new("UICorner", RefreshUsersBtn).CornerRadius = UDim.new(0, 5)
+SaveSettingBtn.MouseButton1Click:Connect(function()
+	local c = normalizeCookie(CookieBox.Text)
+	local k = trim(ApiKeyBox.Text)
+	CONFIG.Cookie = c
+	CONFIG.ApiKey = k
+	CookieBox.Text = c
+	ApiKeyBox.Text = k
 
-local PlayerSearchBox = Instance.new("TextBox")
-PlayerSearchBox.Name = "PlayerSearchBox"
-PlayerSearchBox.Size = UDim2.new(1, -24, 0, 20)
-PlayerSearchBox.Position = UDim2.new(0, 12, 0, 123)
-PlayerSearchBox.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
-PlayerSearchBox.PlaceholderText = "🔍 Cari player (display / @username)..."
-PlayerSearchBox.PlaceholderColor3 = Color3.fromRGB(125, 122, 152)
-PlayerSearchBox.Text = ""
-PlayerSearchBox.TextColor3 = Color3.fromRGB(245, 245, 255)
-PlayerSearchBox.TextSize = 8
-PlayerSearchBox.Font = Enum.Font.GothamMedium
-PlayerSearchBox.ClearTextOnFocus = false
-PlayerSearchBox.TextXAlignment = Enum.TextXAlignment.Left
-PlayerSearchBox.Parent = JailPage
-Instance.new("UICorner", PlayerSearchBox).CornerRadius = UDim.new(0, 6)
-local SearchStroke = Instance.new("UIStroke", PlayerSearchBox)
-SearchStroke.Color = Color3.fromRGB(56, 52, 86)
-SearchStroke.Thickness = 1
+	local okC = saveTextFile("cookie.txt", c)
+	local okK = saveTextFile("apikey.txt", k)
+	local ok = (c == "" or okC) and (k == "" or okK)
+	SettingStatusLabel.Text = string.format(
+		"Cookie: %s\nAPI Key: %s",
+		c ~= "" and ("Terisi (" .. tostring(#c) .. " karakter)") or "Kosong",
+		k ~= "" and ("Terisi (" .. tostring(#k) .. " karakter)") or "Kosong"
+	)
+	SettingStatusLabel.TextColor3 = ok and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+	notify("Setting", ok and "Pengaturan tersimpan." or "Gagal menyimpan pengaturan.")
+end)
 
-local PlayerSearchPad = Instance.new("UIPadding")
-PlayerSearchPad.PaddingLeft = UDim.new(0, 6)
-PlayerSearchPad.PaddingRight = UDim.new(0, 6)
-PlayerSearchPad.Parent = PlayerSearchBox
+-- Navigasi Sidebar
+createNavButton("CreatePlace", "🏗  Create Place", 1).MouseButton1Click:Connect(function()
+	switchTab("CreatePlace")
+end)
+createNavButton("Setting", "⚙  Setting", 2).MouseButton1Click:Connect(function()
+	switchTab("Setting")
+end)
+switchTab("CreatePlace")
 
-local UserListScroll = Instance.new("ScrollingFrame")
-UserListScroll.Size = UDim2.new(1, -24, 0, 110)
-UserListScroll.Position = UDim2.new(0, 12, 0, 146)
-UserListScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-UserListScroll.BorderSizePixel = 0
-UserListScroll.ScrollBarThickness = 3
-UserListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-UserListScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-UserListScroll.Parent = JailPage
-Instance.new("UICorner", UserListScroll).CornerRadius = UDim.new(0, 7)
-local UserListStroke = Instance.new("UIStroke", UserListScroll)
-UserListStroke.Color = Color3.fromRGB(48, 44, 74)
-UserListStroke.Thickness = 1
-
-local UserListLayout = Instance.new("UIListLayout")
-UserListLayout.Padding = UDim.new(0, 3)
-UserListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-UserListLayout.Parent = UserListScroll
-
-local UserListPad = Instance.new("UIPadding")
-UserListPad.PaddingTop = UDim.new(0, 4)
-UserListPad.PaddingBottom = UDim.new(0, 4)
-UserListPad.PaddingLeft = UDim.new(0, 4)
-UserListPad.PaddingRight = UDim.new(0, 4)
-UserListPad.Parent = UserListScroll
-
--- Logika Scan & Akses Unanchored Part (No Visual)
-local scannedUnanchoredParts: {BasePart} = {}
-local activeAttackedParts: {[BasePart]: boolean} = {}
-local lockedAnchoredParts: {[BasePart]: boolean} = {}
-local throwCycleClock = 0
-local throwPulseIndex = 0
-
-local function getCharacterRoot(player: Player?): BasePart?
-	local plr = player or LocalPlayer
-	local char = plr.Character
-	if not char then return nil end
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if hrp and hrp:IsA("BasePart") then
-		return hrp
-	end
-	local head = char:FindFirstChild("Head")
-	if head and head:IsA("BasePart") then
-		return head
-	end
-	return nil
-end
-
-local function isDescendantOfAnyCharacter(inst: Instance): boolean
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr.Character and inst:IsDescendantOf(plr.Character) then
-			return true
-		end
-	end
-	return false
-end
-
-local function isConstraintBindingPart(inst: Instance, part: BasePart): boolean
-	if inst:IsA("RopeConstraint") or inst:IsA("AlignPosition") or inst:IsA("AlignOrientation") or inst:IsA("RodConstraint") or inst:IsA("SpringConstraint") or inst:IsA("WeldConstraint") then
-		local c = inst :: any
-		local a0 = c.Attachment0
-		local a1 = c.Attachment1
-		local p0 = c.Part0
-		local p1 = c.Part1
-		if p0 == part or p1 == part then
-			return true
-		end
-		if (a0 and a0:IsDescendantOf(part)) or (a1 and a1:IsDescendantOf(part)) then
-			return true
-		end
-	end
-	return false
-end
-
-local function detachPartFromReturnPull(part: BasePart)
-	pcall(function()
-		for _, desc in ipairs(part:GetDescendants()) do
-			if desc:IsA("RopeConstraint") or desc:IsA("AlignPosition") or desc:IsA("AlignOrientation") or desc:IsA("RodConstraint") or desc:IsA("SpringConstraint") or desc:IsA("WeldConstraint") then
-				(desc :: any).Enabled = false
-				if desc:IsA("RopeConstraint") then
-					desc.Length = 0.01
-				end
-			end
-		end
-		for _, desc in ipairs(workspace:GetDescendants()) do
-			if isConstraintBindingPart(desc, part) then
-				(desc :: any).Enabled = false
-				if desc:IsA("RopeConstraint") then
-					desc.Length = 0.01
-				end
-			end
-		end
-	end)
-end
-
-local function getSelectedTargetPlayer(): Player?
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr.UserId == CONFIG.JailTargetUserId and plr ~= LocalPlayer then
-			return plr
-		end
-	end
-	return nil
-end
-
-local function scanUnanchoredParts()
-	local found: {BasePart} = {}
-	local root = getCharacterRoot(LocalPlayer)
-	local targetPlr = getSelectedTargetPlayer()
-	local targetRoot = getCharacterRoot(targetPlr)
-	local originPos = root and root.Position or Vector3.zero
-	local targetPos = targetRoot and targetRoot.Position or originPos
-
-	local maxDist = CONFIG.JailFarScan and 600 or 140
-	local maxParts = CONFIG.JailFarScan and 120 or 48
-
-	for _, desc in ipairs(workspace:GetDescendants()) do
-		if desc:IsA("BasePart") and not desc.Anchored and not isDescendantOfAnyCharacter(desc) then
-			local distSelf = (desc.Position - originPos).Magnitude
-			local distTarget = (desc.Position - targetPos).Magnitude
-			if math.min(distSelf, distTarget) <= maxDist then
-				table.insert(found, desc)
-				if #found >= maxParts then
-					break
-				end
-			end
-		end
-	end
-
-	table.sort(found, function(a: BasePart, b: BasePart): boolean
-		local da = math.min((a.Position - originPos).Magnitude, (a.Position - targetPos).Magnitude)
-		local db = math.min((b.Position - originPos).Magnitude, (b.Position - targetPos).Magnitude)
-		return da < db
-	end)
-
-	scannedUnanchoredParts = found
-end
-
-local function releasePartsToFall()
-	local dropBoost = 65 * CONFIG.JailSpeed
-	for _, part in ipairs(scannedUnanchoredParts) do
-		if part and part.Parent and part:IsA("BasePart") then
-			pcall(function()
-				part.Anchored = false
-				part.AssemblyLinearVelocity = Vector3.new(
-					math.random(-25, 25),
-					-dropBoost,
-					math.random(-25, 25)
-				)
-				part.AssemblyAngularVelocity = Vector3.new(25, 25, 25)
-			end)
-		end
-	end
-	for part, _ in pairs(activeAttackedParts) do
-		if part and part.Parent and part:IsA("BasePart") then
-			pcall(function()
-				part.Anchored = false
-				part.AssemblyLinearVelocity = Vector3.new(
-					math.random(-25, 25),
-					-dropBoost,
-					math.random(-25, 25)
-				)
-				part.AssemblyAngularVelocity = Vector3.new(25, 25, 25)
-			end)
-		end
-	end
-	table.clear(activeAttackedParts)
-	table.clear(scannedUnanchoredParts)
-end
-
-local function setAnchorLock(locked: boolean)
-	CONFIG.JailAnchorLocked = locked
-	if locked then
-		scanUnanchoredParts()
-		for _, part in ipairs(scannedUnanchoredParts) do
-			if part and part.Parent and not part.Anchored then
-				lockedAnchoredParts[part] = true
-				pcall(function()
-					part.Anchored = true
-				end)
-			end
-		end
-	else
-		for part, _ in pairs(lockedAnchoredParts) do
-			if part and part.Parent then
-				pcall(function()
-					part.Anchored = false
-				end)
-			end
-		end
-		table.clear(lockedAnchoredParts)
-	end
-	applyThemeAndFont()
-end
-
-local function renderUserList()
-	local theme = GUI_THEMES[CONFIG.ThemeIndex]
-	local fontPreset = FONT_PRESETS[CONFIG.FontIndex]
-
-	for _, child in ipairs(UserListScroll:GetChildren()) do
-		if child:IsA("TextButton") then
-			child:Destroy()
-		end
-	end
-
-	local q = string.lower(string.match(CONFIG.PlayerSearchQuery, "^%s*(.-)%s*$") or "")
-	local others: {Player} = {}
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= LocalPlayer then
-			local hayName = string.lower(plr.Name)
-			local hayDisp = string.lower(plr.DisplayName)
-			if q == "" or string.find(hayName, q, 1, true) ~= nil or string.find(hayDisp, q, 1, true) ~= nil then
-				table.insert(others, plr)
-			end
-		end
-	end
-
-	if CONFIG.JailTargetUserId == 0 and #others > 0 then
-		CONFIG.JailTargetUserId = others[1].UserId
-	end
-
-	if #others == 0 then
-		local emptyBtn = Instance.new("TextButton")
-		emptyBtn.Size = UDim2.new(1, -4, 0, 22)
-		emptyBtn.BackgroundColor3 = Color3.fromRGB(22, 21, 34)
-		emptyBtn.Text = q ~= "" and ("  Tidak cocok: \"" .. CONFIG.PlayerSearchQuery .. "\"") or "  Tidak ada player lain di server"
-		emptyBtn.TextColor3 = Color3.fromRGB(165, 162, 190)
-		emptyBtn.TextSize = 8
-		emptyBtn.Font = fontPreset.font
-		emptyBtn.TextXAlignment = Enum.TextXAlignment.Left
-		emptyBtn.LayoutOrder = 1
-		emptyBtn.Parent = UserListScroll
-		Instance.new("UICorner", emptyBtn).CornerRadius = UDim.new(0, 5)
+-- ==========================================
+-- LOGIKA CREATE PLACE
+-- ==========================================
+local isCreatingPlace = false
+CreatePlaceBtn.MouseButton1Click:Connect(function()
+	if isCreatingPlace then return end
+	local cookieVal = syncCredentialsFromInputs()
+	if cookieVal == "" then
+		setCreateProgress("err", 0, "Cookie .ROBLOSECURITY belum diisi di tab Setting.")
+		notify("Create Place", "Cookie kosong.")
 		return
 	end
 
-	for idx, plr in ipairs(others) do
-		local selected = (plr.UserId == CONFIG.JailTargetUserId)
-		local uBtn = Instance.new("TextButton")
-		uBtn.Size = UDim2.new(1, -4, 0, 22)
-		uBtn.BackgroundColor3 = selected and theme.accentSoft or Color3.fromRGB(22, 21, 34)
-		uBtn.Text = string.format("  %s (@%s)", plr.DisplayName, plr.Name)
-		uBtn.TextColor3 = selected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 188, 215)
-		uBtn.TextSize = 9
-		uBtn.Font = selected and fontPreset.boldFont or fontPreset.font
-		uBtn.TextXAlignment = Enum.TextXAlignment.Left
-		uBtn.TextTruncate = Enum.TextTruncate.AtEnd
-		uBtn.LayoutOrder = idx
-		uBtn.Parent = UserListScroll
-		Instance.new("UICorner", uBtn).CornerRadius = UDim.new(0, 5)
+	local tplId = tonumber(trim(TemplateIdBox.Text):match("%d+")) or 95206881
+	local grpId = tonumber(trim(GroupIdBox.Text):match("%d+"))
+	local count = math.clamp(tonumber(trim(PlaceCountBox.Text):match("%d+")) or 1, 1, 50)
 
-		uBtn.MouseButton1Click:Connect(function()
-			CONFIG.JailTargetUserId = plr.UserId
-			renderUserList()
-		end)
-	end
-end
+	isCreatingPlace = true
+	clearResultCards()
+	setCreateProgress("working", 0.1, "Membuat " .. tostring(count) .. " place...")
 
-local function applyJailSpeedFromRatio(ratio: number)
-	local clamped = math.clamp(ratio, 0, 1)
-	local minSpeed = 0.5
-	local maxSpeed = 6.0
-	local speedVal = minSpeed + (clamped * (maxSpeed - minSpeed))
-	CONFIG.JailSpeed = math.floor(speedVal * 10 + 0.5) / 10
-	local displayRatio = (CONFIG.JailSpeed - minSpeed) / (maxSpeed - minSpeed)
-	JailSpeedFill.Size = UDim2.new(displayRatio, 0, 1, 0)
-	JailSpeedKnob.Position = UDim2.new(displayRatio, -6, 0.5, -6)
-	JailSpeedLabel.Text = "🚀 Speed: " .. string.format("%.1f", CONFIG.JailSpeed) .. "x"
-end
+	task.spawn(function()
+		local csrf = ""
+		local sukses, gagal = 0, 0
 
-JailSwitchBtn.MouseButton1Click:Connect(function()
-	CONFIG.JailEnabled = not CONFIG.JailEnabled
-	if CONFIG.JailEnabled then
-		scanUnanchoredParts()
-	else
-		releasePartsToFall()
-	end
-	applyThemeAndFont()
-end)
+		for i = 1, count do
+			setCreateProgress("working", (i - 0.5) / count, string.format("Membuat place %d dari %d...", i, count))
 
-JailFarScanBtn.MouseButton1Click:Connect(function()
-	CONFIG.JailFarScan = not CONFIG.JailFarScan
-	if CONFIG.JailEnabled then
-		scanUnanchoredParts()
-	end
-	applyThemeAndFont()
-end)
+			local bodyTbl: {[string]: any} = { templatePlaceId = tplId }
+			if grpId and grpId > 0 then
+				bodyTbl.groupId = grpId
+			end
+			local jsonBody = HttpService:JSONEncode(bodyTbl)
 
-JailAnchorLockBtn.MouseButton1Click:Connect(function()
-	setAnchorLock(not CONFIG.JailAnchorLocked)
-end)
+			local function sendCreateRequest(token: string)
+				local hdrs: {[string]: string} = {
+					["Cookie"] = ".ROBLOSECURITY=" .. cookieVal,
+					["Content-Type"] = "application/json",
+					["Origin"] = "https://create.roblox.com",
+					["Referer"] = "https://create.roblox.com/",
+				}
+				if token ~= "" then
+					hdrs["X-CSRF-TOKEN"] = token
+				end
+				return apiRequest({
+					Url = "https://apis.roblox.com/universes/v1/universes/create",
+					Method = "POST",
+					Headers = hdrs,
+					Body = jsonBody,
+					Retries = 1,
+				})
+			end
 
-RefreshUsersBtn.MouseButton1Click:Connect(function()
-	renderUserList()
-end)
+			local res, ok, info = sendCreateRequest(csrf)
+			if not ok and res and tonumber(res.StatusCode or res.Status or res.status_code) == 403 then
+				local newCsrf = getHeaderCaseInsensitive(res.Headers, "x-csrf-token")
+				if newCsrf and newCsrf ~= "" then
+					csrf = newCsrf
+					res, ok, info = sendCreateRequest(csrf)
+				end
+			end
 
-PlayerSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
-	CONFIG.PlayerSearchQuery = PlayerSearchBox.Text
-	renderUserList()
-end)
+			local bodyStr = res and tostring(res.Body or "") or ""
+			if ok and res then
+				sukses += 1
+				saveTextFile("Logs/place_" .. tostring(os.time()) .. "_" .. tostring(i) .. ".json", bodyStr)
 
-Players.PlayerAdded:Connect(function()
-	renderUserList()
-end)
-
-Players.PlayerRemoving:Connect(function(plr: Player)
-	if plr.UserId == CONFIG.JailTargetUserId then
-		CONFIG.JailTargetUserId = 0
-	end
-	renderUserList()
-end)
-
--- Drag slider Jail Speed kanan-kiri
-do
-	local draggingSpeed = false
-	local function updateSpeedFromInput(inputPos: Vector2)
-		local absPos = JailSpeedBg.AbsolutePosition.X
-		local absW = math.max(1, JailSpeedBg.AbsoluteSize.X)
-		local ratio = math.clamp((inputPos.X - absPos) / absW, 0, 1)
-		applyJailSpeedFromRatio(ratio)
-	end
-
-	JailSpeedBg.InputBegan:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			draggingSpeed = true
-			updateSpeedFromInput(input.Position)
-		end
-	end)
-
-	JailSpeedKnob.InputBegan:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			draggingSpeed = true
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input: InputObject)
-		if not draggingSpeed then return end
-		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-			updateSpeedFromInput(input.Position)
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			draggingSpeed = false
-		end
-	end)
-end
-
--- Loop eksekusi fisika JAIL (Server-side physics replication, no visual)
-do
-	local jailClock = 0
-	local scanAccum = 0
-
-	RunService.Heartbeat:Connect(function(dt: number)
-		jailClock += dt
-		if not CONFIG.JailEnabled then
-			return
-		end
-
-		scanAccum += dt
-		if scanAccum >= 0.45 then
-			scanAccum = 0
-			scanUnanchoredParts()
-		end
-
-		local myRoot = getCharacterRoot(LocalPlayer)
-		local targetPlr = getSelectedTargetPlayer()
-		local targetRoot = getCharacterRoot(targetPlr) or myRoot
-		local speed = CONFIG.JailSpeed
-		local activeCount = #scannedUnanchoredParts
-
-		local throwInterval = math.max(0.14, 0.42 / math.max(0.5, speed))
-		throwCycleClock += dt
-		if throwCycleClock >= throwInterval then
-			throwCycleClock -= throwInterval
-			throwPulseIndex += 1
-		end
-
-		for i, part in ipairs(scannedUnanchoredParts) do
-			if part and part.Parent and part:IsA("BasePart") and not part.Anchored then
-				if not activeAttackedParts[part] then
-					activeAttackedParts[part] = true
-					detachPartFromReturnPull(part)
+				local createdUnivId: string? = nil
+				local okDec, decoded = pcall(function()
+					return HttpService:JSONDecode(bodyStr)
+				end)
+				if okDec and type(decoded) == "table" then
+					if decoded.universeId ~= nil then
+						createdUnivId = tostring(decoded.universeId):match("%d+")
+					elseif decoded.id ~= nil then
+						createdUnivId = tostring(decoded.id):match("%d+")
+					end
+				end
+				if not createdUnivId then
+					createdUnivId = bodyStr:match('"universeId"%s*:%s*(%d+)')
 				end
 
-				local mode = CONFIG.JailMode
-				if mode == "OrbitHead" then
-					local center = (myRoot and myRoot.Position or Vector3.zero) + Vector3.new(0, 5.5, 0)
-					local angle = jailClock * (3.2 * speed) + (i * ((math.pi * 2) / math.max(1, activeCount)))
-					local radius = 3.5 + ((i % 3) * 1.1)
-					local desiredPos = center + Vector3.new(math.cos(angle) * radius, math.sin(angle * 1.5) * 0.6, math.sin(angle) * radius)
-					local delta = desiredPos - part.Position
-					part.AssemblyLinearVelocity = delta * (12 * speed)
-					part.AssemblyAngularVelocity = Vector3.new(0, 14 * speed, 0)
-				elseif mode == "ShakePart" then
-					local shakeVec = Vector3.new(
-						math.sin(jailClock * 42 * speed + i) * 28 * speed,
-						math.cos(jailClock * 37 * speed + i * 2) * 28 * speed,
-						math.sin(jailClock * 45 * speed + i * 3) * 28 * speed
-					)
-					part.AssemblyLinearVelocity = shakeVec
-					part.AssemblyAngularVelocity = Vector3.new(26 * speed, -24 * speed, 28 * speed)
-				elseif mode == "GravityThrow" then
-					-- Langsung lempar dari posisi part saat ini ke target berulang-ulang (tidak ditarik ke user dulu)
-					local aimBase = targetRoot and targetRoot.Position or Vector3.zero
-					local spreadPhase = (throwPulseIndex + i) * 1.35
-					local aimJitter = Vector3.new(
-						math.cos(spreadPhase) * 2.4,
-						1.5 + ((throwPulseIndex + i) % 3) * 1.4,
-						math.sin(spreadPhase) * 2.4
-					)
-					local toTarget = (aimBase + aimJitter) - part.Position
-					local dist = toTarget.Magnitude
-					local dir = dist > 0.05 and toTarget.Unit or Vector3.new(0, 1, 0)
-					local throwSpeed = math.clamp(dist * 3.8 * speed, 55 * speed, 165 * speed)
-					local arcBoost = 16 * speed
-					local reThrowWave = math.sin((jailClock * 11 * speed) + i + throwPulseIndex) * 14 * speed
-					part.AssemblyLinearVelocity = (dir * throwSpeed) + Vector3.new(reThrowWave, arcBoost, -reThrowWave)
-					part.AssemblyAngularVelocity = Vector3.new(
-						28 * speed * ((i % 2 == 0) and 1 or -1),
-						24 * speed,
-						28 * speed
-					)
-				elseif mode == "PullToTarget" then
-					local anchorPos = targetRoot and targetRoot.Position or Vector3.zero
-					local angle = jailClock * (2.2 * speed) + (i * 0.7)
-					local desiredPos = anchorPos + Vector3.new(math.cos(angle) * 2.2, 1.5 + (i % 3), math.sin(angle) * 2.2)
-					local delta = desiredPos - part.Position
-					part.AssemblyLinearVelocity = delta * (14 * speed)
-				elseif mode == "RopeBreak" then
-					local pullDir = (myRoot and (myRoot.Position - part.Position) or Vector3.new(0, 12, 0))
-					local unitDir = pullDir.Magnitude > 0.1 and pullDir.Unit or Vector3.new(0, 1, 0)
-					local yank = unitDir * (75 * speed) + Vector3.new(
-						math.sin(jailClock * 55 * speed + i) * 45 * speed,
-						40 * speed,
-						math.cos(jailClock * 55 * speed + i) * 45 * speed
-					)
-					part.AssemblyLinearVelocity = yank
-					part.AssemblyAngularVelocity = Vector3.new(45 * speed, 45 * speed, 45 * speed)
-				elseif mode == "AttackFall" then
-					local slamDir = Vector3.new(
-						math.sin(jailClock * 48 * speed + i) * 35 * speed,
-						-95 * speed,
-						math.cos(jailClock * 48 * speed + i) * 35 * speed
-					)
-					part.AssemblyLinearVelocity = slamDir
-					part.AssemblyAngularVelocity = Vector3.new(55 * speed, -45 * speed, 55 * speed)
-				elseif mode == "CarryPart" then
-					local baseCf = myRoot and myRoot.CFrame or CFrame.new()
-					local col = (i - 1) % 3 - 1
-					local row = math.floor((i - 1) / 3) % 3
-					local carryPos = (baseCf * CFrame.new(col * 2.2, 1.2 + (row * 1.6), -4.5)).Position
-					local toCarry = carryPos - part.Position
-					part.AssemblyLinearVelocity = toCarry * (16 * speed)
-					part.AssemblyAngularVelocity = Vector3.zero
+				if createdUnivId and createdUnivId ~= "" then
+					local cardData = fetchCreatedGameCardData(createdUnivId, cookieVal)
+					appendResultCard(cardData)
+				else
+					appendResultCard({
+						iconImage = "rbxasset://textures/ui/GuiImagePlaceholder.png",
+						gameName = "Place Baru #" .. tostring(i),
+						status = "private",
+						metaInfo = "Universe ID tidak terbaca dari respons",
+						isError = false,
+					})
 				end
+			else
+				gagal += 1
+				appendResultCard({
+					iconImage = "rbxasset://textures/ui/GuiImagePlaceholder.png",
+					gameName = "Place #" .. tostring(i) .. " (" .. info .. ")",
+					status = "private",
+					metaInfo = bodyStr ~= "" and bodyStr:sub(1, 90) or "Gagal membuat place",
+					isError = true,
+				})
+			end
+
+			setCreateProgress((gagal == 0) and "working" or "err", i / count, string.format("Progress %d/%d • OK: %d | Gagal: %d", i, count, sukses, gagal))
+			if i < count then
+				task.wait(1)
 			end
 		end
 
-		local targetName = targetPlr and ("@" .. targetPlr.Name) or "Self"
-		local scanTag = CONFIG.JailFarScan and "Far" or "Near"
-		JailStatusLabel.Text = string.format("ON • %d part • %s • %s • %s", activeCount, scanTag, CONFIG.JailMode, targetName)
+		local allOk = (sukses > 0 and gagal == 0)
+		setCreateProgress(allOk and "ok" or "err", 1, string.format("Selesai: %d berhasil, %d gagal.", sukses, gagal))
+		notify("Create Place", string.format("Selesai: %d berhasil, %d gagal.", sukses, gagal))
+		isCreatingPlace = false
 	end)
-end
-
-renderUserList()
-applyJailSpeedFromRatio((CONFIG.JailSpeed - 0.5) / (6.0 - 0.5))
-
--- ==========================================
--- HALAMAN 3: ABOUT CREATOR & TOOLS
--- ==========================================
-local AboutPage = Instance.new("Frame")
-AboutPage.Size = UDim2.fromScale(1, 1)
-AboutPage.BackgroundTransparency = 1
-AboutPage.Visible = false
-AboutPage.Parent = ContentArea
-tabPages["About"] = AboutPage
-
-local AboutTitle = Instance.new("TextLabel")
-AboutTitle.Size = UDim2.new(1, -24, 0, 18)
-AboutTitle.Position = UDim2.new(0, 12, 0, 8)
-AboutTitle.BackgroundTransparency = 1
-AboutTitle.Text = "Tentang Plugin Studio Lite"
-AboutTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-AboutTitle.TextSize = 13
-AboutTitle.Font = Enum.Font.GothamBold
-AboutTitle.TextXAlignment = Enum.TextXAlignment.Left
-AboutTitle.Parent = AboutPage
-
-local AboutCard = Instance.new("ScrollingFrame")
-AboutCard.Size = UDim2.new(1, -24, 1, -36)
-AboutCard.Position = UDim2.new(0, 12, 0, 30)
-AboutCard.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-AboutCard.BorderSizePixel = 0
-AboutCard.ScrollBarThickness = 3
-AboutCard.CanvasSize = UDim2.new(0, 0, 0, 0)
-AboutCard.AutomaticCanvasSize = Enum.AutomaticSize.Y
-AboutCard.Parent = AboutPage
-Instance.new("UICorner", AboutCard).CornerRadius = UDim.new(0, 8)
-local AboutStroke = Instance.new("UIStroke", AboutCard)
-AboutStroke.Color = Color3.fromRGB(64, 56, 102)
-AboutStroke.Thickness = 1
-
-local AboutText = Instance.new("TextLabel")
-AboutText.Size = UDim2.new(1, -16, 0, 160)
-AboutText.AutomaticSize = Enum.AutomaticSize.Y
-AboutText.Position = UDim2.new(0, 8, 0, 8)
-AboutText.BackgroundTransparency = 1
-AboutText.Text = table.concat({
-	"Creator       : Ikyy (@" .. LocalPlayer.Name .. " | ID: " .. tostring(LocalPlayer.UserId) .. ")",
-	"Tools         : Plugin Studio Lite (Delta Executor Edition)",
-	"Versi         : v1.4.0",
-	"",
-	"Fitur Aktif:",
-	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
-	"• JAIL        : Akses fisika unanchored part (Orbit, Shake, Throw, Pull, Rope, Fall, Carry, Far Scan, Search Player).",
-	"• Settings    : Pengaturan warna tema GUI dan pilihan font secara langsung.",
-	"• About       : Informasi kreator dan versi tools.",
-}, "\n")
-AboutText.TextColor3 = Color3.fromRGB(215, 214, 238)
-AboutText.TextSize = 9
-AboutText.Font = Enum.Font.Code
-AboutText.TextXAlignment = Enum.TextXAlignment.Left
-AboutText.TextYAlignment = Enum.TextYAlignment.Top
-AboutText.TextWrapped = true
-AboutText.Parent = AboutCard
-
--- ==========================================
--- HALAMAN 4: SETTINGS (WARNA GUI & FONT)
--- ==========================================
-local SettingsPage = Instance.new("Frame")
-SettingsPage.Size = UDim2.fromScale(1, 1)
-SettingsPage.BackgroundTransparency = 1
-SettingsPage.Visible = false
-SettingsPage.Parent = ContentArea
-tabPages["Settings"] = SettingsPage
-
-local SettingsTitle = Instance.new("TextLabel")
-SettingsTitle.Size = UDim2.new(1, -24, 0, 18)
-SettingsTitle.Position = UDim2.new(0, 12, 0, 6)
-SettingsTitle.BackgroundTransparency = 1
-SettingsTitle.Text = "Pengaturan Tampilan (Warna & Font)"
-SettingsTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-SettingsTitle.TextSize = 12
-SettingsTitle.Font = Enum.Font.GothamBold
-SettingsTitle.TextXAlignment = Enum.TextXAlignment.Left
-SettingsTitle.Parent = SettingsPage
-
-local SettingsScroll = Instance.new("ScrollingFrame")
-SettingsScroll.Size = UDim2.new(1, -24, 1, -30)
-SettingsScroll.Position = UDim2.new(0, 12, 0, 26)
-SettingsScroll.BackgroundTransparency = 1
-SettingsScroll.BorderSizePixel = 0
-SettingsScroll.ScrollBarThickness = 3
-SettingsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-SettingsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-SettingsScroll.Parent = SettingsPage
-
-local SettingsLayout = Instance.new("UIListLayout")
-SettingsLayout.Padding = UDim.new(0, 8)
-SettingsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-SettingsLayout.Parent = SettingsScroll
-
--- Bagian 1: Warna GUI
-local ColorSectionLabel = Instance.new("TextLabel")
-ColorSectionLabel.Size = UDim2.new(1, 0, 0, 14)
-ColorSectionLabel.BackgroundTransparency = 1
-ColorSectionLabel.Text = "🎨 Warna Tema GUI"
-ColorSectionLabel.TextColor3 = Color3.fromRGB(205, 202, 230)
-ColorSectionLabel.TextSize = 10
-ColorSectionLabel.Font = Enum.Font.GothamBold
-ColorSectionLabel.TextXAlignment = Enum.TextXAlignment.Left
-ColorSectionLabel.LayoutOrder = 1
-ColorSectionLabel.Parent = SettingsScroll
-
-local ColorGrid = Instance.new("Frame")
-ColorGrid.Size = UDim2.new(1, 0, 0, 56)
-ColorGrid.BackgroundTransparency = 1
-ColorGrid.LayoutOrder = 2
-ColorGrid.Parent = SettingsScroll
-
-local ColorGridLayout = Instance.new("UIGridLayout")
-ColorGridLayout.CellSize = UDim2.new(0.5, -4, 0, 25)
-ColorGridLayout.CellPadding = UDim2.fromOffset(8, 6)
-ColorGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ColorGridLayout.Parent = ColorGrid
-
-local themeButtons: {TextButton} = {}
-for idx, theme in ipairs(GUI_THEMES) do
-	local tBtn = Instance.new("TextButton")
-	tBtn.Text = "● " .. theme.name
-	tBtn.TextColor3 = Color3.fromRGB(245, 245, 255)
-	tBtn.TextSize = 9
-	tBtn.BackgroundColor3 = Color3.fromRGB(24, 23, 36)
-	tBtn.LayoutOrder = idx
-	tBtn.Parent = ColorGrid
-	Instance.new("UICorner", tBtn).CornerRadius = UDim.new(0, 7)
-	local stroke = Instance.new("UIStroke", tBtn)
-	stroke.Color = theme.accent
-	stroke.Thickness = 1.2
-
-	tBtn.MouseButton1Click:Connect(function()
-		CONFIG.ThemeIndex = idx
-		applyThemeAndFont()
-	end)
-	table.insert(themeButtons, tBtn)
-end
-
--- Bagian 2: Pilihan Font
-local FontSectionLabel = Instance.new("TextLabel")
-FontSectionLabel.Size = UDim2.new(1, 0, 0, 14)
-FontSectionLabel.BackgroundTransparency = 1
-FontSectionLabel.Text = "🔤 Jenis Font UI"
-FontSectionLabel.TextColor3 = Color3.fromRGB(205, 202, 230)
-FontSectionLabel.TextSize = 10
-FontSectionLabel.Font = Enum.Font.GothamBold
-FontSectionLabel.TextXAlignment = Enum.TextXAlignment.Left
-FontSectionLabel.LayoutOrder = 3
-FontSectionLabel.Parent = SettingsScroll
-
-local FontGrid = Instance.new("Frame")
-FontGrid.Size = UDim2.new(1, 0, 0, 56)
-FontGrid.BackgroundTransparency = 1
-FontGrid.LayoutOrder = 4
-FontGrid.Parent = SettingsScroll
-
-local FontGridLayout = Instance.new("UIGridLayout")
-FontGridLayout.CellSize = UDim2.new(0.5, -4, 0, 25)
-FontGridLayout.CellPadding = UDim2.fromOffset(8, 6)
-FontGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-FontGridLayout.Parent = FontGrid
-
-local fontButtons: {TextButton} = {}
-for idx, fp in ipairs(FONT_PRESETS) do
-	local fBtn = Instance.new("TextButton")
-	fBtn.Text = fp.name
-	fBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-	fBtn.TextSize = 10
-	fBtn.BackgroundColor3 = Color3.fromRGB(24, 23, 36)
-	fBtn.LayoutOrder = idx
-	fBtn.Parent = FontGrid
-	Instance.new("UICorner", fBtn).CornerRadius = UDim.new(0, 7)
-
-	fBtn.MouseButton1Click:Connect(function()
-		CONFIG.FontIndex = idx
-		applyThemeAndFont()
-	end)
-	table.insert(fontButtons, fBtn)
-end
-
-local SettingsPreviewLabel = Instance.new("TextLabel")
-SettingsPreviewLabel.Size = UDim2.new(1, 0, 0, 22)
-SettingsPreviewLabel.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-SettingsPreviewLabel.Text = "Preview: Plugin Studio Lite • Beat & Vibe"
-SettingsPreviewLabel.TextColor3 = Color3.fromRGB(220, 218, 245)
-SettingsPreviewLabel.TextSize = 9
-SettingsPreviewLabel.LayoutOrder = 5
-SettingsPreviewLabel.Parent = SettingsScroll
-Instance.new("UICorner", SettingsPreviewLabel).CornerRadius = UDim.new(0, 6)
-
-applyThemeAndFont = function()
-	local theme = GUI_THEMES[CONFIG.ThemeIndex]
-	local fontPreset = FONT_PRESETS[CONFIG.FontIndex]
-
-	-- Update warna GUI
-	FloatStroke.Color = theme.accent
-	MainStroke.Color = theme.stroke
-	LogoStroke.Color = theme.stroke
-	MainGradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, theme.gradStart),
-		ColorSequenceKeypoint.new(1, theme.gradEnd),
-	})
-	EqStroke.Color = theme.stroke
-	VolSliderFill.BackgroundColor3 = theme.accent
-	PlayPauseBtn.BackgroundColor3 = theme.accent
-	JailSpeedFill.BackgroundColor3 = theme.accent
-
-	JailSwitchBtn.BackgroundColor3 = CONFIG.JailEnabled and theme.accent or Color3.fromRGB(34, 32, 50)
-	JailSwitchBtn.Text = CONFIG.JailEnabled and "⚡ JAIL: ON" or "⚡ JAIL: OFF"
-
-	JailFarScanBtn.BackgroundColor3 = CONFIG.JailFarScan and theme.accentSoft or Color3.fromRGB(32, 30, 48)
-	JailFarScanBtn.Text = CONFIG.JailFarScan and "📡 Far Scan: ON" or "📡 Far Scan: OFF"
-
-	JailAnchorLockBtn.BackgroundColor3 = CONFIG.JailAnchorLocked and theme.accentSoft or Color3.fromRGB(32, 30, 48)
-	JailAnchorLockBtn.Text = CONFIG.JailAnchorLocked and "🔒 Anchor: ON" or "🔒 Anchor: OFF"
-
-	if not CONFIG.JailEnabled then
-		local scanTag = CONFIG.JailFarScan and "Far" or "Near"
-		JailStatusLabel.Text = string.format("OFF • %s • Mode: %s", scanTag, CONFIG.JailMode)
-	end
-
-	for modeId, mBtn in pairs(modeButtons) do
-		local active = (modeId == CONFIG.JailMode)
-		mBtn.BackgroundColor3 = active and theme.accentSoft or Color3.fromRGB(24, 23, 36)
-		mBtn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(220, 218, 245)
-		mBtn.Font = active and fontPreset.boldFont or fontPreset.font
-	end
-
-	for name, btn in pairs(tabButtons) do
-		local active = (name == CONFIG.ActiveTab)
-		btn.BackgroundColor3 = active and theme.accentSoft or Color3.fromRGB(28, 27, 42)
-		btn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(185, 182, 210)
-		btn.Font = active and fontPreset.boldFont or fontPreset.font
-	end
-
-	-- Update font elemen teks utama
-	SubTitleLabel.Font = fontPreset.boldFont
-	TitleLabel.Font = fontPreset.boldFont
-	MetaLabel.Font = fontPreset.font
-	MusicTrackLabel.Font = fontPreset.boldFont
-	MusicStatusLabel.Font = fontPreset.font
-	VolLabel.Font = fontPreset.boldFont
-	PrevTrackBtn.Font = fontPreset.boldFont
-	PlayPauseBtn.Font = fontPreset.boldFont
-	NextTrackBtn.Font = fontPreset.boldFont
-	JailSwitchBtn.Font = fontPreset.boldFont
-	JailFarScanBtn.Font = fontPreset.boldFont
-	JailAnchorLockBtn.Font = fontPreset.boldFont
-	JailStatusLabel.Font = fontPreset.font
-	JailSpeedLabel.Font = fontPreset.boldFont
-	JailTargetTitle.Font = fontPreset.boldFont
-	RefreshUsersBtn.Font = fontPreset.boldFont
-	PlayerSearchBox.Font = fontPreset.font
-	AboutTitle.Font = fontPreset.boldFont
-	SettingsTitle.Font = fontPreset.boldFont
-	ColorSectionLabel.Font = fontPreset.boldFont
-	FontSectionLabel.Font = fontPreset.boldFont
-	SettingsPreviewLabel.Font = fontPreset.boldFont
-	SettingsPreviewLabel.Text = "Tema: " .. theme.name .. " • Font: " .. fontPreset.name
-
-	for idx, tBtn in ipairs(themeButtons) do
-		local selected = (idx == CONFIG.ThemeIndex)
-		tBtn.BackgroundColor3 = selected and theme.accentSoft or Color3.fromRGB(24, 23, 36)
-		tBtn.Font = selected and fontPreset.boldFont or fontPreset.font
-	end
-
-	for idx, fBtn in ipairs(fontButtons) do
-		local selected = (idx == CONFIG.FontIndex)
-		fBtn.BackgroundColor3 = selected and theme.accentSoft or Color3.fromRGB(24, 23, 36)
-		local fp = FONT_PRESETS[idx]
-		fBtn.Font = fp.font
-	end
-
-	renderMusicPlaylist()
-	renderUserList()
-end
-
--- Navigasi Sidebar
-createNavButton("Music", "🎵  Music", 1).MouseButton1Click:Connect(function() switchTab("Music") end)
-createNavButton("Jail", "⛓  JAIL", 2).MouseButton1Click:Connect(function() switchTab("Jail") end)
-createNavButton("Settings", "🎨  Settings", 3).MouseButton1Click:Connect(function() switchTab("Settings") end)
-createNavButton("About", "ℹ  About", 4).MouseButton1Click:Connect(function() switchTab("About") end)
-
-switchTab("Music")
-applyThemeAndFont()
+end)
