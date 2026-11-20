@@ -1,5 +1,5 @@
 --!strict
--- Plugin Studio Lite (Delta Executor Edition - Create Place, My Places from Profile, Voice Chat, 3rd Party Sales, Setting & Console) by Ikyy
+-- Plugin Studio Lite (Delta Executor Edition - Create Place, My Places from Profile, Voice Chat, 3rd Party Sales, Permission Place, Setting & Console) by Ikyy
 -- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Realtime (Icon Game, Name Game, Status + Console)
 
 local Players = game:GetService("Players")
@@ -556,7 +556,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		})
 	end
 
-	-- 1. Ambil dari Profile Creations API (www.roblox.com/users/{uid}/profile -> Creations)
 	local profileApiUrls = {
 		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=All&limit=50&sortOrder=Desc", uid),
 		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=2&limit=50&sortOrder=Desc", uid),
@@ -599,7 +598,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 2. Parse langsung halaman HTML profil: https://www.roblox.com/users/{uid}/profile
 	local profilePageUrl = string.format("https://www.roblox.com/users/%d/profile", uid)
 	local htmlRes, htmlOk = apiRequest({
 		Url = profilePageUrl,
@@ -654,7 +652,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 3. Lengkapi nama, rootPlaceId & status (publik / private) tiap universe
 	for _, it in ipairs(rawItems) do
 		local dRes, dOk = apiRequest({
 			Url = "https://develop.roblox.com/v1/universes/" .. it.univId,
@@ -687,7 +684,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 4. Batch fetch nama & rootPlaceId lewat games.roblox.com
 	local gamesInfoMap: {[string]: {name: string?, rootPlaceId: string?}} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -720,7 +716,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 5. Batch fetch icon lewat thumbnails.roblox.com
 	local iconMap: {[string]: string} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -987,6 +982,377 @@ local function setUniverseThirdPartySales(universeId: string, cookieVal: string,
 	return false, info .. detail, currentCsrf
 end
 
+-- ==========================================
+-- API PERMISSION PLACE (DETAIL UNIVERSE + KUESIONER RATING + AKTIVASI)
+-- ==========================================
+local function sendAuthedJsonRequest(
+	method: string,
+	url: string,
+	cookieVal: string,
+	csrfSeed: string,
+	jsonBody: string?,
+	queryParams: {[string]: string}?
+): (boolean, number, string, {[string]: any}?, string)
+	local fullUrl = url
+	if queryParams then
+		local parts: {string} = {}
+		for k, v in pairs(queryParams) do
+			table.insert(parts, HttpService:UrlEncode(k) .. "=" .. HttpService:UrlEncode(v))
+		end
+		if #parts > 0 then
+			fullUrl = fullUrl .. (fullUrl:find("?", 1, true) and "&" or "?") .. table.concat(parts, "&")
+		end
+	end
+
+	local currentCsrf = csrfSeed
+	local function doSend(token: string)
+		local hdrs: {[string]: string} = {
+			["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
+			["Content-Type"] = "application/json",
+			["Accept"] = "application/json, text/plain, */*",
+			["Origin"] = "https://create.roblox.com",
+			["Referer"] = "https://create.roblox.com/",
+		}
+		if token ~= "" then
+			hdrs["X-CSRF-TOKEN"] = token
+			hdrs["x-csrf-token"] = token
+		end
+		return apiRequest({
+			Url = fullUrl,
+			Method = method,
+			Headers = hdrs,
+			Body = jsonBody,
+			Retries = 1,
+		})
+	end
+
+	local res, ok, info = doSend(currentCsrf)
+	local statusCode = res and (tonumber(res.StatusCode or res.Status or res.status_code) or 0) or 0
+	if not ok and res and statusCode == 403 then
+		local newToken = getHeaderCaseInsensitive(res.Headers, "x-csrf-token")
+		if newToken and newToken ~= "" then
+			pushConsole("INFO", "Refresh X-CSRF-TOKEN otomatis untuk " .. url)
+			currentCsrf = newToken
+			res, ok, info = doSend(currentCsrf)
+			statusCode = res and (tonumber(res.StatusCode or res.Status or res.status_code) or 0) or 0
+		end
+	end
+
+	local bodyStr = res and tostring(res.Body or "") or ""
+	local decoded: {[string]: any}? = nil
+	if bodyStr ~= "" then
+		local okDec, dec = pcall(function()
+			return HttpService:JSONDecode(bodyStr)
+		end)
+		if okDec and type(dec) == "table" then
+			decoded = dec
+		end
+	end
+
+	return ok, statusCode, bodyStr, decoded, currentCsrf
+end
+
+local function updateUniverseDetailForPermission(
+	universeId: string,
+	cookieVal: string,
+	customName: string,
+	customDesc: string,
+	customGenre: string,
+	csrfSeed: string
+): (boolean, string, string)
+	local cleanUniv = trim(universeId):match("%d+") or ""
+	local currentCsrf = csrfSeed
+	local nameVal = trim(customName)
+	local descVal = trim(customDesc)
+	local genreVal = trim(customGenre) ~= "" and trim(customGenre) or "All"
+
+	if nameVal == "" or descVal == "" then
+		local okGet, _, _, getDec, nextCsrfGet = sendAuthedJsonRequest(
+			"GET",
+			"https://develop.roblox.com/v1/universes/" .. cleanUniv,
+			cookieVal,
+			currentCsrf,
+			nil,
+			nil
+		)
+		currentCsrf = nextCsrfGet
+		if okGet and type(getDec) == "table" then
+			if nameVal == "" and type(getDec.name) == "string" and trim(getDec.name) ~= "" then
+				nameVal = trim(getDec.name)
+			end
+			if descVal == "" and type(getDec.description) == "string" and trim(getDec.description) ~= "" then
+				descVal = trim(getDec.description)
+			end
+		end
+	end
+
+	if nameVal == "" then
+		nameVal = "Place #" .. cleanUniv
+	end
+	if descVal == "" then
+		descVal = "Experience #" .. cleanUniv .. " publik"
+	end
+
+	local payloadV2 = HttpService:JSONEncode({
+		name = nameVal,
+		description = descVal,
+		genre = genreVal,
+	})
+
+	pushConsole("INFO", string.format("[Permission Place] Update Detail -> Universe #%s | name='%s' | genre='%s'", cleanUniv, nameVal, genreVal))
+	local okV2, codeV2, bodyV2, _, csrfV2 = sendAuthedJsonRequest(
+		"PATCH",
+		"https://develop.roblox.com/v2/universes/" .. cleanUniv .. "/configuration",
+		cookieVal,
+		currentCsrf,
+		payloadV2,
+		nil
+	)
+	currentCsrf = csrfV2
+	if okV2 then
+		saveTextFile("Logs/perm_detail_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyV2)
+		return true, "Detail game tersimpan (HTTP " .. tostring(codeV2) .. ")", currentCsrf
+	end
+
+	local payloadV1 = HttpService:JSONEncode({
+		name = nameVal,
+		description = descVal,
+		genre = genreVal,
+	})
+	pushConsole("WARN", string.format("[Permission Place] PATCH v2 HTTP %d, mencoba fallback PATCH v1...", codeV2))
+	local okV1, codeV1, bodyV1, _, csrfV1 = sendAuthedJsonRequest(
+		"PATCH",
+		"https://develop.roblox.com/v1/universes/" .. cleanUniv .. "/configuration",
+		cookieVal,
+		currentCsrf,
+		payloadV1,
+		nil
+	)
+	currentCsrf = csrfV1
+	if okV1 then
+		saveTextFile("Logs/perm_detail_v1_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyV1)
+		return true, "Detail game tersimpan via fallback (HTTP " .. tostring(codeV1) .. ")", currentCsrf
+	end
+
+	return false, string.format("Gagal update detail (HTTP %d / %d): %s", codeV2, codeV1, bodyV2 ~= "" and bodyV2:sub(1, 100) or bodyV1:sub(1, 100)), currentCsrf
+end
+
+local function buildQuestionnaireAnswersFromSchema(schemaObj: any, appTypeChoice: string, defaultNoChoice: string): {{[string]: any}}
+	local answers: {{[string]: any}} = {}
+	local seenQ: {[string]: boolean} = {}
+
+	local function chooseOptionForQuestion(qTbl: {[string]: any}): any
+		local qTitle = tostring(qTbl.title or qTbl.question or qTbl.prompt or qTbl.name or qTbl.id or ""):lower()
+		local optionsList = qTbl.options or qTbl.choices or qTbl.answers or qTbl.possibleAnswers
+
+		if type(optionsList) == "table" and #optionsList > 0 then
+			if qTitle:find("app") or qTitle:find("describe") or qTitle:find("type") or qTitle:find("game") then
+				for _, opt in ipairs(optionsList) do
+					if type(opt) == "table" then
+						local optLabel = tostring(opt.label or opt.text or opt.value or opt.id or ""):lower()
+						if optLabel:find(appTypeChoice:lower()) or optLabel == "game" then
+							return opt.id or opt.value or opt.label or appTypeChoice
+						end
+					elseif type(opt) == "string" then
+						if opt:lower():find(appTypeChoice:lower()) then
+							return opt
+						end
+					end
+				end
+			end
+
+			for _, opt in ipairs(optionsList) do
+				if type(opt) == "table" then
+					local optLabel = tostring(opt.label or opt.text or opt.value or opt.id or ""):lower()
+					if optLabel == defaultNoChoice:lower() or optLabel:find("^no") or optLabel:find("none") or optLabel:find("tidak") then
+						return opt.id or opt.value or opt.label or defaultNoChoice
+					end
+				elseif type(opt) == "string" then
+					local low = opt:lower()
+					if low == defaultNoChoice:lower() or low:find("^no") or low:find("none") then
+						return opt
+					end
+				end
+			end
+
+			local firstOpt = optionsList[1]
+			if type(firstOpt) == "table" then
+				return firstOpt.id or firstOpt.value or firstOpt.label
+			end
+			return firstOpt
+		end
+
+		if qTitle:find("app") or qTitle:find("describe") or qTitle:find("type") then
+			return appTypeChoice
+		end
+		return defaultNoChoice
+	end
+
+	local function scanNode(node: any)
+		if type(node) ~= "table" then return end
+		local qId = node.questionId or node.id or node.key
+		local hasQuestionShape = (node.options ~= nil or node.choices ~= nil or node.answers ~= nil or node.questionType ~= nil or node.prompt ~= nil or node.title ~= nil)
+		if qId ~= nil and hasQuestionShape and type(node.data) ~= "table" then
+			local qKey = tostring(qId)
+			if not seenQ[qKey] and qKey ~= "" then
+				seenQ[qKey] = true
+				local chosen = chooseOptionForQuestion(node)
+				table.insert(answers, {
+					questionId = qId,
+					answer = chosen,
+					value = chosen,
+					response = chosen,
+				})
+			end
+		end
+		for _, v in pairs(node) do
+			if type(v) == "table" then
+				scanNode(v)
+			end
+		end
+	end
+
+	scanNode(schemaObj)
+	return answers
+end
+
+local function fetchAndSubmitContentQuestionnaire(
+	universeId: string,
+	cookieVal: string,
+	appTypeChoice: string,
+	defaultNoChoice: string,
+	csrfSeed: string
+): (boolean, string, string)
+	local cleanUniv = trim(universeId):match("%d+") or ""
+	local currentCsrf = csrfSeed
+	local univNum = tonumber(cleanUniv) or 0
+
+	pushConsole("INFO", string.format("[Permission Place] Ambil struktur kuesioner rating untuk Universe #%s...", cleanUniv))
+
+	local fetchTargets = {
+		{
+			method = "GET",
+			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1/questionnaire",
+			body = nil,
+			query = { universeId = cleanUniv },
+		},
+		{
+			method = "POST",
+			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/get-age-recommendation",
+			body = HttpService:JSONEncode({ universeId = univNum }),
+			query = nil,
+		},
+		{
+			method = "POST",
+			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1/questionnaire/start",
+			body = HttpService:JSONEncode({ universeId = univNum }),
+			query = nil,
+		},
+	}
+
+	local loadedSchema: {[string]: any}? = nil
+	local lastFetchErr = ""
+
+	for _, tInfo in ipairs(fetchTargets) do
+		local okF, codeF, bodyF, decF, csrfF = sendAuthedJsonRequest(
+			tInfo.method,
+			tInfo.url,
+			cookieVal,
+			currentCsrf,
+			tInfo.body,
+			tInfo.query
+		)
+		currentCsrf = csrfF
+		if okF and type(decF) == "table" then
+			loadedSchema = decF
+			saveTextFile("Logs/perm_q_schema_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyF)
+			pushConsole("OK", string.format("[Permission Place] Struktur kuesioner diperoleh (HTTP %d) dari %s", codeF, tInfo.url))
+			break
+		else
+			lastFetchErr = string.format("HTTP %d (%s)", codeF, bodyF ~= "" and bodyF:sub(1, 90) or "empty")
+		end
+	end
+
+	if not loadedSchema then
+		return false, "Gagal mengambil struktur kuesioner: " .. lastFetchErr, currentCsrf
+	end
+
+	local builtAnswers = buildQuestionnaireAnswersFromSchema(loadedSchema, appTypeChoice, defaultNoChoice)
+	pushConsole("INFO", string.format("[Permission Place] Menyiapkan %d item jawaban kuesioner (appType=%s, default=%s)", #builtAnswers, appTypeChoice, defaultNoChoice))
+
+	local submitPayloads = {
+		HttpService:JSONEncode({
+			universeId = univNum,
+			applicationType = appTypeChoice,
+			responses = builtAnswers,
+			answers = builtAnswers,
+		}),
+		HttpService:JSONEncode({
+			universeId = univNum,
+			questionnaireId = loadedSchema.questionnaireId or loadedSchema.id,
+			responses = builtAnswers,
+		}),
+	}
+
+	local submitUrls = {
+		"https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1/questionnaire/submit",
+		"https://apis.roblox.com/experience-guidelines-api/experience-guidelines/submit-questionnaire",
+	}
+
+	for _, sUrl in ipairs(submitUrls) do
+		for _, sBody in ipairs(submitPayloads) do
+			local okS, codeS, bodyS, _, csrfS = sendAuthedJsonRequest(
+				"POST",
+				sUrl,
+				cookieVal,
+				currentCsrf,
+				sBody,
+				nil
+			)
+			currentCsrf = csrfS
+			if okS then
+				saveTextFile("Logs/perm_q_submit_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyS)
+				pushConsole("OK", string.format("[Permission Place] Kuesioner rating tersimpan (HTTP %d) via %s", codeS, sUrl))
+				return true, "Kuesioner rating berhasil dikirim (HTTP " .. tostring(codeS) .. ")", currentCsrf
+			end
+		end
+	end
+
+	return false, "Struktur kuesioner terbaca, namun submit butuh penyesuaian skema (cek Logs/perm_q_schema_*.json)", currentCsrf
+end
+
+local function applyPlacePermissionAction(
+	universeId: string,
+	cookieVal: string,
+	makePublic: boolean,
+	csrfSeed: string
+): (boolean, string, string)
+	local cleanUniv = trim(universeId):match("%d+") or ""
+	local actionSlug = makePublic and "activate" or "deactivate"
+	local url = "https://develop.roblox.com/v1/universes/" .. cleanUniv .. "/" .. actionSlug
+
+	pushConsole("INFO", string.format("[Permission Place] Kirim status akses '%s' untuk Universe #%s...", makePublic and "Publik" or "Private", cleanUniv))
+	local okA, codeA, bodyA, _, csrfA = sendAuthedJsonRequest(
+		"POST",
+		url,
+		cookieVal,
+		csrfSeed,
+		"{}",
+		nil
+	)
+
+	if okA then
+		saveTextFile("Logs/perm_access_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyA)
+		local labelOut = makePublic and "PUBLIK" or "PRIVATE"
+		pushConsole("OK", string.format("[Permission Place] Status akses Universe #%s berhasil diubah ke %s (HTTP %d)", cleanUniv, labelOut, codeA))
+		return true, "Status akses berhasil diubah ke " .. labelOut .. " (HTTP " .. tostring(codeA) .. ")", csrfA
+	end
+
+	local snippet = bodyA ~= "" and (" | " .. bodyA:sub(1, 140)) or ""
+	pushConsole("ERR", string.format("[Permission Place] Gagal ubah status akses ke %s (HTTP %d)%s", makePublic and "PUBLIK" or "PRIVATE", codeA, snippet))
+	return false, string.format("Gagal ubah status akses (HTTP %d)%s", codeA, snippet), csrfA
+end
+
 local function getUserAvatarAsync(userId: number): string
 	local ok, content = pcall(function()
 		return Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
@@ -1163,10 +1529,10 @@ LogoIcon.Font = Enum.Font.GothamBold
 LogoIcon.Parent = HeaderLogoBox
 
 local SubTitleLabel = Instance.new("TextLabel")
-SubTitleLabel.Size = UDim2.new(0, 300, 0, 11)
+SubTitleLabel.Size = UDim2.new(0, 320, 0, 11)
 SubTitleLabel.Position = UDim2.new(0, 48, 0, 5)
 SubTitleLabel.BackgroundTransparency = 1
-SubTitleLabel.Text = "IKYYSTUDIO • PLACE, PROFILE PLACES, VOICE & 3RD PARTY"
+SubTitleLabel.Text = "IKYYSTUDIO • PLACE, VOICE, 3RD PARTY & PERMISSION PLACE"
 SubTitleLabel.TextColor3 = Color3.fromRGB(130, 126, 155)
 SubTitleLabel.TextSize = 8
 SubTitleLabel.Font = Enum.Font.GothamBold
@@ -1317,10 +1683,14 @@ local SideStroke = Instance.new("UIStroke", Sidebar)
 SideStroke.Color = Color3.fromRGB(52, 48, 82)
 SideStroke.Thickness = 1
 
-local NavListFrame = Instance.new("Frame")
-NavListFrame.Size = UDim2.new(1, -10, 1, -10)
-NavListFrame.Position = UDim2.new(0, 5, 0, 5)
+local NavListFrame = Instance.new("ScrollingFrame")
+NavListFrame.Size = UDim2.new(1, -8, 1, -8)
+NavListFrame.Position = UDim2.new(0, 4, 0, 4)
 NavListFrame.BackgroundTransparency = 1
+NavListFrame.BorderSizePixel = 0
+NavListFrame.ScrollBarThickness = 2
+NavListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+NavListFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 NavListFrame.Parent = Sidebar
 
 local NavLayout = Instance.new("UIListLayout")
@@ -1334,7 +1704,7 @@ local tabButtons: {[string]: TextButton} = {}
 local function createNavButton(name: string, label: string, order: number)
 	local btn = Instance.new("TextButton")
 	btn.Name = "Nav_" .. name
-	btn.Size = UDim2.new(1, 0, 0, 26)
+	btn.Size = UDim2.new(1, 0, 0, 25)
 	btn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
 	btn.Text = "  " .. label
 	btn.TextColor3 = Color3.fromRGB(185, 182, 210)
@@ -2090,7 +2460,246 @@ SalesStatusText.TextWrapped = true
 SalesStatusText.Parent = SalesPreviewCard
 
 -- ==========================================
--- HALAMAN 5: SETTING (COOKIE)
+-- HALAMAN 5: PERMISSION PLACE (NAMA GUI TETAP "PERMISSION PLACE")
+-- ==========================================
+local PermPlacePage = Instance.new("Frame")
+PermPlacePage.Size = UDim2.fromScale(1, 1)
+PermPlacePage.BackgroundTransparency = 1
+PermPlacePage.Visible = false
+PermPlacePage.Parent = ContentArea
+tabPages["PermissionPlace"] = PermPlacePage
+
+local PermScroll = Instance.new("ScrollingFrame")
+PermScroll.Name = "PermissionPlaceScroll"
+PermScroll.Size = UDim2.new(1, -16, 1, -8)
+PermScroll.Position = UDim2.new(0, 8, 0, 4)
+PermScroll.BackgroundTransparency = 1
+PermScroll.BorderSizePixel = 0
+PermScroll.ScrollBarThickness = 2
+PermScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+PermScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+PermScroll.Parent = PermPlacePage
+
+local PermLayout = Instance.new("UIListLayout")
+PermLayout.Padding = UDim.new(0, 5)
+PermLayout.SortOrder = Enum.SortOrder.LayoutOrder
+PermLayout.Parent = PermScroll
+
+local PermHeaderLbl = Instance.new("TextLabel")
+PermHeaderLbl.Size = UDim2.new(1, -4, 0, 15)
+PermHeaderLbl.BackgroundTransparency = 1
+PermHeaderLbl.Text = "Permission Place"
+PermHeaderLbl.TextColor3 = Color3.fromRGB(245, 245, 255)
+PermHeaderLbl.TextSize = 12
+PermHeaderLbl.Font = Enum.Font.GothamBold
+PermHeaderLbl.TextXAlignment = Enum.TextXAlignment.Left
+PermHeaderLbl.LayoutOrder = 1
+PermHeaderLbl.Parent = PermScroll
+
+local PermTopRow = Instance.new("Frame")
+PermTopRow.Size = UDim2.new(1, -4, 0, 24)
+PermTopRow.BackgroundTransparency = 1
+PermTopRow.LayoutOrder = 2
+PermTopRow.Parent = PermScroll
+
+local PermUniverseBox = Instance.new("TextBox")
+PermUniverseBox.Size = UDim2.new(1, -138, 1, 0)
+PermUniverseBox.Position = UDim2.new(0, 0, 0, 0)
+PermUniverseBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+PermUniverseBox.Text = CONFIG.DefaultUniverseId
+PermUniverseBox.PlaceholderText = "Universe ID..."
+PermUniverseBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+PermUniverseBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+PermUniverseBox.TextSize = 10
+PermUniverseBox.Font = Enum.Font.Gotham
+PermUniverseBox.ClearTextOnFocus = false
+PermUniverseBox.Parent = PermTopRow
+Instance.new("UICorner", PermUniverseBox).CornerRadius = UDim.new(0, 6)
+
+local PermCheckBtn = Instance.new("TextButton")
+PermCheckBtn.Size = UDim2.fromOffset(64, 24)
+PermCheckBtn.Position = UDim2.new(1, -132, 0, 0)
+PermCheckBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 52)
+PermCheckBtn.Text = "↻ Cek"
+PermCheckBtn.TextColor3 = Color3.fromRGB(215, 212, 248)
+PermCheckBtn.TextSize = 9
+PermCheckBtn.Font = Enum.Font.GothamBold
+PermCheckBtn.Parent = PermTopRow
+Instance.new("UICorner", PermCheckBtn).CornerRadius = UDim.new(0, 6)
+
+local PermAccessSwitch = createModernToggleSwitch(PermTopRow, false, nil)
+PermAccessSwitch.Button.Size = UDim2.fromOffset(62, 24)
+PermAccessSwitch.Button.Position = UDim2.new(1, -62, 0, 0)
+
+local PermMetaRow = Instance.new("Frame")
+PermMetaRow.Size = UDim2.new(1, -4, 0, 22)
+PermMetaRow.BackgroundTransparency = 1
+PermMetaRow.LayoutOrder = 3
+PermMetaRow.Parent = PermScroll
+
+local PermNameBox = Instance.new("TextBox")
+PermNameBox.Size = UDim2.new(0.46, -3, 1, 0)
+PermNameBox.Position = UDim2.new(0, 0, 0, 0)
+PermNameBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+PermNameBox.Text = ""
+PermNameBox.PlaceholderText = "Nama game (opsional)"
+PermNameBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+PermNameBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+PermNameBox.TextSize = 9
+PermNameBox.Font = Enum.Font.Gotham
+PermNameBox.ClearTextOnFocus = false
+PermNameBox.Parent = PermMetaRow
+Instance.new("UICorner", PermNameBox).CornerRadius = UDim.new(0, 6)
+
+local PermGenreBox = Instance.new("TextBox")
+PermGenreBox.Size = UDim2.new(0.24, -3, 1, 0)
+PermGenreBox.Position = UDim2.new(0.46, 2, 0, 0)
+PermGenreBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+PermGenreBox.Text = "All"
+PermGenreBox.PlaceholderText = "Genre"
+PermGenreBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+PermGenreBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+PermGenreBox.TextSize = 9
+PermGenreBox.Font = Enum.Font.Gotham
+PermGenreBox.ClearTextOnFocus = false
+PermGenreBox.Parent = PermMetaRow
+Instance.new("UICorner", PermGenreBox).CornerRadius = UDim.new(0, 6)
+
+local PermDescBox = Instance.new("TextBox")
+PermDescBox.Size = UDim2.new(0.30, 0, 1, 0)
+PermDescBox.Position = UDim2.new(0.70, 0, 0, 0)
+PermDescBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+PermDescBox.Text = ""
+PermDescBox.PlaceholderText = "Deskripsi..."
+PermDescBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+PermDescBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+PermDescBox.TextSize = 9
+PermDescBox.Font = Enum.Font.Gotham
+PermDescBox.ClearTextOnFocus = false
+PermDescBox.Parent = PermMetaRow
+Instance.new("UICorner", PermDescBox).CornerRadius = UDim.new(0, 6)
+
+local PermChoiceRow = Instance.new("Frame")
+PermChoiceRow.Size = UDim2.new(1, -4, 0, 22)
+PermChoiceRow.BackgroundTransparency = 1
+PermChoiceRow.LayoutOrder = 4
+PermChoiceRow.Parent = PermScroll
+
+local PermAppTypeBox = Instance.new("TextBox")
+PermAppTypeBox.Size = UDim2.new(0.5, -3, 1, 0)
+PermAppTypeBox.Position = UDim2.new(0, 0, 0, 0)
+PermAppTypeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+PermAppTypeBox.Text = "Game"
+PermAppTypeBox.PlaceholderText = "Tipe (Game)"
+PermAppTypeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+PermAppTypeBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+PermAppTypeBox.TextSize = 9
+PermAppTypeBox.Font = Enum.Font.Gotham
+PermAppTypeBox.ClearTextOnFocus = false
+PermAppTypeBox.Parent = PermChoiceRow
+Instance.new("UICorner", PermAppTypeBox).CornerRadius = UDim.new(0, 6)
+
+local PermDefaultAnsBox = Instance.new("TextBox")
+PermDefaultAnsBox.Size = UDim2.new(0.5, -2, 1, 0)
+PermDefaultAnsBox.Position = UDim2.new(0.5, 2, 0, 0)
+PermDefaultAnsBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+PermDefaultAnsBox.Text = "No"
+PermDefaultAnsBox.PlaceholderText = "Jawaban default (No)"
+PermDefaultAnsBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+PermDefaultAnsBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+PermDefaultAnsBox.TextSize = 9
+PermDefaultAnsBox.Font = Enum.Font.Gotham
+PermDefaultAnsBox.ClearTextOnFocus = false
+PermDefaultAnsBox.Parent = PermChoiceRow
+Instance.new("UICorner", PermDefaultAnsBox).CornerRadius = UDim.new(0, 6)
+
+local PermActionRow = Instance.new("Frame")
+PermActionRow.Size = UDim2.new(1, -4, 0, 24)
+PermActionRow.BackgroundTransparency = 1
+PermActionRow.LayoutOrder = 5
+PermActionRow.Parent = PermScroll
+
+local PermStep1Btn = Instance.new("TextButton")
+PermStep1Btn.Size = UDim2.new(0.33, -3, 1, 0)
+PermStep1Btn.Position = UDim2.new(0, 0, 0, 0)
+PermStep1Btn.BackgroundColor3 = Color3.fromRGB(45, 42, 74)
+PermStep1Btn.Text = "1. Detail Place"
+PermStep1Btn.TextColor3 = Color3.fromRGB(235, 232, 255)
+PermStep1Btn.TextSize = 9
+PermStep1Btn.Font = Enum.Font.GothamBold
+PermStep1Btn.Parent = PermActionRow
+Instance.new("UICorner", PermStep1Btn).CornerRadius = UDim.new(0, 6)
+
+local PermStep2Btn = Instance.new("TextButton")
+PermStep2Btn.Size = UDim2.new(0.34, -4, 1, 0)
+PermStep2Btn.Position = UDim2.new(0.33, 2, 0, 0)
+PermStep2Btn.BackgroundColor3 = Color3.fromRGB(45, 42, 74)
+PermStep2Btn.Text = "2. Form Rating"
+PermStep2Btn.TextColor3 = Color3.fromRGB(235, 232, 255)
+PermStep2Btn.TextSize = 9
+PermStep2Btn.Font = Enum.Font.GothamBold
+PermStep2Btn.Parent = PermActionRow
+Instance.new("UICorner", PermStep2Btn).CornerRadius = UDim.new(0, 6)
+
+local PermApplyBtn = Instance.new("TextButton")
+PermApplyBtn.Size = UDim2.new(0.33, 0, 1, 0)
+PermApplyBtn.Position = UDim2.new(0.67, 0, 0, 0)
+PermApplyBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+PermApplyBtn.Text = "⚡ Terapkan"
+PermApplyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+PermApplyBtn.TextSize = 9
+PermApplyBtn.Font = Enum.Font.GothamBold
+PermApplyBtn.Parent = PermActionRow
+Instance.new("UICorner", PermApplyBtn).CornerRadius = UDim.new(0, 6)
+
+local PermStatusLbl = Instance.new("TextLabel")
+PermStatusLbl.Size = UDim2.new(1, -4, 0, 14)
+PermStatusLbl.BackgroundTransparency = 1
+PermStatusLbl.Text = "Siap menjalankan Permission Place. Detail log ada di Console."
+PermStatusLbl.TextColor3 = Color3.fromRGB(165, 162, 194)
+PermStatusLbl.TextSize = 9
+PermStatusLbl.Font = Enum.Font.GothamMedium
+PermStatusLbl.TextXAlignment = Enum.TextXAlignment.Left
+PermStatusLbl.TextTruncate = Enum.TextTruncate.AtEnd
+PermStatusLbl.LayoutOrder = 6
+PermStatusLbl.Parent = PermScroll
+
+local PermCardHost = Instance.new("Frame")
+PermCardHost.Size = UDim2.new(1, -4, 0, 72)
+PermCardHost.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+PermCardHost.BorderSizePixel = 0
+PermCardHost.LayoutOrder = 7
+PermCardHost.Parent = PermScroll
+Instance.new("UICorner", PermCardHost).CornerRadius = UDim.new(0, 8)
+local PermHostStroke = Instance.new("UIStroke", PermCardHost)
+PermHostStroke.Color = Color3.fromRGB(52, 48, 82)
+PermHostStroke.Thickness = 1
+
+local function renderPermissionPreviewCard(cardData: GameResultCardData)
+	for _, ch in ipairs(PermCardHost:GetChildren()) do
+		if ch:IsA("Frame") then
+			ch:Destroy()
+		end
+	end
+	local c = createGameCard(PermCardHost, 1, cardData, function()
+		return CONFIG.Cookie
+	end)
+	c.Size = UDim2.new(1, -4, 1, -4)
+	c.Position = UDim2.fromOffset(2, 2)
+end
+
+renderPermissionPreviewCard({
+	universeId = CONFIG.DefaultUniverseId,
+	rootPlaceId = nil,
+	iconImage = resolveRealtimeGameIcon(CONFIG.DefaultUniverseId, nil, CONFIG.Cookie),
+	gameName = "Universe #" .. CONFIG.DefaultUniverseId,
+	status = "tidak diketahui",
+	metaInfo = "Universe: " .. CONFIG.DefaultUniverseId .. " • Siap cek status",
+	isError = false,
+})
+
+-- ==========================================
+-- HALAMAN 6: SETTING (COOKIE)
 -- ==========================================
 local SettingPage = Instance.new("Frame")
 SettingPage.Size = UDim2.fromScale(1, 1)
@@ -2154,7 +2763,7 @@ SettingStatusLabel.Parent = SettingPage
 Instance.new("UICorner", SettingStatusLabel).CornerRadius = UDim.new(0, 7)
 
 -- ==========================================
--- HALAMAN 6: CONSOLE OUTPUT SERVER / PERMINTAAN
+-- HALAMAN 7: CONSOLE OUTPUT SERVER / PERMINTAAN
 -- ==========================================
 local ConsolePage = Instance.new("Frame")
 ConsolePage.Size = UDim2.fromScale(1, 1)
@@ -2321,15 +2930,180 @@ end)
 createNavButton("ThirdPartySales", "🛒  3rd Party", 4).MouseButton1Click:Connect(function()
 	switchTab("ThirdPartySales")
 end)
-createNavButton("Setting", "⚙  Setting", 5).MouseButton1Click:Connect(function()
+createNavButton("PermissionPlace", "🔐  Permission Place", 5).MouseButton1Click:Connect(function()
+	switchTab("PermissionPlace")
+end)
+createNavButton("Setting", "⚙  Setting", 6).MouseButton1Click:Connect(function()
 	switchTab("Setting")
 end)
-createNavButton("Console", "🖥  Console", 6).MouseButton1Click:Connect(function()
+createNavButton("Console", "🖥  Console", 7).MouseButton1Click:Connect(function()
 	switchTab("Console")
 end)
 switchTab("CreatePlace")
 
-pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya dari halaman profile, Voice & 3rd Party Sales aktif).")
+pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya, Voice Chat, 3rd Party Sales, Permission Place & Console aktif).")
+
+-- ==========================================
+-- LOGIKA PERMISSION PLACE
+-- ==========================================
+local isRunningPermPlace = false
+local cachedPermCsrf = ""
+
+local function validatePermUniverseAndCookie(requireCookie: boolean): (string?, string?)
+	local cookieVal = syncCookieFromInput()
+	if requireCookie and cookieVal == "" then
+		PermStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
+		PermStatusLbl.Text = "Cookie .ROBLOSECURITY kosong. Isi di tab Setting."
+		pushConsole("ERR", "[Permission Place] Gagal: Cookie kosong.")
+		notify("Permission Place", "Cookie belum diisi.")
+		return nil, nil
+	end
+	local univId = trim(PermUniverseBox.Text):match("%d+") or ""
+	if univId == "" then
+		PermStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
+		PermStatusLbl.Text = "Masukkan Universe ID yang valid."
+		pushConsole("WARN", "[Permission Place] Universe ID tidak valid.")
+		return nil, nil
+	end
+	return univId, cookieVal
+end
+
+PermCheckBtn.MouseButton1Click:Connect(function()
+	if isRunningPermPlace then return end
+	local univId, cookieVal = validatePermUniverseAndCookie(false)
+	if not univId or not cookieVal then return end
+
+	isRunningPermPlace = true
+	PermCheckBtn.Text = "..."
+	PermStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
+	PermStatusLbl.Text = "Memeriksa status place..."
+
+	task.spawn(function()
+		local card = fetchRealtimeGameData(univId, cookieVal, nil)
+		renderPermissionPreviewCard(card)
+		if card.status == "publik" then
+			PermAccessSwitch.SetState(true, true)
+		elseif card.status == "private" then
+			PermAccessSwitch.SetState(false, true)
+		end
+		PermStatusLbl.TextColor3 = Color3.fromRGB(145, 255, 190)
+		PermStatusLbl.Text = "Status terkini: " .. card.gameName .. " (" .. card.status .. ")"
+		pushConsole("OK", string.format("[Permission Place] Cek status #%s -> %s (%s)", univId, card.gameName, card.status))
+		PermCheckBtn.Text = "↻ Cek"
+		isRunningPermPlace = false
+	end)
+end)
+
+PermStep1Btn.MouseButton1Click:Connect(function()
+	if isRunningPermPlace then return end
+	local univId, cookieVal = validatePermUniverseAndCookie(true)
+	if not univId or not cookieVal then return end
+
+	isRunningPermPlace = true
+	PermStep1Btn.Text = "..."
+	PermStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
+	PermStatusLbl.Text = "Menyimpan detail place..."
+
+	task.spawn(function()
+		local okDet, msgDet, nextCsrf = updateUniverseDetailForPermission(
+			univId,
+			cookieVal,
+			PermNameBox.Text,
+			PermDescBox.Text,
+			PermGenreBox.Text,
+			cachedPermCsrf
+		)
+		cachedPermCsrf = nextCsrf
+		PermStatusLbl.TextColor3 = okDet and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+		PermStatusLbl.Text = msgDet
+		notify("Permission Place", okDet and "Detail place tersimpan." or "Gagal menyimpan detail place.")
+		PermStep1Btn.Text = "1. Detail Place"
+		isRunningPermPlace = false
+	end)
+end)
+
+PermStep2Btn.MouseButton1Click:Connect(function()
+	if isRunningPermPlace then return end
+	local univId, cookieVal = validatePermUniverseAndCookie(true)
+	if not univId or not cookieVal then return end
+
+	local appTypeVal = trim(PermAppTypeBox.Text) ~= "" and trim(PermAppTypeBox.Text) or "Game"
+	local defaultAnsVal = trim(PermDefaultAnsBox.Text) ~= "" and trim(PermDefaultAnsBox.Text) or "No"
+
+	isRunningPermPlace = true
+	PermStep2Btn.Text = "..."
+	PermStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
+	PermStatusLbl.Text = "Memproses form rating..."
+
+	task.spawn(function()
+		local okQ, msgQ, nextCsrf = fetchAndSubmitContentQuestionnaire(
+			univId,
+			cookieVal,
+			appTypeVal,
+			defaultAnsVal,
+			cachedPermCsrf
+		)
+		cachedPermCsrf = nextCsrf
+		PermStatusLbl.TextColor3 = okQ and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+		PermStatusLbl.Text = msgQ
+		notify("Permission Place", okQ and "Form rating selesai." or "Cek detail di Console.")
+		PermStep2Btn.Text = "2. Form Rating"
+		isRunningPermPlace = false
+	end)
+end)
+
+PermApplyBtn.MouseButton1Click:Connect(function()
+	if isRunningPermPlace then return end
+	local univId, cookieVal = validatePermUniverseAndCookie(true)
+	if not univId or not cookieVal then return end
+
+	local targetPublic = PermAccessSwitch.GetState()
+	local appTypeVal = trim(PermAppTypeBox.Text) ~= "" and trim(PermAppTypeBox.Text) or "Game"
+	local defaultAnsVal = trim(PermDefaultAnsBox.Text) ~= "" and trim(PermDefaultAnsBox.Text) or "No"
+
+	isRunningPermPlace = true
+	PermApplyBtn.Text = "⏳..."
+	PermStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
+	PermStatusLbl.Text = "Menjalankan Permission Place..."
+
+	task.spawn(function()
+		if targetPublic then
+			local okDet, _, csrfAfterDet = updateUniverseDetailForPermission(
+				univId,
+				cookieVal,
+				PermNameBox.Text,
+				PermDescBox.Text,
+				PermGenreBox.Text,
+				cachedPermCsrf
+			)
+			cachedPermCsrf = csrfAfterDet
+			if not okDet then
+				pushConsole("WARN", "[Permission Place] Update detail belum 200, tetap mencoba proses berikutnya...")
+			end
+
+			local _, _, csrfAfterQ = fetchAndSubmitContentQuestionnaire(
+				univId,
+				cookieVal,
+				appTypeVal,
+				defaultAnsVal,
+				cachedPermCsrf
+			)
+			cachedPermCsrf = csrfAfterQ
+		end
+
+		local okAct, msgAct, csrfAfterAct = applyPlacePermissionAction(univId, cookieVal, targetPublic, cachedPermCsrf)
+		cachedPermCsrf = csrfAfterAct
+
+		local latestCard = fetchRealtimeGameData(univId, cookieVal, nil)
+		renderPermissionPreviewCard(latestCard)
+
+		PermStatusLbl.TextColor3 = okAct and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+		PermStatusLbl.Text = msgAct
+		notify("Permission Place", okAct and ("Status: " .. latestCard.status) or "Gagal memperbarui akses place.")
+		PermApplyBtn.Text = "⚡ Terapkan"
+		isRunningPermPlace = false
+	end)
+end)
 
 -- ==========================================
 -- LOGIKA CEK PLACE SAYA (DARI HALAMAN PROFILE)
