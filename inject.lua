@@ -210,7 +210,7 @@ if savedCookie and trim(savedCookie) ~= "" then
 end
 
 -- ==========================================
--- CONSOLE LOGGER BRIDGE (TERHUBUNG KE TAB CONSOLE)
+-- CONSOLE LOGGER BRIDGE
 -- ==========================================
 local appendConsoleLineFn: ((level: string, message: string) -> ())? = nil
 
@@ -268,8 +268,8 @@ local function apiRequest(options: {
 			local code = tonumber(res.StatusCode or res.Status or res.status_code) or 0
 			local rawBody = tostring(res.Body or "")
 			local snippet = rawBody:gsub("[\r\n]+", " ")
-			if #snippet > 140 then
-				snippet = snippet:sub(1, 140) .. "..."
+			if #snippet > 160 then
+				snippet = snippet:sub(1, 160) .. "..."
 			end
 
 			lastOk = (code >= 200 and code < 300)
@@ -440,31 +440,6 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 		end
 	end
 
-	if statusVal == "tidak diketahui" and trim(cookieVal) ~= "" then
-		local cfgRes, cfgOk = apiRequest({
-			Url = "https://develop.roblox.com/v2/universes/" .. cleanUniv .. "/configuration",
-			Method = "GET",
-			Headers = devHeaders,
-			Retries = 1,
-		})
-		if cfgOk and cfgRes and cfgRes.Body then
-			local okDec, decoded = pcall(function()
-				return HttpService:JSONDecode(tostring(cfgRes.Body))
-			end)
-			if okDec and type(decoded) == "table" then
-				if not nameVal and type(decoded.name) == "string" and trim(decoded.name) ~= "" then
-					nameVal = trim(decoded.name)
-				end
-				if type(decoded.isActive) == "boolean" then
-					statusVal = decoded.isActive and "publik" or "private"
-				elseif type(decoded.privacyType) == "string" then
-					local pLow = decoded.privacyType:lower()
-					statusVal = (pLow == "public" or pLow:find("public")) and "publik" or "private"
-				end
-			end
-		end
-	end
-
 	local finalName = nameVal or ("Place #" .. cleanUniv)
 	local iconUri = resolveRealtimeGameIcon(cleanUniv, rootPlaceId, cookieVal)
 	local metaStr = "Universe: " .. cleanUniv .. (rootPlaceId and (" • Place: " .. rootPlaceId) or "")
@@ -480,10 +455,13 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 	}
 end
 
-local function getUniverseConfigurationData(universeId: string, cookieVal: string): (boolean, {[string]: any}, string)
+-- ==========================================
+-- API VOICE CHAT UNIVERSE (voice.roblox.com)
+-- ==========================================
+local function getUniverseVoiceSettings(universeId: string, cookieVal: string): (boolean, boolean?, {[string]: any}, string)
 	local cleanUniv = trim(universeId):match("%d+") or ""
 	if cleanUniv == "" then
-		return false, {}, "Universe ID tidak valid"
+		return false, nil, {}, "Universe ID tidak valid"
 	end
 
 	local hdrs: {[string]: string} = {}
@@ -492,14 +470,14 @@ local function getUniverseConfigurationData(universeId: string, cookieVal: strin
 	end
 
 	local res, ok, info = apiRequest({
-		Url = "https://develop.roblox.com/v1/universes/" .. cleanUniv .. "/configuration",
+		Url = "https://voice.roblox.com/v1/settings/universe/" .. cleanUniv,
 		Method = "GET",
 		Headers = hdrs,
 		Retries = 1,
 	})
 
 	if not ok or not res then
-		return false, {}, info
+		return false, nil, {}, info
 	end
 
 	local bodyStr = tostring(res.Body or "")
@@ -507,30 +485,33 @@ local function getUniverseConfigurationData(universeId: string, cookieVal: strin
 		return HttpService:JSONDecode(bodyStr)
 	end)
 	if not okDec or type(decoded) ~= "table" then
-		return false, {}, "Gagal decode JSON konfigurasi"
+		return false, nil, {}, "Gagal decode JSON voice.roblox.com"
 	end
 
-	return true, decoded, "OK"
+	local voiceState: boolean? = nil
+	if type(decoded.isUniverseEnabledForVoice) == "boolean" then
+		voiceState = decoded.isUniverseEnabledForVoice
+	elseif type(decoded.isVoiceEnabled) == "boolean" then
+		voiceState = decoded.isVoiceEnabled
+	elseif type(decoded.optIn) == "boolean" then
+		voiceState = decoded.optIn
+	end
+
+	return true, voiceState, decoded, "OK"
 end
 
-local function patchUniverseVoiceChat(universeId: string, cookieVal: string, enabled: boolean, csrfSeed: string): (boolean, string, string)
+local function setUniverseVoiceSettings(universeId: string, cookieVal: string, enabled: boolean, csrfSeed: string): (boolean, string, string)
 	local cleanUniv = trim(universeId):match("%d+") or ""
 	if cleanUniv == "" then
 		return false, "Universe ID tidak valid", csrfSeed
 	end
 
-	local okCfg, cfgData = getUniverseConfigurationData(cleanUniv, cookieVal)
-	local payload: {[string]: any} = {
-		isVoiceEnabled = enabled,
-	}
-	if okCfg and type(cfgData.optInRegions) == "table" then
-		payload.optInRegions = cfgData.optInRegions
-	end
-
-	local jsonBody = HttpService:JSONEncode(payload)
+	local jsonBody = HttpService:JSONEncode({
+		optIn = enabled,
+	})
 	local currentCsrf = csrfSeed
 
-	local function sendPatch(token: string)
+	local function sendVoicePost(token: string)
 		local hdrs: {[string]: string} = {
 			["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
 			["Content-Type"] = "application/json",
@@ -541,21 +522,21 @@ local function patchUniverseVoiceChat(universeId: string, cookieVal: string, ena
 			hdrs["X-CSRF-TOKEN"] = token
 		end
 		return apiRequest({
-			Url = "https://develop.roblox.com/v1/universes/" .. cleanUniv .. "/configuration",
-			Method = "PATCH",
+			Url = "https://voice.roblox.com/v1/settings/universe/" .. cleanUniv,
+			Method = "POST",
 			Headers = hdrs,
 			Body = jsonBody,
 			Retries = 1,
 		})
 	end
 
-	local res, ok, info = sendPatch(currentCsrf)
+	local res, ok, info = sendVoicePost(currentCsrf)
 	if not ok and res and tonumber(res.StatusCode or res.Status or res.status_code) == 403 then
 		local newToken = getHeaderCaseInsensitive(res.Headers, "x-csrf-token")
 		if newToken and newToken ~= "" then
-			pushConsole("INFO", "Refresh X-CSRF-TOKEN otomatis untuk PATCH Voice Chat")
+			pushConsole("INFO", "Refresh X-CSRF-TOKEN otomatis untuk voice.roblox.com")
 			currentCsrf = newToken
-			res, ok, info = sendPatch(currentCsrf)
+			res, ok, info = sendVoicePost(currentCsrf)
 		end
 	end
 
@@ -565,7 +546,7 @@ local function patchUniverseVoiceChat(universeId: string, cookieVal: string, ena
 		return true, "Voice Chat Universe berhasil " .. (enabled and "DIAKTIFKAN" or "DINONAKTIFKAN"), currentCsrf
 	end
 
-	local detail = bodyStr ~= "" and (" (" .. bodyStr:sub(1, 100) .. ")") or ""
+	local detail = bodyStr ~= "" and (" (" .. bodyStr:sub(1, 120) .. ")") or ""
 	return false, info .. detail, currentCsrf
 end
 
@@ -820,7 +801,6 @@ local function setMinimized(minimized: boolean)
 	end
 end
 
--- Geser luas ikon profil
 do
 	local dragging = false
 	local movedSignificantly = false
@@ -1248,7 +1228,7 @@ local function setCreateProgress(state: "idle" | "working" | "ok" | "err", ratio
 end
 
 -- ==========================================
--- HALAMAN 2: VOICE CHAT UNIVERSE (TOGGLE KANAN-KIRI)
+-- HALAMAN 2: VOICE CHAT UNIVERSE (voice.roblox.com)
 -- ==========================================
 local VoicePage = Instance.new("Frame")
 VoicePage.Size = UDim2.fromScale(1, 1)
@@ -1261,7 +1241,7 @@ local VoiceTitle = Instance.new("TextLabel")
 VoiceTitle.Size = UDim2.new(1, -24, 0, 16)
 VoiceTitle.Position = UDim2.new(0, 12, 0, 6)
 VoiceTitle.BackgroundTransparency = 1
-VoiceTitle.Text = "Voice Chat Universe"
+VoiceTitle.Text = "Voice Chat Universe (voice.roblox.com)"
 VoiceTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
 VoiceTitle.TextSize = 12
 VoiceTitle.Font = Enum.Font.GothamBold
@@ -1331,8 +1311,8 @@ SwitchDesc.Parent = SwitchCard
 
 local VoiceSwitch = createModernToggleSwitch(SwitchCard, false, function(state: boolean)
 	SwitchDesc.Text = state
-		and "Target: Voice Chat DIAKTIFKAN (klik Terapkan)"
-		or "Target: Voice Chat DINONAKTIFKAN (klik Terapkan)"
+		and "Target: Voice Chat DIAKTIFKAN (optIn = true)"
+		or "Target: Voice Chat DINONAKTIFKAN (optIn = false)"
 end)
 VoiceSwitch.Button.Position = UDim2.new(1, -86, 0.5, -14)
 
@@ -1625,10 +1605,10 @@ createNavButton("Console", "🖥  Console", 4).MouseButton1Click:Connect(functio
 end)
 switchTab("CreatePlace")
 
-pushConsole("INFO", "Plugin Studio Lite siap. Semua respons server tampil di sini.")
+pushConsole("INFO", "Plugin Studio Lite siap (endpoint Voice: voice.roblox.com).")
 
 -- ==========================================
--- LOGIKA VOICE CHAT UNIVERSE
+-- LOGIKA VOICE CHAT UNIVERSE (voice.roblox.com)
 -- ==========================================
 local isSyncingVoice = false
 local isApplyingVoice = false
@@ -1639,17 +1619,20 @@ local function refreshVoiceUniversePreview(univId: string, cookieVal: string)
 	VoiceIconImg.Image = cardInfo.iconImage
 	VoiceGameName.Text = cardInfo.gameName .. " (" .. cardInfo.status .. ")"
 
-	local okCfg, cfgData, errCfg = getUniverseConfigurationData(univId, cookieVal)
-	if okCfg and type(cfgData.isVoiceEnabled) == "boolean" then
-		local voiceOn: boolean = cfgData.isVoiceEnabled
+	local okVoice, voiceOn, rawVoiceData, errVoice = getUniverseVoiceSettings(univId, cookieVal)
+	if okVoice and type(voiceOn) == "boolean" then
 		VoiceSwitch.SetState(voiceOn, true)
 		VoiceStatusText.TextColor3 = voiceOn and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 210, 140)
 		VoiceStatusText.Text = "Voice Chat saat ini: " .. (voiceOn and "AKTIF (ON)" or "NONAKTIF (OFF)")
-		pushConsole("INFO", string.format("Universe #%s isVoiceEnabled = %s", univId, tostring(voiceOn)))
+		pushConsole("OK", string.format("Universe #%s isUniverseEnabledForVoice = %s", univId, tostring(voiceOn)))
+	elseif okVoice then
+		VoiceStatusText.TextColor3 = Color3.fromRGB(185, 205, 255)
+		VoiceStatusText.Text = "Respons voice.roblox.com terbaca (cek Console)"
+		pushConsole("INFO", string.format("Universe #%s voice JSON: %s", univId, HttpService:JSONEncode(rawVoiceData)))
 	else
-		VoiceStatusText.TextColor3 = Color3.fromRGB(175, 172, 205)
-		VoiceStatusText.Text = "Info Universe terbaca • Konfigurasi Voice: " .. errCfg
-		pushConsole("WARN", string.format("Universe #%s konfigurasi voice: %s", univId, errCfg))
+		VoiceStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
+		VoiceStatusText.Text = "Gagal cek Voice Chat: " .. errVoice
+		pushConsole("ERR", string.format("Universe #%s gagal cek voice: %s", univId, errVoice))
 	end
 end
 
@@ -1696,22 +1679,22 @@ ApplyVoiceBtn.MouseButton1Click:Connect(function()
 	isApplyingVoice = true
 	ApplyVoiceBtn.Text = "⏳  MENGIRIM..."
 	VoiceStatusText.TextColor3 = Color3.fromRGB(175, 205, 255)
-	VoiceStatusText.Text = "Mengirim pengaturan Voice Chat = " .. (targetState and "ON" or "OFF") .. "..."
+	VoiceStatusText.Text = "Mengirim optIn = " .. tostring(targetState) .. " ke voice.roblox.com..."
 
 	task.spawn(function()
-		local okPatch, msgPatch, nextCsrf = patchUniverseVoiceChat(univId, cookieVal, targetState, cachedVoiceCsrf)
+		local okPost, msgPost, nextCsrf = setUniverseVoiceSettings(univId, cookieVal, targetState, cachedVoiceCsrf)
 		cachedVoiceCsrf = nextCsrf
 
-		if okPatch then
+		if okPost then
 			VoiceStatusText.TextColor3 = Color3.fromRGB(145, 255, 190)
-			VoiceStatusText.Text = msgPatch
-			pushConsole("OK", msgPatch .. " (Universe #" .. univId .. ")")
-			notify("Voice Chat", msgPatch)
+			VoiceStatusText.Text = msgPost
+			pushConsole("OK", msgPost .. " (Universe #" .. univId .. ")")
+			notify("Voice Chat", msgPost)
 			refreshVoiceUniversePreview(univId, cookieVal)
 		else
 			VoiceStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
-			VoiceStatusText.Text = "Gagal: " .. msgPatch
-			pushConsole("ERR", "Apply Voice gagal (#" .. univId .. "): " .. msgPatch)
+			VoiceStatusText.Text = "Gagal: " .. msgPost
+			pushConsole("ERR", "Apply Voice gagal (#" .. univId .. "): " .. msgPost)
 			notify("Voice Chat", "Gagal mengubah status Voice Chat.")
 		end
 
