@@ -1,4 +1,4 @@
-DELTA JAIL
+-- DELTA JAIL
 
 --!strict
 -- Plugin Studio Lite (Delta Executor Edition) by Ikyy
