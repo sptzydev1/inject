@@ -1,5 +1,5 @@
 --!strict
--- Plugin Studio Lite (Delta Executor Edition - Create Place, My Places from Profile, Voice Chat, 3rd Party Sales, Setting & Console) by Ikyy
+-- Plugin Studio Lite (Delta Executor Edition - Create Place, My Places from Profile, Voice Chat, 3rd Party Sales, Permission Place, Setting & Console) by Ikyy
 -- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Realtime (Icon Game, Name Game, Status + Console)
 
 local Players = game:GetService("Players")
@@ -26,6 +26,31 @@ local CONFIG = {
 	ActiveTab = "CreatePlace",
 	DefaultUniverseId = "10516113765",
 	UserAgent = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
+}
+
+-- Daftar Genre Resmi Roblox (Dropdown Selector)
+local ROBLOX_GENRES: {{label: string, apiValue: string, genreType: string}} = {
+	{ label = "All (Semua)", apiValue = "All", genreType = "All" },
+	{ label = "Town and City (Sosial/Kota)", apiValue = "Town and City", genreType = "TownAndCity" },
+	{ label = "Adventure (Petualangan)", apiValue = "Adventure", genreType = "Adventure" },
+	{ label = "Fantasy (Fantasi)", apiValue = "Fantasy", genreType = "Fantasy" },
+	{ label = "Sci-Fi", apiValue = "Sci-Fi", genreType = "SciFi" },
+	{ label = "Horror / Scary", apiValue = "Scary", genreType = "Scary" },
+	{ label = "Fighting (Pertarungan)", apiValue = "Fighting", genreType = "Fighting" },
+	{ label = "FPS", apiValue = "FPS", genreType = "FPS" },
+	{ label = "RPG", apiValue = "RPG", genreType = "RPG" },
+	{ label = "Sports (Olahraga)", apiValue = "Sports", genreType = "Sports" },
+	{ label = "Comedy / Funny", apiValue = "Comedy", genreType = "Comedy" },
+	{ label = "Building", apiValue = "Building", genreType = "Building" },
+	{ label = "Military", apiValue = "Military", genreType = "Military" },
+	{ label = "Medieval", apiValue = "Medieval", genreType = "Medieval" },
+	{ label = "Ninja", apiValue = "Ninja", genreType = "Ninja" },
+	{ label = "Pirate", apiValue = "Pirate", genreType = "Pirate" },
+	{ label = "Naval", apiValue = "Naval", genreType = "Naval" },
+	{ label = "Western / Wild West", apiValue = "Wild West", genreType = "WildWest" },
+	{ label = "War", apiValue = "War", genreType = "War" },
+	{ label = "Skate Park", apiValue = "Skate Park", genreType = "SkatePark" },
+	{ label = "Tutorial", apiValue = "Tutorial", genreType = "Tutorial" },
 }
 
 local MEMORY_FILES: {[string]: string} = {}
@@ -226,12 +251,39 @@ local function pushConsole(level: string, message: string)
 	local stamp = os.date("%H:%M:%S")
 	local line = string.format("[%s] [%s] %s", tostring(stamp), level, message)
 	table.insert(CONSOLE_LINES, line)
-	if #CONSOLE_LINES > 200 then
+	if #CONSOLE_LINES > 250 then
 		table.remove(CONSOLE_LINES, 1)
 	end
 	if appendConsoleLineFn then
 		appendConsoleLineFn(level, line)
 	end
+end
+
+-- Perbaikan Content-Type ganda pada Delta Executor:
+-- Delta otomatis menyisipkan Content-Type: application/json ketika Body diberikan,
+-- sehingga jika ada key Content-Type pada Headers, Delta menggabungkannya menjadi "application/json,application/json".
+local function sanitizeHeaders(rawHeaders: {[string]: string}?, hasBody: boolean): {[string]: string}
+	local clean: {[string]: string} = {
+		["User-Agent"] = CONFIG.UserAgent,
+	}
+	local seenLower: {[string]: boolean} = {
+		["user-agent"] = true,
+	}
+	if rawHeaders then
+		for k, v in pairs(rawHeaders) do
+			if type(k) == "string" and type(v) == "string" then
+				local lowK = k:lower()
+				if lowK == "content-type" and hasBody then
+					-- Biarkan Delta Executor menyetel Content-Type tunggal dari Body JSON
+				elseif not seenLower[lowK] then
+					seenLower[lowK] = true
+					local cleanVal = v:match("^%s*([^,]+)") or v
+					clean[k] = cleanVal:match("^%s*(.-)%s*$") or cleanVal
+				end
+			end
+		end
+	end
+	return clean
 end
 
 local function apiRequest(options: {
@@ -248,36 +300,34 @@ local function apiRequest(options: {
 	end
 
 	local methodStr = options.Method or "GET"
+	local hasBody = (options.Body ~= nil and options.Body ~= "")
 	pushConsole("REQ", methodStr .. " " .. options.Url)
 
 	local maxAttempts = math.max(1, options.Retries or 1)
-	local baseHeaders: {[string]: string} = {
-		["User-Agent"] = CONFIG.UserAgent,
-	}
-	if options.Headers then
-		for k, v in pairs(options.Headers) do
-			baseHeaders[k] = v
-		end
-	end
+	local baseHeaders = sanitizeHeaders(options.Headers, hasBody)
 
 	local lastRes = nil
 	local lastOk = false
 	local lastErr = "Tidak ada respons"
 
 	for attempt = 1, maxAttempts do
-		local ok, res = pcall(reqFn, {
+		local reqPayload: {[string]: any} = {
 			Url = options.Url,
 			Method = methodStr,
 			Headers = baseHeaders,
-			Body = options.Body,
-		})
+		}
+		if options.Body ~= nil then
+			reqPayload.Body = options.Body
+		end
+
+		local ok, res = pcall(reqFn, reqPayload)
 		if ok and type(res) == "table" then
 			lastRes = res
 			local code = tonumber(res.StatusCode or res.Status or res.status_code) or 0
 			local rawBody = tostring(res.Body or "")
 			local snippet = rawBody:gsub("[\r\n]+", " ")
-			if #snippet > 160 then
-				snippet = snippet:sub(1, 160) .. "..."
+			if #snippet > 180 then
+				snippet = snippet:sub(1, 180) .. "..."
 			end
 
 			lastOk = (code >= 200 and code < 300)
@@ -386,6 +436,7 @@ end
 local function fetchRealtimeGameData(universeId: string, cookieVal: string, fallbackPlaceId: string?): GameResultCardData
 	local cleanUniv = trim(universeId):match("%d+") or ""
 	local nameVal: string? = nil
+	local genreVal: string? = nil
 	local statusVal: "publik" | "private" | "tidak diketahui" = "tidak diketahui"
 	local rootPlaceId: string? = fallbackPlaceId
 
@@ -409,6 +460,9 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 			if type(decoded.name) == "string" and trim(decoded.name) ~= "" then
 				nameVal = trim(decoded.name)
 			end
+			if type(decoded.genre) == "string" and trim(decoded.genre) ~= "" then
+				genreVal = trim(decoded.genre)
+			end
 			if decoded.rootPlaceId ~= nil and tostring(decoded.rootPlaceId):match("%d+") then
 				rootPlaceId = tostring(decoded.rootPlaceId):match("%d+")
 			end
@@ -425,7 +479,7 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 		end
 	end
 
-	if not nameVal or not rootPlaceId then
+	if not nameVal or not rootPlaceId or not genreVal then
 		local gameRes, gameOk = apiRequest({
 			Url = "https://games.roblox.com/v1/games?universeIds=" .. cleanUniv,
 			Method = "GET",
@@ -441,6 +495,9 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 				if not nameVal and type(g.name) == "string" and trim(g.name) ~= "" then
 					nameVal = trim(g.name)
 				end
+				if not genreVal and type(g.genre) == "string" and trim(g.genre) ~= "" then
+					genreVal = trim(g.genre)
+				end
 				if not rootPlaceId and g.rootPlaceId ~= nil and tostring(g.rootPlaceId):match("%d+") then
 					rootPlaceId = tostring(g.rootPlaceId):match("%d+")
 				end
@@ -450,7 +507,9 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 
 	local finalName = nameVal or ("Place #" .. cleanUniv)
 	local iconUri = resolveRealtimeGameIcon(cleanUniv, rootPlaceId, cookieVal)
-	local metaStr = "Universe: " .. cleanUniv .. (rootPlaceId and (" • Place: " .. rootPlaceId) or "")
+	local metaStr = "Universe: " .. cleanUniv
+		.. (rootPlaceId and (" • Place: " .. rootPlaceId) or "")
+		.. (genreVal and (" • Genre: " .. genreVal) or "")
 
 	return {
 		universeId = cleanUniv,
@@ -556,7 +615,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		})
 	end
 
-	-- 1. Ambil dari Profile Creations API (www.roblox.com/users/{uid}/profile -> Creations)
 	local profileApiUrls = {
 		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=All&limit=50&sortOrder=Desc", uid),
 		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=2&limit=50&sortOrder=Desc", uid),
@@ -599,7 +657,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 2. Parse langsung halaman HTML profil: https://www.roblox.com/users/{uid}/profile
 	local profilePageUrl = string.format("https://www.roblox.com/users/%d/profile", uid)
 	local htmlRes, htmlOk = apiRequest({
 		Url = profilePageUrl,
@@ -654,7 +711,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 3. Lengkapi nama, rootPlaceId & status (publik / private) tiap universe
 	for _, it in ipairs(rawItems) do
 		local dRes, dOk = apiRequest({
 			Url = "https://develop.roblox.com/v1/universes/" .. it.univId,
@@ -687,7 +743,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 4. Batch fetch nama & rootPlaceId lewat games.roblox.com
 	local gamesInfoMap: {[string]: {name: string?, rootPlaceId: string?}} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -720,7 +775,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 5. Batch fetch icon lewat thumbnails.roblox.com
 	local iconMap: {[string]: string} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -838,7 +892,6 @@ local function setUniverseVoiceSettings(universeId: string, cookieVal: string, e
 	local function sendVoicePost(token: string)
 		local hdrs: {[string]: string} = {
 			["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
-			["Content-Type"] = "application/json",
 			["Origin"] = "https://create.roblox.com",
 			["Referer"] = "https://create.roblox.com/",
 		}
@@ -950,12 +1003,11 @@ local function setUniverseThirdPartySales(universeId: string, cookieVal: string,
 	local function sendPatch(token: string)
 		local hdrs: {[string]: string} = {
 			["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
-			["Content-Type"] = "application/json",
 			["Origin"] = "https://create.roblox.com",
 			["Referer"] = "https://create.roblox.com/",
 		}
 		if token ~= "" then
-			hdrs["x-csrf-token"] = token
+			hdrs["X-CSRF-TOKEN"] = token
 		end
 		return apiRequest({
 			Url = "https://develop.roblox.com/v2/universes/" .. cleanUniv .. "/configuration",
@@ -970,7 +1022,7 @@ local function setUniverseThirdPartySales(universeId: string, cookieVal: string,
 	if not ok and res and tonumber(res.StatusCode or res.Status or res.status_code) == 403 then
 		local newToken = getHeaderCaseInsensitive(res.Headers, "x-csrf-token")
 		if newToken and newToken ~= "" then
-			pushConsole("INFO", "Refresh x-csrf-token otomatis untuk develop.roblox.com")
+			pushConsole("INFO", "Refresh X-CSRF-TOKEN otomatis untuk develop.roblox.com")
 			currentCsrf = newToken
 			res, ok, info = sendPatch(currentCsrf)
 		end
@@ -985,6 +1037,686 @@ local function setUniverseThirdPartySales(universeId: string, cookieVal: string,
 
 	local detail = bodyStr ~= "" and (" (" .. bodyStr:sub(1, 120) .. ")") or ""
 	return false, info .. detail, currentCsrf
+end
+
+-- ==========================================
+-- API PERMISSION PLACE:
+-- 1. DETAIL PLACE (name, description, genre + genreType) -> KIRIM & TAMPIL HASIL
+-- 2. FORM RATING (v1beta1 & experience-guidelines-api):
+--    - Tipe Aplikasi = Game
+--    - Bagian IARC = semua No
+--    - Bagian Roblox = Social Hangout awal Yes, lanjutan Social Hangout No, sisanya No
+-- 3. PUBLIKASI / AKTIVASI PLACE (Konfirmasi RootPlace + Activate)
+-- ==========================================
+local function sendAuthedJsonRequest(
+	method: string,
+	url: string,
+	cookieVal: string,
+	csrfSeed: string,
+	jsonBody: string?,
+	queryParams: {[string]: string}?
+): (boolean, number, string, {[string]: any}?, string)
+	local fullUrl = url
+	if queryParams then
+		local parts: {string} = {}
+		for k, v in pairs(queryParams) do
+			table.insert(parts, HttpService:UrlEncode(k) .. "=" .. HttpService:UrlEncode(v))
+		end
+		if #parts > 0 then
+			fullUrl = fullUrl .. (fullUrl:find("?", 1, true) and "&" or "?") .. table.concat(parts, "&")
+		end
+	end
+
+	local currentCsrf = csrfSeed
+	local function doSend(token: string)
+		local hdrs: {[string]: string} = {
+			["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
+			["Accept"] = "application/json",
+			["Origin"] = "https://create.roblox.com",
+			["Referer"] = "https://create.roblox.com/",
+		}
+		if token ~= "" then
+			hdrs["X-CSRF-TOKEN"] = token
+		end
+		return apiRequest({
+			Url = fullUrl,
+			Method = method,
+			Headers = hdrs,
+			Body = jsonBody,
+			Retries = 1,
+		})
+	end
+
+	local res, ok, info = doSend(currentCsrf)
+	local statusCode = res and (tonumber(res.StatusCode or res.Status or res.status_code) or 0) or 0
+	if not ok and res and statusCode == 403 then
+		local newToken = getHeaderCaseInsensitive(res.Headers, "x-csrf-token")
+		if newToken and newToken ~= "" then
+			pushConsole("INFO", "Refresh X-CSRF-TOKEN otomatis untuk " .. url)
+			currentCsrf = newToken
+			res, ok, info = doSend(currentCsrf)
+			statusCode = res and (tonumber(res.StatusCode or res.Status or res.status_code) or 0) or 0
+		end
+	end
+
+	local bodyStr = res and tostring(res.Body or "") or ""
+	local decoded: {[string]: any}? = nil
+	if bodyStr ~= "" then
+		local okDec, dec = pcall(function()
+			return HttpService:JSONDecode(bodyStr)
+		end)
+		if okDec and type(dec) == "table" then
+			decoded = dec
+		end
+	end
+
+	return ok, statusCode, bodyStr, decoded, currentCsrf
+end
+
+local function normalizeGenreSelection(rawGenre: string): (string, string)
+	local gTrim = trim(rawGenre)
+	if gTrim == "" then
+		return "All", "All"
+	end
+	local low = gTrim:lower()
+	for _, entry in ipairs(ROBLOX_GENRES) do
+		if entry.apiValue:lower() == low or entry.genreType:lower() == low or entry.label:lower() == low then
+			return entry.apiValue, entry.genreType
+		end
+	end
+	if low:find("sosial", 1, true) or low:find("social", 1, true) or low:find("town", 1, true) then
+		return "Town and City", "TownAndCity"
+	end
+	return gTrim, gTrim:gsub("%s+", "")
+end
+
+-- STEP 1: DETAIL PLACE (Name, Description, Genre) -> Kirim & Tampil Hasil
+local function updateUniverseDetailStep1(
+	universeId: string,
+	cookieVal: string,
+	inputName: string,
+	inputDesc: string,
+	selectedGenreApi: string,
+	csrfSeed: string
+): (boolean, string, {[string]: any}, string)
+	local cleanUniv = trim(universeId):match("%d+") or ""
+	local currentCsrf = csrfSeed
+	local nameVal = trim(inputName)
+	local descVal = trim(inputDesc)
+	local genreApi, genreTypeEnum = normalizeGenreSelection(selectedGenreApi)
+	local rootPlaceId: string? = nil
+
+	-- Ambil data lama jika field ada yang dikosongkan + ambil rootPlaceId
+	local okGet, _, _, getDec, nextCsrfGet = sendAuthedJsonRequest(
+		"GET",
+		"https://develop.roblox.com/v1/universes/" .. cleanUniv,
+		cookieVal,
+		currentCsrf,
+		nil,
+		nil
+	)
+	currentCsrf = nextCsrfGet
+	if okGet and type(getDec) == "table" then
+		if nameVal == "" and type(getDec.name) == "string" and trim(getDec.name) ~= "" then
+			nameVal = trim(getDec.name)
+		end
+		if descVal == "" and type(getDec.description) == "string" and trim(getDec.description) ~= "" then
+			descVal = trim(getDec.description)
+		end
+		if getDec.rootPlaceId ~= nil then
+			rootPlaceId = tostring(getDec.rootPlaceId):match("%d+")
+		end
+	end
+
+	if nameVal == "" then
+		nameVal = "Place #" .. cleanUniv
+	end
+	if descVal == "" then
+		descVal = "Experience #" .. cleanUniv
+	end
+
+	local detailSummary = {
+		universeId = cleanUniv,
+		rootPlaceId = rootPlaceId or "-",
+		name = nameVal,
+		description = descVal,
+		genre = genreApi,
+	}
+
+	-- Kirim field genre sekaligus genreType agar server Roblox memperbarui genre universe & rootPlace
+	local payloadJson = HttpService:JSONEncode({
+		name = nameVal,
+		description = descVal,
+		genre = genreApi,
+		genreType = genreTypeEnum,
+	})
+
+	pushConsole("INFO", string.format("[Step 1: Detail Place] Kirim -> Name='%s' | Genre='%s' (%s) | Desc='%s'", nameVal, genreApi, genreTypeEnum, descVal))
+
+	local okV2, codeV2, bodyV2, decV2, csrfV2 = sendAuthedJsonRequest(
+		"PATCH",
+		"https://develop.roblox.com/v2/universes/" .. cleanUniv .. "/configuration",
+		cookieVal,
+		currentCsrf,
+		payloadJson,
+		nil
+	)
+	currentCsrf = csrfV2
+
+	if okV2 then
+		saveTextFile("Logs/perm_step1_detail_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyV2)
+		if type(decV2) == "table" then
+			detailSummary.name = tostring(decV2.name or nameVal)
+			detailSummary.description = tostring(decV2.description or descVal)
+			local returnedGenre = tostring(decV2.genreType or decV2.genre or genreApi)
+			if returnedGenre ~= "" then
+				detailSummary.genre = returnedGenre
+			end
+		end
+
+		-- Sinkronkan juga konfigurasi Root Place jika tersedia
+		if rootPlaceId and rootPlaceId ~= "" then
+			local placePayload = HttpService:JSONEncode({
+				name = nameVal,
+				description = descVal,
+				genre = genreApi,
+			})
+			local _, _, _, _, csrfPlace = sendAuthedJsonRequest(
+				"PATCH",
+				"https://develop.roblox.com/v2/places/" .. rootPlaceId,
+				cookieVal,
+				currentCsrf,
+				placePayload,
+				nil
+			)
+			currentCsrf = csrfPlace
+		end
+
+		local resultMsg = string.format("Detail Tersimpan: '%s' | Genre: %s", detailSummary.name, detailSummary.genre)
+		pushConsole("OK", "[Step 1: Detail Place] Sukses (HTTP " .. tostring(codeV2) .. ") -> " .. resultMsg)
+		return true, resultMsg, detailSummary, currentCsrf
+	end
+
+	pushConsole("WARN", string.format("[Step 1: Detail Place] PATCH v2 HTTP %d, mencoba PATCH v1...", codeV2))
+	local okV1, codeV1, bodyV1, decV1, csrfV1 = sendAuthedJsonRequest(
+		"PATCH",
+		"https://develop.roblox.com/v1/universes/" .. cleanUniv .. "/configuration",
+		cookieVal,
+		currentCsrf,
+		payloadJson,
+		nil
+	)
+	currentCsrf = csrfV1
+	if okV1 then
+		saveTextFile("Logs/perm_step1_detail_v1_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyV1)
+		if type(decV1) == "table" then
+			detailSummary.name = tostring(decV1.name or nameVal)
+			detailSummary.description = tostring(decV1.description or descVal)
+			detailSummary.genre = tostring(decV1.genreType or decV1.genre or genreApi)
+		end
+		local resultMsg = string.format("Detail Tersimpan: '%s' | Genre: %s", detailSummary.name, detailSummary.genre)
+		pushConsole("OK", "[Step 1: Detail Place] Sukses v1 (HTTP " .. tostring(codeV1) .. ") -> " .. resultMsg)
+		return true, resultMsg, detailSummary, currentCsrf
+	end
+
+	local errSnippet = bodyV2 ~= "" and bodyV2:sub(1, 130) or bodyV1:sub(1, 130)
+	local errMsg = string.format("Gagal Detail Place (HTTP %d/%d): %s", codeV2, codeV1, errSnippet)
+	pushConsole("ERR", "[Step 1: Detail Place] " .. errMsg)
+	return false, errMsg, detailSummary, currentCsrf
+end
+
+-- STEP 2: LOGIKA KUESIONER RATING:
+-- 1) Tipe Aplikasi = Game
+-- 2) Bagian IARC = Semua No
+-- 3) Bagian Roblox = Social Hangout awal Yes, lanjutan Social Hangout No, dan selanjutnya semua No
+type EvaluatedAnswerItem = {
+	questionId: any,
+	section: string,
+	title: string,
+	chosenLabel: string,
+	chosenValue: any,
+}
+
+local function evaluateQuestionnaireWithCustomLogic(schemaObj: any): ({{[string]: any}}, {EvaluatedAnswerItem}, {[string]: any})
+	local payloadAnswers: {{[string]: any}} = {}
+	local auditList: {EvaluatedAnswerItem} = {}
+	local directMapAnswers: {[string]: any} = {}
+	local seenQ: {[string]: boolean} = {}
+
+	local socialHangoutPrimaryAnsweredYes = false
+
+	local function pickOptionValue(optionsList: any, targetWord: string): (any, string)
+		local targetLow = targetWord:lower()
+		if type(optionsList) == "table" and #optionsList > 0 then
+			for _, opt in ipairs(optionsList) do
+				if type(opt) == "table" then
+					local lbl = tostring(opt.label or opt.text or opt.displayText or opt.value or opt.id or "")
+					local val = opt.id ~= nil and opt.id or (opt.value ~= nil and opt.value or lbl)
+					local lblLow = lbl:lower()
+					local valLow = tostring(val):lower()
+
+					if targetLow == "game" then
+						if lblLow == "game" or lblLow:find("game", 1, true) or valLow == "game" then
+							return val, lbl ~= "" and lbl or "Game"
+						end
+					elseif targetLow == "yes" then
+						if lblLow == "yes" or lblLow == "ya" or lblLow == "true" or valLow == "yes" or valLow == "true" then
+							return val, lbl ~= "" and lbl or "Yes"
+						end
+					else
+						if lblLow == "no" or lblLow == "tidak" or lblLow == "none" or lblLow == "false" or valLow == "no" or valLow == "false" then
+							return val, lbl ~= "" and lbl or "No"
+						end
+					end
+				elseif type(opt) == "string" then
+					local optLow = opt:lower()
+					if targetLow == "game" and optLow:find("game", 1, true) then
+						return opt, opt
+					elseif targetLow == "yes" and (optLow == "yes" or optLow == "ya" or optLow == "true") then
+						return opt, opt
+					elseif targetLow == "no" and (optLow == "no" or optLow == "tidak" or optLow == "none" or optLow == "false") then
+						return opt, opt
+					end
+				end
+			end
+
+			for _, opt in ipairs(optionsList) do
+				if type(opt) == "boolean" then
+					if targetLow == "yes" and opt == true then
+						return true, "Yes"
+					elseif targetLow == "no" and opt == false then
+						return false, "No"
+					end
+				end
+			end
+		end
+
+		if targetLow == "game" then
+			return "Game", "Game"
+		elseif targetLow == "yes" then
+			return "Yes", "Yes"
+		end
+		return "No", "No"
+	end
+
+	local function detectSectionAndDecision(qNode: {[string]: any}, inheritedSection: string): (string, string)
+		local qIdStr = tostring(qNode.questionId or qNode.id or qNode.key or ""):lower()
+		local qTitle = tostring(qNode.title or qNode.question or qNode.prompt or qNode.text or qNode.description or qNode.name or ""):lower()
+		local qCat = tostring(qNode.category or qNode.section or qNode.group or inheritedSection or ""):lower()
+		local combined = qIdStr .. " " .. qTitle .. " " .. qCat
+
+		-- 1. Bagian Tipe Aplikasi -> pilih Game
+		if combined:find("application", 1, true)
+			or combined:find("app type", 1, true)
+			or combined:find("describe your", 1, true)
+			or combined:find("experience type", 1, true)
+			or combined:find("what kind of", 1, true)
+		then
+			return "Tipe Aplikasi", "Game"
+		end
+
+		-- 2. Bagian Pertanyaan IARC -> semua pilih No
+		if combined:find("iarc", 1, true)
+			or qIdStr:find("^iarc")
+			or qCat:find("iarc", 1, true)
+		then
+			return "IARC", "No"
+		end
+
+		-- 3. Bagian Pertanyaan Roblox:
+		--    Sosial hangout awalan = Yes, lanjutan sosial hangout = No, selanjutnya semua = No
+		local isSocialHangout = combined:find("social hangout", 1, true)
+			or combined:find("social_hangout", 1, true)
+			or combined:find("socialhangout", 1, true)
+			or (combined:find("social", 1, true) and combined:find("hangout", 1, true))
+
+		if isSocialHangout then
+			local isSubFollowUp = (qNode.parentQuestionId ~= nil)
+				or (qNode.parentId ~= nil)
+				or (qNode.dependsOn ~= nil)
+				or (qNode.isFollowUp == true)
+				or (qNode.isSubQuestion == true)
+				or (qIdStr:find("sub", 1, true) ~= nil)
+				or (qIdStr:find("follow", 1, true) ~= nil)
+				or (qIdStr:find("detail", 1, true) ~= nil)
+				or (qIdStr:find("child", 1, true) ~= nil)
+
+			if not socialHangoutPrimaryAnsweredYes and not isSubFollowUp then
+				socialHangoutPrimaryAnsweredYes = true
+				return "Roblox (Social Hangout Awal)", "Yes"
+			else
+				return "Roblox (Social Hangout Lanjutan)", "No"
+			end
+		end
+
+		return "Roblox (Lainnya)", "No"
+	end
+
+	local function traverseSchema(node: any, currentSection: string)
+		if type(node) ~= "table" then return end
+
+		local nextSection = currentSection
+		if type(node.section) == "string" and node.section ~= "" then
+			nextSection = node.section
+		elseif type(node.category) == "string" and node.category ~= "" then
+			nextSection = node.category
+		elseif type(node.groupName) == "string" and node.groupName ~= "" then
+			nextSection = node.groupName
+		end
+
+		if #node > 0 then
+			for i = 1, #node do
+				traverseSchema(node[i], nextSection)
+			end
+		end
+
+		local qId = node.questionId or node.id or node.key
+		local looksLikeQuestion = (
+			node.options ~= nil
+			or node.choices ~= nil
+			or node.answers ~= nil
+			or node.possibleAnswers ~= nil
+			or node.questionType ~= nil
+			or node.prompt ~= nil
+			or node.question ~= nil
+			or (node.title ~= nil and qId ~= nil and type(node.questions) ~= "table")
+		)
+
+		if qId ~= nil and looksLikeQuestion and type(node.data) ~= "table" then
+			local qKey = tostring(qId)
+			if qKey ~= "" and not seenQ[qKey] then
+				seenQ[qKey] = true
+				local secLabel, decisionWord = detectSectionAndDecision(node, nextSection)
+				local opts = node.options or node.choices or node.answers or node.possibleAnswers
+				local chosenVal, chosenLbl = pickOptionValue(opts, decisionWord)
+				local rawTitle = tostring(node.title or node.question or node.prompt or node.text or qKey)
+
+				table.insert(payloadAnswers, {
+					questionId = qId,
+					answer = chosenVal,
+					value = chosenVal,
+					response = chosenVal,
+				})
+				directMapAnswers[qKey] = chosenVal
+
+				table.insert(auditList, {
+					questionId = qId,
+					section = secLabel,
+					title = rawTitle,
+					chosenLabel = chosenLbl,
+					chosenValue = chosenVal,
+				})
+			end
+		end
+
+		local orderedKeys = {
+			"applicationTypeQuestion",
+			"sections",
+			"groups",
+			"iarcQuestions",
+			"robloxQuestions",
+			"questions",
+			"subQuestions",
+			"followUpQuestions",
+			"children",
+			"items",
+			"data",
+			"questionnaire",
+		}
+		local visitedKeys: {[string]: boolean} = {}
+		for _, k in ipairs(orderedKeys) do
+			visitedKeys[k] = true
+			if type(node[k]) == "table" then
+				traverseSchema(node[k], nextSection)
+			end
+		end
+
+		for k, v in pairs(node) do
+			if type(k) == "string" and not visitedKeys[k] and type(v) == "table" then
+				traverseSchema(v, nextSection)
+			end
+		end
+	end
+
+	traverseSchema(schemaObj, "")
+
+	if #payloadAnswers == 0 then
+		local fallbackItems = {
+			{ id = "applicationType", sec = "Tipe Aplikasi", title = "Application Type", word = "Game" },
+			{ id = "iarc_violence", sec = "IARC", title = "IARC - Violence", word = "No" },
+			{ id = "iarc_fear", sec = "IARC", title = "IARC - Fear / Horror", word = "No" },
+			{ id = "iarc_sexuality", sec = "IARC", title = "IARC - Sexuality", word = "No" },
+			{ id = "iarc_gambling", sec = "IARC", title = "IARC - Simulated Gambling", word = "No" },
+			{ id = "iarc_language", sec = "IARC", title = "IARC - Crude Humor / Language", word = "No" },
+			{ id = "iarc_substances", sec = "IARC", title = "IARC - Alcohol / Tobacco / Drugs", word = "No" },
+			{ id = "roblox_social_hangout", sec = "Roblox (Social Hangout Awal)", title = "Social Hangout", word = "Yes" },
+			{ id = "roblox_social_hangout_followup", sec = "Roblox (Social Hangout Lanjutan)", title = "Social Hangout Follow-up / Unmoderated", word = "No" },
+			{ id = "roblox_freeform_user_creation", sec = "Roblox (Lainnya)", title = "Free-form User Creation", word = "No" },
+			{ id = "roblox_paid_random_items", sec = "Roblox (Lainnya)", title = "Paid Random Items", word = "No" },
+			{ id = "roblox_unrestricted_trading", sec = "Roblox (Lainnya)", title = "Trading / Virtual Economy", word = "No" },
+		}
+		for _, fb in ipairs(fallbackItems) do
+			table.insert(payloadAnswers, {
+				questionId = fb.id,
+				answer = fb.word,
+				value = fb.word,
+				response = fb.word,
+			})
+			directMapAnswers[fb.id] = fb.word
+			table.insert(auditList, {
+				questionId = fb.id,
+				section = fb.sec,
+				title = fb.title,
+				chosenLabel = fb.word,
+				chosenValue = fb.word,
+			})
+		end
+	end
+
+	return payloadAnswers, auditList, directMapAnswers
+end
+
+local function submitContentQuestionnaireStep2(
+	universeId: string,
+	cookieVal: string,
+	csrfSeed: string
+): (boolean, string, {EvaluatedAnswerItem}, string)
+	local cleanUniv = trim(universeId):match("%d+") or ""
+	local currentCsrf = csrfSeed
+	local univNum = tonumber(cleanUniv) or 0
+
+	pushConsole("INFO", string.format("[Step 2: Form Rating] Mengambil kuesioner Universe #%s (v1beta1)...", cleanUniv))
+
+	-- Endpoint aktif Experience Guidelines v1beta1
+	local fetchTargets = {
+		{
+			method = "POST",
+			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1beta1/questionnaire",
+			body = HttpService:JSONEncode({ universeId = univNum }),
+			query = nil,
+		},
+		{
+			method = "GET",
+			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1beta1/questionnaire",
+			body = nil,
+			query = { universeId = cleanUniv },
+		},
+		{
+			method = "POST",
+			url = "https://apis.roblox.com/experience-guidelines-api/v1beta1/questionnaire",
+			body = HttpService:JSONEncode({ universeId = univNum }),
+			query = nil,
+		},
+		{
+			method = "GET",
+			url = "https://apis.roblox.com/experience-guidelines-api/v1beta1/questionnaire",
+			body = nil,
+			query = { universeId = cleanUniv },
+		},
+		{
+			method = "POST",
+			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/get-age-recommendation",
+			body = HttpService:JSONEncode({ universeId = univNum }),
+			query = nil,
+		},
+	}
+
+	local loadedSchema: {[string]: any} = {}
+	local schemaLoadedFromServer = false
+	for _, tInfo in ipairs(fetchTargets) do
+		local okF, codeF, bodyF, decF, csrfF = sendAuthedJsonRequest(
+			tInfo.method,
+			tInfo.url,
+			cookieVal,
+			currentCsrf,
+			tInfo.body,
+			tInfo.query
+		)
+		currentCsrf = csrfF
+		if okF and type(decF) == "table" then
+			loadedSchema = decF
+			schemaLoadedFromServer = true
+			saveTextFile("Logs/perm_step2_schema_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyF)
+			pushConsole("OK", string.format("[Step 2: Form Rating] Schema kuesioner terbaca (HTTP %d)", codeF))
+			break
+		end
+	end
+
+	if not schemaLoadedFromServer then
+		pushConsole("WARN", "[Step 2: Form Rating] Menggunakan struktur standar (App=Game, IARC=No, Social Hangout=Yes->No)")
+	end
+
+	local builtAnswers, auditList, directMap = evaluateQuestionnaireWithCustomLogic(loadedSchema)
+
+	pushConsole("INFO", string.format("[Step 2: Form Rating] Total %d item jawaban disiapkan:", #auditList))
+	for idx, item in ipairs(auditList) do
+		pushConsole("INFO", string.format("   %d. [%s] %s => %s", idx, item.section, item.title:sub(1, 48), item.chosenLabel))
+	end
+
+	local submitPayloads = {
+		HttpService:JSONEncode({
+			universeId = univNum,
+			questionnaireId = loadedSchema.questionnaireId or loadedSchema.id,
+			applicationType = "Game",
+			responses = builtAnswers,
+		}),
+		HttpService:JSONEncode({
+			universeId = univNum,
+			applicationType = "Game",
+			answers = directMap,
+			responses = builtAnswers,
+		}),
+	}
+
+	local submitUrls = {
+		"https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1beta1/questionnaire/submit",
+		"https://apis.roblox.com/experience-guidelines-api/v1beta1/questionnaire/submit",
+		"https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1beta1/questionnaire",
+		"https://apis.roblox.com/experience-guidelines-api/v1beta1/questionnaire",
+	}
+
+	local lastErr = "Endpoint submit mengembalikan non-200"
+	for _, sUrl in ipairs(submitUrls) do
+		for _, sBody in ipairs(submitPayloads) do
+			local okS, codeS, bodyS, decS, csrfS = sendAuthedJsonRequest(
+				"POST",
+				sUrl,
+				cookieVal,
+				currentCsrf,
+				sBody,
+				nil
+			)
+			currentCsrf = csrfS
+			if okS then
+				saveTextFile("Logs/perm_step2_submit_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyS)
+				local ratingBadge = ""
+				if type(decS) == "table" then
+					local rec = decS.ageRecommendationDetails or decS.ageRecommendation or decS
+					if type(rec) == "table" and (rec.minimumAge ~= nil or rec.displayName ~= nil) then
+						ratingBadge = " | Rating: " .. tostring(rec.displayName or ("Usia " .. tostring(rec.minimumAge) .. "+"))
+					end
+				end
+				local resMsg = string.format("Form Rating Terkirim (HTTP %d): App=Game, IARC=No, SocialHangout=Yes->No%s", codeS, ratingBadge)
+				pushConsole("OK", "[Step 2: Form Rating] " .. resMsg)
+				return true, resMsg, auditList, currentCsrf
+			else
+				lastErr = string.format("HTTP %d (%s)", codeS, bodyS ~= "" and bodyS:sub(1, 100) or "empty")
+			end
+		end
+	end
+
+	local failMsg = "Gagal kirim Form Rating: " .. lastErr
+	pushConsole("ERR", "[Step 2: Form Rating] " .. failMsg)
+	return false, failMsg, auditList, currentCsrf
+end
+
+-- STEP 3: AKTIVASI / PUBLIKASIKAN ATAU PRIVATE PLACE
+local function applyPlacePermissionAction(
+	universeId: string,
+	cookieVal: string,
+	makePublic: boolean,
+	csrfSeed: string
+): (boolean, string, string)
+	local cleanUniv = trim(universeId):match("%d+") or ""
+	local currentCsrf = csrfSeed
+
+	-- Cek kepemilikan universe & rootPlaceId terlebih dahulu
+	local okU, _, _, decU, csrfU = sendAuthedJsonRequest(
+		"GET",
+		"https://develop.roblox.com/v1/universes/" .. cleanUniv,
+		cookieVal,
+		currentCsrf,
+		nil,
+		nil
+	)
+	currentCsrf = csrfU
+
+	local rootPlaceId: string? = nil
+	if okU and type(decU) == "table" and decU.rootPlaceId ~= nil then
+		rootPlaceId = tostring(decU.rootPlaceId):match("%d+")
+	end
+
+	-- Jika ingin publik, pastikan rootPlace aktif/terkonfigurasi sebelum activate universe
+	if makePublic and rootPlaceId and rootPlaceId ~= "" then
+		local _, _, _, _, csrfP = sendAuthedJsonRequest(
+			"PATCH",
+			"https://develop.roblox.com/v2/places/" .. rootPlaceId,
+			cookieVal,
+			currentCsrf,
+			HttpService:JSONEncode({ maxPlayerCount = 50 }),
+			nil
+		)
+		currentCsrf = csrfP
+	end
+
+	local actionSlug = makePublic and "activate" or "deactivate"
+	local url = "https://develop.roblox.com/v1/universes/" .. cleanUniv .. "/" .. actionSlug
+
+	pushConsole("INFO", string.format("[Step 3: Akses Place] Kirim status '%s' untuk Universe #%s...", makePublic and "Publik" or "Private", cleanUniv))
+	local okA, codeA, bodyA, _, csrfA = sendAuthedJsonRequest(
+		"POST",
+		url,
+		cookieVal,
+		currentCsrf,
+		"{}",
+		nil
+	)
+	currentCsrf = csrfA
+
+	if okA then
+		saveTextFile("Logs/perm_access_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyA)
+		local labelOut = makePublic and "PUBLIK" or "PRIVATE"
+		pushConsole("OK", string.format("[Step 3: Akses Place] Status akses Universe #%s berhasil diubah ke %s (HTTP %d)", cleanUniv, labelOut, codeA))
+		return true, "Status akses berhasil diubah ke " .. labelOut .. " (HTTP " .. tostring(codeA) .. ")", currentCsrf
+	end
+
+	local reasonHint = ""
+	if codeA == 403 then
+		reasonHint = " -> Pastikan akun cookie adalah pemilik Universe ini & Root Place sudah memiliki versi terpublikasi (Published)."
+	end
+	local snippet = bodyA ~= "" and (" | " .. bodyA:sub(1, 140)) or ""
+	pushConsole("ERR", string.format("[Step 3: Akses Place] Gagal ubah status akses ke %s (HTTP %d)%s%s", makePublic and "PUBLIK" or "PRIVATE", codeA, snippet, reasonHint))
+	return false, string.format("Gagal ubah status akses (HTTP %d)%s", codeA, reasonHint), currentCsrf
 end
 
 local function getUserAvatarAsync(userId: number): string
@@ -1163,10 +1895,10 @@ LogoIcon.Font = Enum.Font.GothamBold
 LogoIcon.Parent = HeaderLogoBox
 
 local SubTitleLabel = Instance.new("TextLabel")
-SubTitleLabel.Size = UDim2.new(0, 300, 0, 11)
+SubTitleLabel.Size = UDim2.new(0, 320, 0, 11)
 SubTitleLabel.Position = UDim2.new(0, 48, 0, 5)
 SubTitleLabel.BackgroundTransparency = 1
-SubTitleLabel.Text = "IKYYSTUDIO • PLACE, PROFILE PLACES, VOICE & 3RD PARTY"
+SubTitleLabel.Text = "IKYYSTUDIO • PLACE, VOICE, 3RD PARTY & PERMISSION PLACE"
 SubTitleLabel.TextColor3 = Color3.fromRGB(130, 126, 155)
 SubTitleLabel.TextSize = 8
 SubTitleLabel.Font = Enum.Font.GothamBold
@@ -1317,10 +2049,14 @@ local SideStroke = Instance.new("UIStroke", Sidebar)
 SideStroke.Color = Color3.fromRGB(52, 48, 82)
 SideStroke.Thickness = 1
 
-local NavListFrame = Instance.new("Frame")
-NavListFrame.Size = UDim2.new(1, -10, 1, -10)
-NavListFrame.Position = UDim2.new(0, 5, 0, 5)
+local NavListFrame = Instance.new("ScrollingFrame")
+NavListFrame.Size = UDim2.new(1, -8, 1, -8)
+NavListFrame.Position = UDim2.new(0, 4, 0, 4)
 NavListFrame.BackgroundTransparency = 1
+NavListFrame.BorderSizePixel = 0
+NavListFrame.ScrollBarThickness = 2
+NavListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+NavListFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 NavListFrame.Parent = Sidebar
 
 local NavLayout = Instance.new("UIListLayout")
@@ -1334,7 +2070,7 @@ local tabButtons: {[string]: TextButton} = {}
 local function createNavButton(name: string, label: string, order: number)
 	local btn = Instance.new("TextButton")
 	btn.Name = "Nav_" .. name
-	btn.Size = UDim2.new(1, 0, 0, 26)
+	btn.Size = UDim2.new(1, 0, 0, 25)
 	btn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
 	btn.Text = "  " .. label
 	btn.TextColor3 = Color3.fromRGB(185, 182, 210)
@@ -2090,7 +2826,317 @@ SalesStatusText.TextWrapped = true
 SalesStatusText.Parent = SalesPreviewCard
 
 -- ==========================================
--- HALAMAN 5: SETTING (COOKIE)
+-- HALAMAN 5: PERMISSION PLACE (DENGAN DROPDOWN PILIHAN GENRE RESMI)
+-- ==========================================
+local PermPlacePage = Instance.new("Frame")
+PermPlacePage.Size = UDim2.fromScale(1, 1)
+PermPlacePage.BackgroundTransparency = 1
+PermPlacePage.Visible = false
+PermPlacePage.Parent = ContentArea
+tabPages["PermissionPlace"] = PermPlacePage
+
+local PermScroll = Instance.new("ScrollingFrame")
+PermScroll.Name = "PermissionPlaceScroll"
+PermScroll.Size = UDim2.new(1, -16, 1, -8)
+PermScroll.Position = UDim2.new(0, 8, 0, 4)
+PermScroll.BackgroundTransparency = 1
+PermScroll.BorderSizePixel = 0
+PermScroll.ScrollBarThickness = 2
+PermScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+PermScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+PermScroll.Parent = PermPlacePage
+
+local PermLayout = Instance.new("UIListLayout")
+PermLayout.Padding = UDim.new(0, 5)
+PermLayout.SortOrder = Enum.SortOrder.LayoutOrder
+PermLayout.Parent = PermScroll
+
+local PermHeaderLbl = Instance.new("TextLabel")
+PermHeaderLbl.Size = UDim2.new(1, -4, 0, 15)
+PermHeaderLbl.BackgroundTransparency = 1
+PermHeaderLbl.Text = "Permission Place"
+PermHeaderLbl.TextColor3 = Color3.fromRGB(245, 245, 255)
+PermHeaderLbl.TextSize = 12
+PermHeaderLbl.Font = Enum.Font.GothamBold
+PermHeaderLbl.TextXAlignment = Enum.TextXAlignment.Left
+PermHeaderLbl.LayoutOrder = 1
+PermHeaderLbl.Parent = PermScroll
+
+local PermTopRow = Instance.new("Frame")
+PermTopRow.Size = UDim2.new(1, -4, 0, 24)
+PermTopRow.BackgroundTransparency = 1
+PermTopRow.LayoutOrder = 2
+PermTopRow.Parent = PermScroll
+
+local PermUniverseBox = Instance.new("TextBox")
+PermUniverseBox.Size = UDim2.new(1, -138, 1, 0)
+PermUniverseBox.Position = UDim2.new(0, 0, 0, 0)
+PermUniverseBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+PermUniverseBox.Text = CONFIG.DefaultUniverseId
+PermUniverseBox.PlaceholderText = "Universe ID..."
+PermUniverseBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+PermUniverseBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+PermUniverseBox.TextSize = 10
+PermUniverseBox.Font = Enum.Font.Gotham
+PermUniverseBox.ClearTextOnFocus = false
+PermUniverseBox.Parent = PermTopRow
+Instance.new("UICorner", PermUniverseBox).CornerRadius = UDim.new(0, 6)
+
+local PermCheckBtn = Instance.new("TextButton")
+PermCheckBtn.Size = UDim2.fromOffset(64, 24)
+PermCheckBtn.Position = UDim2.new(1, -132, 0, 0)
+PermCheckBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 52)
+PermCheckBtn.Text = "↻ Cek"
+PermCheckBtn.TextColor3 = Color3.fromRGB(215, 212, 248)
+PermCheckBtn.TextSize = 9
+PermCheckBtn.Font = Enum.Font.GothamBold
+PermCheckBtn.Parent = PermTopRow
+Instance.new("UICorner", PermCheckBtn).CornerRadius = UDim.new(0, 6)
+
+local PermAccessSwitch = createModernToggleSwitch(PermTopRow, false, nil)
+PermAccessSwitch.Button.Size = UDim2.fromOffset(62, 24)
+PermAccessSwitch.Button.Position = UDim2.new(1, -62, 0, 0)
+
+-- Baris Input 1: Name Game, Description, Dropdown Pilihan Genre
+local selectedGenreApiValue = "All"
+
+local PermMetaRow = Instance.new("Frame")
+PermMetaRow.Size = UDim2.new(1, -4, 0, 23)
+PermMetaRow.BackgroundTransparency = 1
+PermMetaRow.LayoutOrder = 3
+PermMetaRow.Parent = PermScroll
+
+local PermNameBox = Instance.new("TextBox")
+PermNameBox.Size = UDim2.new(0.32, -3, 1, 0)
+PermNameBox.Position = UDim2.new(0, 0, 0, 0)
+PermNameBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+PermNameBox.Text = ""
+PermNameBox.PlaceholderText = "Name game..."
+PermNameBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+PermNameBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+PermNameBox.TextSize = 9
+PermNameBox.Font = Enum.Font.Gotham
+PermNameBox.ClearTextOnFocus = false
+PermNameBox.Parent = PermMetaRow
+Instance.new("UICorner", PermNameBox).CornerRadius = UDim.new(0, 6)
+
+local PermDescBox = Instance.new("TextBox")
+PermDescBox.Size = UDim2.new(0.38, -3, 1, 0)
+PermDescBox.Position = UDim2.new(0.32, 2, 0, 0)
+PermDescBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+PermDescBox.Text = ""
+PermDescBox.PlaceholderText = "Description..."
+PermDescBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+PermDescBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+PermDescBox.TextSize = 9
+PermDescBox.Font = Enum.Font.Gotham
+PermDescBox.ClearTextOnFocus = false
+PermDescBox.Parent = PermMetaRow
+Instance.new("UICorner", PermDescBox).CornerRadius = UDim.new(0, 6)
+
+local PermGenreDropdownBtn = Instance.new("TextButton")
+PermGenreDropdownBtn.Size = UDim2.new(0.30, 0, 1, 0)
+PermGenreDropdownBtn.Position = UDim2.new(0.70, 0, 0, 0)
+PermGenreDropdownBtn.BackgroundColor3 = Color3.fromRGB(28, 26, 46)
+PermGenreDropdownBtn.Text = "Genre: All ▾"
+PermGenreDropdownBtn.TextColor3 = Color3.fromRGB(230, 226, 255)
+PermGenreDropdownBtn.TextSize = 8
+PermGenreDropdownBtn.Font = Enum.Font.GothamBold
+PermGenreDropdownBtn.TextTruncate = Enum.TextTruncate.AtEnd
+PermGenreDropdownBtn.Parent = PermMetaRow
+Instance.new("UICorner", PermGenreDropdownBtn).CornerRadius = UDim.new(0, 6)
+local GenreBtnStroke = Instance.new("UIStroke", PermGenreDropdownBtn)
+GenreBtnStroke.Color = Color3.fromRGB(84, 76, 134)
+GenreBtnStroke.Thickness = 1
+
+-- Panel Daftar Pilihan Genre (Muncul saat tombol Genre diklik)
+local GenreDropdownPanel = Instance.new("ScrollingFrame")
+GenreDropdownPanel.Name = "GenrePickerList"
+GenreDropdownPanel.Size = UDim2.new(1, -4, 0, 96)
+GenreDropdownPanel.BackgroundColor3 = Color3.fromRGB(15, 14, 25)
+GenreDropdownPanel.BorderSizePixel = 0
+GenreDropdownPanel.ScrollBarThickness = 3
+GenreDropdownPanel.CanvasSize = UDim2.new(0, 0, 0, 0)
+GenreDropdownPanel.AutomaticCanvasSize = Enum.AutomaticSize.Y
+GenreDropdownPanel.Visible = false
+GenreDropdownPanel.LayoutOrder = 4
+GenreDropdownPanel.Parent = PermScroll
+Instance.new("UICorner", GenreDropdownPanel).CornerRadius = UDim.new(0, 7)
+local GenreDropStroke = Instance.new("UIStroke", GenreDropdownPanel)
+GenreDropStroke.Color = Color3.fromRGB(108, 86, 245)
+GenreDropStroke.Thickness = 1
+
+local GenreGrid = Instance.new("UIGridLayout")
+GenreGrid.CellSize = UDim2.new(0.5, -6, 0, 20)
+GenreGrid.CellPadding = UDim2.fromOffset(4, 4)
+GenreGrid.SortOrder = Enum.SortOrder.LayoutOrder
+GenreGrid.Parent = GenreDropdownPanel
+
+local GenreGridPad = Instance.new("UIPadding")
+GenreGridPad.PaddingTop = UDim.new(0, 4)
+GenreGridPad.PaddingBottom = UDim.new(0, 4)
+GenreGridPad.PaddingLeft = UDim.new(0, 4)
+GenreGridPad.PaddingRight = UDim.new(0, 4)
+GenreGridPad.Parent = GenreDropdownPanel
+
+for idx, gItem in ipairs(ROBLOX_GENRES) do
+	local optBtn = Instance.new("TextButton")
+	optBtn.Size = UDim2.fromOffset(100, 20)
+	optBtn.BackgroundColor3 = Color3.fromRGB(26, 24, 42)
+	optBtn.Text = "  " .. gItem.label
+	optBtn.TextColor3 = Color3.fromRGB(225, 222, 250)
+	optBtn.TextSize = 8
+	optBtn.Font = Enum.Font.GothamMedium
+	optBtn.TextXAlignment = Enum.TextXAlignment.Left
+	optBtn.TextTruncate = Enum.TextTruncate.AtEnd
+	optBtn.LayoutOrder = idx
+	optBtn.Parent = GenreDropdownPanel
+	Instance.new("UICorner", optBtn).CornerRadius = UDim.new(0, 5)
+
+	optBtn.MouseButton1Click:Connect(function()
+		selectedGenreApiValue = gItem.apiValue
+		PermGenreDropdownBtn.Text = "Genre: " .. gItem.apiValue .. " ▾"
+		GenreDropdownPanel.Visible = false
+	end)
+end
+
+PermGenreDropdownBtn.MouseButton1Click:Connect(function()
+	GenreDropdownPanel.Visible = not GenreDropdownPanel.Visible
+end)
+
+-- Info Aturan Form Rating
+local PermRuleBanner = Instance.new("TextLabel")
+PermRuleBanner.Size = UDim2.new(1, -4, 0, 14)
+PermRuleBanner.BackgroundTransparency = 1
+PermRuleBanner.Text = "Rating: Tipe=Game • IARC=Semua No • Roblox=Social Hangout(Yes) -> Lanjutan(No) -> Sisanya(No)"
+PermRuleBanner.TextColor3 = Color3.fromRGB(145, 140, 178)
+PermRuleBanner.TextSize = 8
+PermRuleBanner.Font = Enum.Font.GothamMedium
+PermRuleBanner.TextXAlignment = Enum.TextXAlignment.Left
+PermRuleBanner.TextTruncate = Enum.TextTruncate.AtEnd
+PermRuleBanner.LayoutOrder = 5
+PermRuleBanner.Parent = PermScroll
+
+-- Baris Tombol Aksi: 1. Detail Place | 2. Form Rating | ⚡ Terapkan
+local PermActionRow = Instance.new("Frame")
+PermActionRow.Size = UDim2.new(1, -4, 0, 24)
+PermActionRow.BackgroundTransparency = 1
+PermActionRow.LayoutOrder = 6
+PermActionRow.Parent = PermScroll
+
+local PermStep1Btn = Instance.new("TextButton")
+PermStep1Btn.Size = UDim2.new(0.33, -3, 1, 0)
+PermStep1Btn.Position = UDim2.new(0, 0, 0, 0)
+PermStep1Btn.BackgroundColor3 = Color3.fromRGB(45, 42, 74)
+PermStep1Btn.Text = "1. Detail Place"
+PermStep1Btn.TextColor3 = Color3.fromRGB(235, 232, 255)
+PermStep1Btn.TextSize = 9
+PermStep1Btn.Font = Enum.Font.GothamBold
+PermStep1Btn.Parent = PermActionRow
+Instance.new("UICorner", PermStep1Btn).CornerRadius = UDim.new(0, 6)
+
+local PermStep2Btn = Instance.new("TextButton")
+PermStep2Btn.Size = UDim2.new(0.34, -4, 1, 0)
+PermStep2Btn.Position = UDim2.new(0.33, 2, 0, 0)
+PermStep2Btn.BackgroundColor3 = Color3.fromRGB(45, 42, 74)
+PermStep2Btn.Text = "2. Form Rating"
+PermStep2Btn.TextColor3 = Color3.fromRGB(235, 232, 255)
+PermStep2Btn.TextSize = 9
+PermStep2Btn.Font = Enum.Font.GothamBold
+PermStep2Btn.Parent = PermActionRow
+Instance.new("UICorner", PermStep2Btn).CornerRadius = UDim.new(0, 6)
+
+local PermApplyBtn = Instance.new("TextButton")
+PermApplyBtn.Size = UDim2.new(0.33, 0, 1, 0)
+PermApplyBtn.Position = UDim2.new(0.67, 0, 0, 0)
+PermApplyBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+PermApplyBtn.Text = "⚡ Terapkan"
+PermApplyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+PermApplyBtn.TextSize = 9
+PermApplyBtn.Font = Enum.Font.GothamBold
+PermApplyBtn.Parent = PermActionRow
+Instance.new("UICorner", PermApplyBtn).CornerRadius = UDim.new(0, 6)
+
+local PermStatusLbl = Instance.new("TextLabel")
+PermStatusLbl.Size = UDim2.new(1, -4, 0, 14)
+PermStatusLbl.BackgroundTransparency = 1
+PermStatusLbl.Text = "Pilih Genre di atas, lalu tekan '1. Detail Place' atau '2. Form Rating'."
+PermStatusLbl.TextColor3 = Color3.fromRGB(165, 162, 194)
+PermStatusLbl.TextSize = 9
+PermStatusLbl.Font = Enum.Font.GothamMedium
+PermStatusLbl.TextXAlignment = Enum.TextXAlignment.Left
+PermStatusLbl.TextTruncate = Enum.TextTruncate.AtEnd
+PermStatusLbl.LayoutOrder = 7
+PermStatusLbl.Parent = PermScroll
+
+-- Box Output Hasil Langsung
+local PermOutputBox = Instance.new("Frame")
+PermOutputBox.Size = UDim2.new(1, -4, 0, 0)
+PermOutputBox.AutomaticSize = Enum.AutomaticSize.Y
+PermOutputBox.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
+PermOutputBox.BorderSizePixel = 0
+PermOutputBox.LayoutOrder = 8
+PermOutputBox.Parent = PermScroll
+Instance.new("UICorner", PermOutputBox).CornerRadius = UDim.new(0, 7)
+local PermOutStroke = Instance.new("UIStroke", PermOutputBox)
+PermOutStroke.Color = Color3.fromRGB(58, 53, 94)
+PermOutStroke.Thickness = 1
+
+local PermOutPad = Instance.new("UIPadding", PermOutputBox)
+PermOutPad.PaddingTop = UDim.new(0, 5)
+PermOutPad.PaddingBottom = UDim.new(0, 5)
+PermOutPad.PaddingLeft = UDim.new(0, 7)
+PermOutPad.PaddingRight = UDim.new(0, 7)
+
+local PermOutputText = Instance.new("TextLabel")
+PermOutputText.Size = UDim2.new(1, 0, 0, 0)
+PermOutputText.AutomaticSize = Enum.AutomaticSize.Y
+PermOutputText.BackgroundTransparency = 1
+PermOutputText.Text = "Belum ada permintaan dikirim. Tekan '1. Detail Place' atau '2. Form Rating'."
+PermOutputText.TextColor3 = Color3.fromRGB(185, 182, 214)
+PermOutputText.TextSize = 8
+PermOutputText.Font = Enum.Font.Code
+PermOutputText.TextWrapped = true
+PermOutputText.TextXAlignment = Enum.TextXAlignment.Left
+PermOutputText.Parent = PermOutputBox
+
+-- Card Preview Game Realtime
+local PermCardHost = Instance.new("Frame")
+PermCardHost.Size = UDim2.new(1, -4, 0, 72)
+PermCardHost.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+PermCardHost.BorderSizePixel = 0
+PermCardHost.LayoutOrder = 9
+PermCardHost.Parent = PermScroll
+Instance.new("UICorner", PermCardHost).CornerRadius = UDim.new(0, 8)
+local PermHostStroke = Instance.new("UIStroke", PermCardHost)
+PermHostStroke.Color = Color3.fromRGB(52, 48, 82)
+PermHostStroke.Thickness = 1
+
+local function renderPermissionPreviewCard(cardData: GameResultCardData)
+	for _, ch in ipairs(PermCardHost:GetChildren()) do
+		if ch:IsA("Frame") then
+			ch:Destroy()
+		end
+	end
+	local c = createGameCard(PermCardHost, 1, cardData, function()
+		return CONFIG.Cookie
+	end)
+	c.Size = UDim2.new(1, -4, 1, -4)
+	c.Position = UDim2.fromOffset(2, 2)
+end
+
+renderPermissionPreviewCard({
+	universeId = CONFIG.DefaultUniverseId,
+	rootPlaceId = nil,
+	iconImage = resolveRealtimeGameIcon(CONFIG.DefaultUniverseId, nil, CONFIG.Cookie),
+	gameName = "Universe #" .. CONFIG.DefaultUniverseId,
+	status = "tidak diketahui",
+	metaInfo = "Universe: " .. CONFIG.DefaultUniverseId .. " • Siap cek status",
+	isError = false,
+})
+
+-- ==========================================
+-- HALAMAN 6: SETTING (COOKIE)
 -- ==========================================
 local SettingPage = Instance.new("Frame")
 SettingPage.Size = UDim2.fromScale(1, 1)
@@ -2154,7 +3200,7 @@ SettingStatusLabel.Parent = SettingPage
 Instance.new("UICorner", SettingStatusLabel).CornerRadius = UDim.new(0, 7)
 
 -- ==========================================
--- HALAMAN 6: CONSOLE OUTPUT SERVER / PERMINTAAN
+-- HALAMAN 7: CONSOLE OUTPUT SERVER / PERMINTAAN
 -- ==========================================
 local ConsolePage = Instance.new("Frame")
 ConsolePage.Size = UDim2.fromScale(1, 1)
@@ -2321,15 +3367,215 @@ end)
 createNavButton("ThirdPartySales", "🛒  3rd Party", 4).MouseButton1Click:Connect(function()
 	switchTab("ThirdPartySales")
 end)
-createNavButton("Setting", "⚙  Setting", 5).MouseButton1Click:Connect(function()
+createNavButton("PermissionPlace", "🔐  Permission Place", 5).MouseButton1Click:Connect(function()
+	switchTab("PermissionPlace")
+end)
+createNavButton("Setting", "⚙  Setting", 6).MouseButton1Click:Connect(function()
 	switchTab("Setting")
 end)
-createNavButton("Console", "🖥  Console", 6).MouseButton1Click:Connect(function()
+createNavButton("Console", "🖥  Console", 7).MouseButton1Click:Connect(function()
 	switchTab("Console")
 end)
 switchTab("CreatePlace")
 
-pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya dari halaman profile, Voice & 3rd Party Sales aktif).")
+pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya, Voice Chat, 3rd Party Sales, Permission Place & Console aktif).")
+
+-- ==========================================
+-- LOGIKA PERMISSION PLACE (STEP 1 & STEP 2 INTERAKTIF)
+-- ==========================================
+local isRunningPermPlace = false
+local cachedPermCsrf = ""
+
+local function validatePermUniverseAndCookie(requireCookie: boolean): (string?, string?)
+	local cookieVal = syncCookieFromInput()
+	if requireCookie and cookieVal == "" then
+		PermStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
+		PermStatusLbl.Text = "Cookie .ROBLOSECURITY kosong. Isi di tab Setting."
+		pushConsole("ERR", "[Permission Place] Gagal: Cookie kosong.")
+		notify("Permission Place", "Cookie belum diisi.")
+		return nil, nil
+	end
+	local univId = trim(PermUniverseBox.Text):match("%d+") or ""
+	if univId == "" then
+		PermStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
+		PermStatusLbl.Text = "Masukkan Universe ID yang valid."
+		pushConsole("WARN", "[Permission Place] Universe ID tidak valid.")
+		return nil, nil
+	end
+	return univId, cookieVal
+end
+
+PermCheckBtn.MouseButton1Click:Connect(function()
+	if isRunningPermPlace then return end
+	local univId, cookieVal = validatePermUniverseAndCookie(false)
+	if not univId or not cookieVal then return end
+
+	isRunningPermPlace = true
+	PermCheckBtn.Text = "..."
+	PermStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
+	PermStatusLbl.Text = "Memeriksa status place..."
+
+	task.spawn(function()
+		local card = fetchRealtimeGameData(univId, cookieVal, nil)
+		renderPermissionPreviewCard(card)
+		if card.status == "publik" then
+			PermAccessSwitch.SetState(true, true)
+		elseif card.status == "private" then
+			PermAccessSwitch.SetState(false, true)
+		end
+		PermStatusLbl.TextColor3 = Color3.fromRGB(145, 255, 190)
+		PermStatusLbl.Text = "Status terkini: " .. card.gameName .. " (" .. card.status .. ")"
+		PermOutputText.TextColor3 = Color3.fromRGB(185, 210, 255)
+		PermOutputText.Text = string.format("[Cek Status] Game: %s | Status: %s | %s", card.gameName, card.status, card.metaInfo)
+		pushConsole("OK", string.format("[Permission Place] Cek status #%s -> %s (%s)", univId, card.gameName, card.status))
+		PermCheckBtn.Text = "↻ Cek"
+		isRunningPermPlace = false
+	end)
+end)
+
+-- TOMBOL 1: DETAIL PLACE (Name, Description, Genre) -> Kirim & Tampil Hasil
+PermStep1Btn.MouseButton1Click:Connect(function()
+	if isRunningPermPlace then return end
+	local univId, cookieVal = validatePermUniverseAndCookie(true)
+	if not univId or not cookieVal then return end
+
+	GenreDropdownPanel.Visible = false
+	isRunningPermPlace = true
+	PermStep1Btn.Text = "⏳..."
+	PermStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
+	PermStatusLbl.Text = "Mengirim Detail Place (Name, Description, Genre)..."
+
+	task.spawn(function()
+		local okDet, msgDet, detSummary, nextCsrf = updateUniverseDetailStep1(
+			univId,
+			cookieVal,
+			PermNameBox.Text,
+			PermDescBox.Text,
+			selectedGenreApiValue,
+			cachedPermCsrf
+		)
+		cachedPermCsrf = nextCsrf
+
+		local latestCard = fetchRealtimeGameData(univId, cookieVal, nil)
+		renderPermissionPreviewCard(latestCard)
+
+		PermStatusLbl.TextColor3 = okDet and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+		PermStatusLbl.Text = msgDet
+		PermOutputText.TextColor3 = okDet and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+		PermOutputText.Text = string.format(
+			"[Hasil Step 1 - Detail Place]\n• Name: %s\n• Genre: %s\n• Description: %s\n• Status: %s",
+			tostring(detSummary.name),
+			tostring(detSummary.genre),
+			tostring(detSummary.description),
+			okDet and "BERHASIL DISIMPAN" or msgDet
+		)
+
+		notify("Detail Place", okDet and "Detail place tersimpan." or "Gagal menyimpan detail place.")
+		PermStep1Btn.Text = "1. Detail Place"
+		isRunningPermPlace = false
+	end)
+end)
+
+-- TOMBOL 2: FORM RATING
+PermStep2Btn.MouseButton1Click:Connect(function()
+	if isRunningPermPlace then return end
+	local univId, cookieVal = validatePermUniverseAndCookie(true)
+	if not univId or not cookieVal then return end
+
+	GenreDropdownPanel.Visible = false
+	isRunningPermPlace = true
+	PermStep2Btn.Text = "⏳..."
+	PermStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
+	PermStatusLbl.Text = "Mengirim Form Rating (Game, IARC=No, SocialHangout=Yes->No)..."
+
+	task.spawn(function()
+		local okQ, msgQ, auditList, nextCsrf = submitContentQuestionnaireStep2(
+			univId,
+			cookieVal,
+			cachedPermCsrf
+		)
+		cachedPermCsrf = nextCsrf
+
+		local previewLines = {
+			okQ and "[Hasil Step 2 - Form Rating TERKIRIM]" or "[Hasil Step 2 - Form Rating GAGAL]",
+			"• Tipe Aplikasi: Game | Bagian IARC: Semua No",
+			"• Bagian Roblox: Social Hangout Awal = Yes, Lanjutan = No, Sisanya = No",
+		}
+		for i = 1, math.min(6, #auditList) do
+			local it = auditList[i]
+			table.insert(previewLines, string.format("  - [%s] %s -> %s", it.section, it.title:sub(1, 34), it.chosenLabel))
+		end
+		if #auditList > 6 then
+			table.insert(previewLines, string.format("  ... (+%d item lainnya di Console)", #auditList - 6))
+		end
+		table.insert(previewLines, "Status Server: " .. msgQ)
+
+		PermStatusLbl.TextColor3 = okQ and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+		PermStatusLbl.Text = msgQ
+		PermOutputText.TextColor3 = okQ and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+		PermOutputText.Text = table.concat(previewLines, "\n")
+
+		notify("Form Rating", okQ and "Form rating terkirim." or "Cek hasil di layar / Console.")
+		PermStep2Btn.Text = "2. Form Rating"
+		isRunningPermPlace = false
+	end)
+end)
+
+-- TOMBOL 3: TERAPKAN (Jalankan Step 1 -> Step 2 -> Aktifkan/Nonaktifkan Place)
+PermApplyBtn.MouseButton1Click:Connect(function()
+	if isRunningPermPlace then return end
+	local univId, cookieVal = validatePermUniverseAndCookie(true)
+	if not univId or not cookieVal then return end
+
+	GenreDropdownPanel.Visible = false
+	local targetPublic = PermAccessSwitch.GetState()
+
+	isRunningPermPlace = true
+	PermApplyBtn.Text = "⏳..."
+	PermStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
+	PermStatusLbl.Text = "Menjalankan alur lengkap Permission Place..."
+
+	task.spawn(function()
+		local summaryOut: {string} = {}
+
+		if targetPublic then
+			local okDet, msgDet, _, csrfAfterDet = updateUniverseDetailStep1(
+				univId,
+				cookieVal,
+				PermNameBox.Text,
+				PermDescBox.Text,
+				selectedGenreApiValue,
+				cachedPermCsrf
+			)
+			cachedPermCsrf = csrfAfterDet
+			table.insert(summaryOut, "1. Detail Place: " .. (okDet and "OK" or msgDet))
+
+			local okQ, msgQ, _, csrfAfterQ = submitContentQuestionnaireStep2(
+				univId,
+				cookieVal,
+				cachedPermCsrf
+			)
+			cachedPermCsrf = csrfAfterQ
+			table.insert(summaryOut, "2. Form Rating: " .. (okQ and "OK" or msgQ))
+		end
+
+		local okAct, msgAct, csrfAfterAct = applyPlacePermissionAction(univId, cookieVal, targetPublic, cachedPermCsrf)
+		cachedPermCsrf = csrfAfterAct
+		table.insert(summaryOut, "3. Status Akses: " .. msgAct)
+
+		local latestCard = fetchRealtimeGameData(univId, cookieVal, nil)
+		renderPermissionPreviewCard(latestCard)
+
+		PermStatusLbl.TextColor3 = okAct and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+		PermStatusLbl.Text = msgAct
+		PermOutputText.TextColor3 = okAct and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+		PermOutputText.Text = table.concat(summaryOut, "\n")
+
+		notify("Permission Place", okAct and ("Status: " .. latestCard.status) or "Gagal memperbarui akses place.")
+		PermApplyBtn.Text = "⚡ Terapkan"
+		isRunningPermPlace = false
+	end)
+end)
 
 -- ==========================================
 -- LOGIKA CEK PLACE SAYA (DARI HALAMAN PROFILE)
@@ -2638,7 +3884,6 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 			local function sendCreateRequest(token: string)
 				local hdrs: {[string]: string} = {
 					["Cookie"] = ".ROBLOSECURITY=" .. cookieVal,
-					["Content-Type"] = "application/json",
 					["Origin"] = "https://create.roblox.com",
 					["Referer"] = "https://create.roblox.com/",
 				}
