@@ -1,6 +1,6 @@
 --!strict
 -- Plugin Studio Lite (Delta Executor Edition - Create Place & Setting) by Ikyy
--- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Hasil (Icon Game, Name Game, Status)
+-- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Realtime (Icon Game, Name Game, Status)
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -22,7 +22,6 @@ end
 local CONFIG = {
 	WorkspaceRoot = "IkyyStudioLite",
 	Cookie = "",
-	ApiKey = "",
 	IsMinimized = false,
 	ActiveTab = "CreatePlace",
 	UserAgent = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
@@ -193,9 +192,9 @@ local function loadTextFile(relPath: string): string?
 end
 
 local savedCookie = loadTextFile("cookie.txt")
-local savedApiKey = loadTextFile("apikey.txt")
-if savedCookie and trim(savedCookie) ~= "" then CONFIG.Cookie = normalizeCookie(savedCookie) end
-if savedApiKey and trim(savedApiKey) ~= "" then CONFIG.ApiKey = trim(savedApiKey) end
+if savedCookie and trim(savedCookie) ~= "" then
+	CONFIG.Cookie = normalizeCookie(savedCookie)
+end
 
 local function apiRequest(options: {
 	Url: string,
@@ -264,42 +263,55 @@ local function getHeaderCaseInsensitive(headers: any, targetKey: string): string
 end
 
 -- ==========================================
--- HELPER INFO & ICON GAME
+-- HELPER REALTIME: ICON GAME, NAME GAME & STATUS
 -- ==========================================
 export type GameResultCardData = {
+	universeId: string,
+	rootPlaceId: string?,
 	iconImage: string,
 	gameName: string,
-	status: "publik" | "private",
+	status: "publik" | "private" | "tidak diketahui",
 	metaInfo: string,
 	isError: boolean?,
 }
 
-local function fetchGameIconUrl(universeId: string, rootPlaceId: string?): string
-	local fallback = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+local function resolveRealtimeGameIcon(universeId: string, rootPlaceId: string?, cookieVal: string): string
+	local cleanUniv = trim(universeId):match("%d+") or ""
+	local cleanPlace = (rootPlaceId and trim(rootPlaceId):match("%d+")) or ""
 
-	-- Coba ambil thumbnail icon Universe
-	local uRes, uOk = apiRequest({
-		Url = string.format("https://thumbnails.roblox.com/v1/games/icons?universeIds=%s&size=150x150&format=Png&isCircular=false", universeId),
-		Method = "GET",
-		Retries = 1,
-	})
-	if uOk and uRes and uRes.Body then
-		local okDec, decoded = pcall(function()
-			return HttpService:JSONDecode(tostring(uRes.Body))
-		end)
-		if okDec and type(decoded) == "table" and type(decoded.data) == "table" and type(decoded.data[1]) == "table" then
-			local imgUrl = decoded.data[1].imageUrl
-			if type(imgUrl) == "string" and imgUrl ~= "" then
-				return imgUrl
+	local authHeaders: {[string]: string} = {}
+	if trim(cookieVal) ~= "" then
+		authHeaders["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal)
+	end
+
+	-- 1. Cek status GameIcon dari Thumbnails API terlebih dahulu (dengan Cookie agar game private juga terbaca)
+	if cleanUniv ~= "" then
+		local uRes, uOk = apiRequest({
+			Url = string.format("https://thumbnails.roblox.com/v1/games/icons?universeIds=%s&size=150x150&format=Png&isCircular=false", cleanUniv),
+			Method = "GET",
+			Headers = authHeaders,
+			Retries = 1,
+		})
+		if uOk and uRes and uRes.Body then
+			local okDec, decoded = pcall(function()
+				return HttpService:JSONDecode(tostring(uRes.Body))
+			end)
+			if okDec and type(decoded) == "table" and type(decoded.data) == "table" and type(decoded.data[1]) == "table" then
+				local entry = decoded.data[1]
+				if entry.state == "Completed" and type(entry.imageUrl) == "string" and entry.imageUrl ~= "" then
+					-- Di Roblox Client, rbxthumb:// adalah URI resmi yang bisa dirender oleh ImageLabel
+					return "rbxthumb://type=GameIcon&id=" .. cleanUniv .. "&w=150&h=150"
+				end
 			end
 		end
 	end
 
-	-- Fallback ke thumbnail place jika rootPlaceId tersedia
-	if rootPlaceId and rootPlaceId ~= "" then
+	-- 2. Fallback cek thumbnail Place / Asset jika GameIcon universe belum tersedia
+	if cleanPlace ~= "" then
 		local pRes, pOk = apiRequest({
-			Url = string.format("https://thumbnails.roblox.com/v1/places/gameicons?placeIds=%s&size=150x150&format=Png&isCircular=false", rootPlaceId),
+			Url = string.format("https://thumbnails.roblox.com/v1/places/gameicons?placeIds=%s&size=150x150&format=Png&isCircular=false", cleanPlace),
 			Method = "GET",
+			Headers = authHeaders,
 			Retries = 1,
 		})
 		if pOk and pRes and pRes.Body then
@@ -307,33 +319,39 @@ local function fetchGameIconUrl(universeId: string, rootPlaceId: string?): strin
 				return HttpService:JSONDecode(tostring(pRes.Body))
 			end)
 			if okDec and type(decoded) == "table" and type(decoded.data) == "table" and type(decoded.data[1]) == "table" then
-				local imgUrl = decoded.data[1].imageUrl
-				if type(imgUrl) == "string" and imgUrl ~= "" then
-					return imgUrl
+				local entry = decoded.data[1]
+				if entry.state == "Completed" and type(entry.imageUrl) == "string" and entry.imageUrl ~= "" then
+					return "rbxthumb://type=Asset&id=" .. cleanPlace .. "&w=150&h=150"
 				end
 			end
 		end
+		return "rbxthumb://type=Asset&id=" .. cleanPlace .. "&w=150&h=150"
 	end
 
-	return fallback
+	if cleanUniv ~= "" then
+		return "rbxthumb://type=GameIcon&id=" .. cleanUniv .. "&w=150&h=150"
+	end
+
+	return "rbxasset://textures/ui/GuiImagePlaceholder.png"
 end
 
-local function fetchCreatedGameCardData(universeId: string, cookieVal: string): GameResultCardData
+local function fetchRealtimeGameData(universeId: string, cookieVal: string, fallbackPlaceId: string?): GameResultCardData
 	local cleanUniv = trim(universeId):match("%d+") or ""
 	local nameVal: string? = nil
-	local statusVal: "publik" | "private" = "private"
-	local rootPlaceId: string? = nil
+	local statusVal: "publik" | "private" | "tidak diketahui" = "tidak diketahui"
+	local rootPlaceId: string? = fallbackPlaceId
 
 	local devHeaders: {[string]: string} = {}
 	if trim(cookieVal) ~= "" then
 		devHeaders["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal)
 	end
 
+	-- 1. Sumber utama & realtime untuk status privasi (develop API terautentikasi)
 	local devRes, devOk = apiRequest({
 		Url = "https://develop.roblox.com/v1/universes/" .. cleanUniv,
 		Method = "GET",
 		Headers = devHeaders,
-		Retries = 1,
+		Retries = 2,
 	})
 
 	if devOk and devRes and devRes.Body then
@@ -344,50 +362,80 @@ local function fetchCreatedGameCardData(universeId: string, cookieVal: string): 
 			if type(decoded.name) == "string" and trim(decoded.name) ~= "" then
 				nameVal = trim(decoded.name)
 			end
+			if decoded.rootPlaceId ~= nil and tostring(decoded.rootPlaceId):match("%d+") then
+				rootPlaceId = tostring(decoded.rootPlaceId):match("%d+")
+			end
 			if type(decoded.isActive) == "boolean" then
 				statusVal = decoded.isActive and "publik" or "private"
 			elseif type(decoded.privacyType) == "string" then
 				local pLow = decoded.privacyType:lower()
-				if pLow:find("public") or pLow:find("open") then
+				if pLow == "public" or pLow:find("public") or pLow:find("open") then
 					statusVal = "publik"
-				else
+				elseif pLow == "private" or pLow:find("private") or pLow:find("closed") then
 					statusVal = "private"
 				end
-			end
-			if decoded.rootPlaceId ~= nil and tostring(decoded.rootPlaceId):match("%d+") then
-				rootPlaceId = tostring(decoded.rootPlaceId):match("%d+")
 			end
 		end
 	end
 
-	local gameRes, gameOk = apiRequest({
-		Url = "https://games.roblox.com/v1/games?universeIds=" .. cleanUniv,
-		Method = "GET",
-		Retries = 1,
-	})
+	-- 2. Cek games.roblox.com hanya untuk melengkapi nama/rootPlaceId jika belum didapat (TIDAK memaksa status jadi publik)
+	if not nameVal or not rootPlaceId then
+		local gameRes, gameOk = apiRequest({
+			Url = "https://games.roblox.com/v1/games?universeIds=" .. cleanUniv,
+			Method = "GET",
+			Headers = devHeaders,
+			Retries = 1,
+		})
+		if gameOk and gameRes and gameRes.Body then
+			local okDec, decoded = pcall(function()
+				return HttpService:JSONDecode(tostring(gameRes.Body))
+			end)
+			if okDec and type(decoded) == "table" and type(decoded.data) == "table" and type(decoded.data[1]) == "table" then
+				local g = decoded.data[1]
+				if not nameVal and type(g.name) == "string" and trim(g.name) ~= "" then
+					nameVal = trim(g.name)
+				end
+				if not rootPlaceId and g.rootPlaceId ~= nil and tostring(g.rootPlaceId):match("%d+") then
+					rootPlaceId = tostring(g.rootPlaceId):match("%d+")
+				end
+			end
+		end
+	end
 
-	if gameOk and gameRes and gameRes.Body then
-		local okDec, decoded = pcall(function()
-			return HttpService:JSONDecode(tostring(gameRes.Body))
-		end)
-		if okDec and type(decoded) == "table" and type(decoded.data) == "table" and type(decoded.data[1]) == "table" then
-			local g = decoded.data[1]
-			if not nameVal and type(g.name) == "string" and trim(g.name) ~= "" then
-				nameVal = trim(g.name)
+	-- 3. Jika develop API tidak mengembalikan isActive/privacyType, cek endpoint konfigurasi universe sebagai verifikasi cadangan
+	if statusVal == "tidak diketahui" and trim(cookieVal) ~= "" then
+		local cfgRes, cfgOk = apiRequest({
+			Url = "https://develop.roblox.com/v2/universes/" .. cleanUniv .. "/configuration",
+			Method = "GET",
+			Headers = devHeaders,
+			Retries = 1,
+		})
+		if cfgOk and cfgRes and cfgRes.Body then
+			local okDec, decoded = pcall(function()
+				return HttpService:JSONDecode(tostring(cfgRes.Body))
+			end)
+			if okDec and type(decoded) == "table" then
+				if not nameVal and type(decoded.name) == "string" and trim(decoded.name) ~= "" then
+					nameVal = trim(decoded.name)
+				end
+				if type(decoded.isActive) == "boolean" then
+					statusVal = decoded.isActive and "publik" or "private"
+				elseif type(decoded.privacyType) == "string" then
+					local pLow = decoded.privacyType:lower()
+					statusVal = (pLow == "public" or pLow:find("public")) and "publik" or "private"
+				end
 			end
-			if g.rootPlaceId ~= nil and tostring(g.rootPlaceId):match("%d+") then
-				rootPlaceId = tostring(g.rootPlaceId):match("%d+")
-			end
-			statusVal = "publik"
 		end
 	end
 
 	local finalName = nameVal or ("Place #" .. cleanUniv)
-	local iconUrl = fetchGameIconUrl(cleanUniv, rootPlaceId)
-	local metaStr = "Universe ID: " .. cleanUniv .. (rootPlaceId and (" • Place ID: " .. rootPlaceId) or "")
+	local iconUri = resolveRealtimeGameIcon(cleanUniv, rootPlaceId, cookieVal)
+	local metaStr = "Universe: " .. cleanUniv .. (rootPlaceId and (" • Place: " .. rootPlaceId) or "")
 
 	return {
-		iconImage = iconUrl,
+		universeId = cleanUniv,
+		rootPlaceId = rootPlaceId,
+		iconImage = iconUri,
 		gameName = finalName,
 		status = statusVal,
 		metaInfo = metaStr,
@@ -805,7 +853,7 @@ StatusBanner.TextXAlignment = Enum.TextXAlignment.Left
 StatusBanner.TextTruncate = Enum.TextTruncate.AtEnd
 StatusBanner.Parent = CreatePlacePage
 
--- Area Hasil Format: [Icon Game (ukuran sedang)] | [Name Game] | [Status: private / publik]
+-- Area Hasil Realtime: [Icon Game (ukuran sedang)] | [Name Game] | [Status: private / publik]
 local ResultsScroll = Instance.new("ScrollingFrame")
 ResultsScroll.Name = "CreatedGamesResults"
 ResultsScroll.Size = UDim2.new(1, -24, 1, -106)
@@ -836,7 +884,7 @@ ResultsPad.Parent = ResultsScroll
 local EmptyResultHint = Instance.new("TextLabel")
 EmptyResultHint.Size = UDim2.new(1, 0, 0, 36)
 EmptyResultHint.BackgroundTransparency = 1
-EmptyResultHint.Text = "Hasil place akan tampil di sini:\nicon game • name game • status (private / publik)"
+EmptyResultHint.Text = "Hasil place akan tampil realtime di sini:\nicon game • name game • status (private / publik)"
 EmptyResultHint.TextColor3 = Color3.fromRGB(105, 102, 130)
 EmptyResultHint.TextSize = 9
 EmptyResultHint.Font = Enum.Font.Gotham
@@ -852,6 +900,26 @@ local function clearResultCards()
 		end
 	end
 	EmptyResultHint.Visible = true
+end
+
+local function styleStatusBadge(badge: TextLabel, status: "publik" | "private" | "tidak diketahui", isError: boolean?)
+	if isError then
+		badge.BackgroundColor3 = Color3.fromRGB(115, 32, 45)
+		badge.Text = "gagal"
+		badge.TextColor3 = Color3.fromRGB(255, 200, 208)
+	elseif status == "publik" then
+		badge.BackgroundColor3 = Color3.fromRGB(24, 92, 56)
+		badge.Text = "publik"
+		badge.TextColor3 = Color3.fromRGB(145, 255, 190)
+	elseif status == "private" then
+		badge.BackgroundColor3 = Color3.fromRGB(88, 62, 24)
+		badge.Text = "private"
+		badge.TextColor3 = Color3.fromRGB(255, 222, 145)
+	else
+		badge.BackgroundColor3 = Color3.fromRGB(48, 46, 68)
+		badge.Text = "cek status..."
+		badge.TextColor3 = Color3.fromRGB(205, 202, 230)
+	end
 end
 
 local function appendResultCard(data: GameResultCardData)
@@ -870,7 +938,7 @@ local function appendResultCard(data: GameResultCardData)
 	cardStroke.Color = data.isError and Color3.fromRGB(165, 65, 85) or Color3.fromRGB(64, 58, 104)
 	cardStroke.Thickness = 1
 
-	-- 1. Icon Game (ukuran agak sedang: 54x54 px)
+	-- 1. Icon Game (ukuran sedang: 54x54 px menggunakan rbxthumb:// realtime)
 	local iconFrame = Instance.new("Frame")
 	iconFrame.Size = UDim2.fromOffset(54, 54)
 	iconFrame.Position = UDim2.new(0, 7, 0.5, -27)
@@ -892,7 +960,7 @@ local function appendResultCard(data: GameResultCardData)
 
 	-- 2. Name Game
 	local gameNameLabel = Instance.new("TextLabel")
-	gameNameLabel.Size = UDim2.new(1, -76, 0, 18)
+	gameNameLabel.Size = UDim2.new(1, -124, 0, 18)
 	gameNameLabel.Position = UDim2.new(0, 68, 0, 7)
 	gameNameLabel.BackgroundTransparency = 1
 	gameNameLabel.Text = data.gameName
@@ -903,22 +971,15 @@ local function appendResultCard(data: GameResultCardData)
 	gameNameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	gameNameLabel.Parent = card
 
-	-- 3. Status (private / publik)
-	local isPublik = (data.status == "publik")
+	-- 3. Status Realtime (private / publik)
 	local statusBadge = Instance.new("TextLabel")
-	statusBadge.Size = UDim2.fromOffset(66, 17)
+	statusBadge.Size = UDim2.fromOffset(74, 17)
 	statusBadge.Position = UDim2.new(0, 68, 0, 27)
-	statusBadge.BackgroundColor3 = data.isError
-		and Color3.fromRGB(115, 32, 45)
-		or (isPublik and Color3.fromRGB(24, 92, 56) or Color3.fromRGB(88, 62, 24))
-	statusBadge.Text = data.isError and "gagal" or data.status
-	statusBadge.TextColor3 = data.isError
-		and Color3.fromRGB(255, 200, 208)
-		or (isPublik and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 222, 145))
 	statusBadge.TextSize = 9
 	statusBadge.Font = Enum.Font.GothamBold
 	statusBadge.Parent = card
 	Instance.new("UICorner", statusBadge).CornerRadius = UDim.new(0, 5)
+	styleStatusBadge(statusBadge, data.status, data.isError)
 
 	local metaLabel = Instance.new("TextLabel")
 	metaLabel.Size = UDim2.new(1, -76, 0, 14)
@@ -931,6 +992,36 @@ local function appendResultCard(data: GameResultCardData)
 	metaLabel.TextXAlignment = Enum.TextXAlignment.Left
 	metaLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	metaLabel.Parent = card
+
+	-- Tombol Refresh Realtime per card (cek ulang icon & status publik/private langsung ke API)
+	if not data.isError and data.universeId ~= "" then
+		local refreshBtn = Instance.new("TextButton")
+		refreshBtn.Size = UDim2.fromOffset(44, 18)
+		refreshBtn.Position = UDim2.new(1, -50, 0, 7)
+		refreshBtn.BackgroundColor3 = Color3.fromRGB(36, 34, 56)
+		refreshBtn.Text = "↻ Cek"
+		refreshBtn.TextColor3 = Color3.fromRGB(215, 212, 245)
+		refreshBtn.TextSize = 8
+		refreshBtn.Font = Enum.Font.GothamBold
+		refreshBtn.Parent = card
+		Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0, 5)
+
+		local isRefreshing = false
+		refreshBtn.MouseButton1Click:Connect(function()
+			if isRefreshing then return end
+			isRefreshing = true
+			refreshBtn.Text = "..."
+			task.spawn(function()
+				local latest = fetchRealtimeGameData(data.universeId, CONFIG.Cookie, data.rootPlaceId)
+				gameIconImg.Image = latest.iconImage
+				gameNameLabel.Text = latest.gameName
+				metaLabel.Text = latest.metaInfo
+				styleStatusBadge(statusBadge, latest.status, false)
+				refreshBtn.Text = "↻ Cek"
+				isRefreshing = false
+			end)
+		end)
+	end
 end
 
 local function setCreateProgress(state: "idle" | "working" | "ok" | "err", ratio: number, msg: string)
@@ -955,7 +1046,7 @@ local function setCreateProgress(state: "idle" | "working" | "ok" | "err", ratio
 end
 
 -- ==========================================
--- HALAMAN 2: SETTING
+-- HALAMAN 2: SETTING (HANYA COOKIE)
 -- ==========================================
 local SettingPage = Instance.new("Frame")
 SettingPage.Size = UDim2.fromScale(1, 1)
@@ -968,7 +1059,7 @@ local SettingTitle = Instance.new("TextLabel")
 SettingTitle.Size = UDim2.new(1, -24, 0, 18)
 SettingTitle.Position = UDim2.new(0, 12, 0, 8)
 SettingTitle.BackgroundTransparency = 1
-SettingTitle.Text = "Pengaturan"
+SettingTitle.Text = "Pengaturan Cookie"
 SettingTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
 SettingTitle.TextSize = 13
 SettingTitle.Font = Enum.Font.GothamBold
@@ -976,11 +1067,11 @@ SettingTitle.TextXAlignment = Enum.TextXAlignment.Left
 SettingTitle.Parent = SettingPage
 
 local CookieBox = Instance.new("TextBox")
-CookieBox.Size = UDim2.new(1, -24, 0, 56)
+CookieBox.Size = UDim2.new(1, -24, 0, 96)
 CookieBox.Position = UDim2.new(0, 12, 0, 32)
 CookieBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 CookieBox.Text = CONFIG.Cookie
-CookieBox.PlaceholderText = ".ROBLOSECURITY Cookie..."
+CookieBox.PlaceholderText = "Tempel .ROBLOSECURITY Cookie di sini..."
 CookieBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 CookieBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 CookieBox.TextSize = 10
@@ -993,29 +1084,11 @@ CookieBox.TextYAlignment = Enum.TextYAlignment.Top
 CookieBox.Parent = SettingPage
 Instance.new("UICorner", CookieBox).CornerRadius = UDim.new(0, 7)
 
-local ApiKeyBox = Instance.new("TextBox")
-ApiKeyBox.Size = UDim2.new(1, -24, 0, 56)
-ApiKeyBox.Position = UDim2.new(0, 12, 0, 96)
-ApiKeyBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-ApiKeyBox.Text = CONFIG.ApiKey
-ApiKeyBox.PlaceholderText = "Roblox Open Cloud API Key (opsional)..."
-ApiKeyBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-ApiKeyBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-ApiKeyBox.TextSize = 10
-ApiKeyBox.Font = Enum.Font.Gotham
-ApiKeyBox.ClearTextOnFocus = false
-ApiKeyBox.MultiLine = true
-ApiKeyBox.TextWrapped = true
-ApiKeyBox.TextXAlignment = Enum.TextXAlignment.Left
-ApiKeyBox.TextYAlignment = Enum.TextYAlignment.Top
-ApiKeyBox.Parent = SettingPage
-Instance.new("UICorner", ApiKeyBox).CornerRadius = UDim.new(0, 7)
-
 local SaveSettingBtn = Instance.new("TextButton")
 SaveSettingBtn.Size = UDim2.new(1, -24, 0, 32)
-SaveSettingBtn.Position = UDim2.new(0, 12, 0, 160)
+SaveSettingBtn.Position = UDim2.new(0, 12, 0, 136)
 SaveSettingBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-SaveSettingBtn.Text = "💾  SIMPAN PENGATURAN"
+SaveSettingBtn.Text = "💾  SIMPAN COOKIE"
 SaveSettingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 SaveSettingBtn.TextSize = 11
 SaveSettingBtn.Font = Enum.Font.GothamBold
@@ -1023,10 +1096,12 @@ SaveSettingBtn.Parent = SettingPage
 Instance.new("UICorner", SaveSettingBtn).CornerRadius = UDim.new(0, 8)
 
 local SettingStatusLabel = Instance.new("TextLabel")
-SettingStatusLabel.Size = UDim2.new(1, -24, 0, 44)
-SettingStatusLabel.Position = UDim2.new(0, 12, 0, 200)
+SettingStatusLabel.Size = UDim2.new(1, -24, 0, 56)
+SettingStatusLabel.Position = UDim2.new(0, 12, 0, 176)
 SettingStatusLabel.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-SettingStatusLabel.Text = "Cookie dan API Key tersimpan di workspace " .. CONFIG.WorkspaceRoot .. "/."
+SettingStatusLabel.Text = CONFIG.Cookie ~= ""
+	and ("Status Cookie: Terisi (" .. tostring(#CONFIG.Cookie) .. " karakter)")
+	or ("Status Cookie: Kosong • Simpan ke " .. CONFIG.WorkspaceRoot .. "/cookie.txt")
 SettingStatusLabel.TextColor3 = Color3.fromRGB(185, 205, 255)
 SettingStatusLabel.TextSize = 9
 SettingStatusLabel.Font = Enum.Font.Code
@@ -1034,44 +1109,29 @@ SettingStatusLabel.TextWrapped = true
 SettingStatusLabel.Parent = SettingPage
 Instance.new("UICorner", SettingStatusLabel).CornerRadius = UDim.new(0, 7)
 
-local function syncCredentialsFromInputs(): (string, string)
+local function syncCookieFromInput(): string
 	local boxCookie = normalizeCookie(CookieBox.Text)
-	local boxApiKey = trim(ApiKeyBox.Text)
 	if boxCookie ~= "" then
 		CONFIG.Cookie = boxCookie
 	end
-	if boxApiKey ~= "" then
-		CONFIG.ApiKey = boxApiKey
-	end
-	return CONFIG.Cookie, CONFIG.ApiKey
+	return CONFIG.Cookie
 end
 
 CookieBox:GetPropertyChangedSignal("Text"):Connect(function()
 	CONFIG.Cookie = normalizeCookie(CookieBox.Text)
 end)
 
-ApiKeyBox:GetPropertyChangedSignal("Text"):Connect(function()
-	CONFIG.ApiKey = trim(ApiKeyBox.Text)
-end)
-
 SaveSettingBtn.MouseButton1Click:Connect(function()
 	local c = normalizeCookie(CookieBox.Text)
-	local k = trim(ApiKeyBox.Text)
 	CONFIG.Cookie = c
-	CONFIG.ApiKey = k
 	CookieBox.Text = c
-	ApiKeyBox.Text = k
 
 	local okC = saveTextFile("cookie.txt", c)
-	local okK = saveTextFile("apikey.txt", k)
-	local ok = (c == "" or okC) and (k == "" or okK)
-	SettingStatusLabel.Text = string.format(
-		"Cookie: %s\nAPI Key: %s",
-		c ~= "" and ("Terisi (" .. tostring(#c) .. " karakter)") or "Kosong",
-		k ~= "" and ("Terisi (" .. tostring(#k) .. " karakter)") or "Kosong"
-	)
-	SettingStatusLabel.TextColor3 = ok and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
-	notify("Setting", ok and "Pengaturan tersimpan." or "Gagal menyimpan pengaturan.")
+	SettingStatusLabel.Text = c ~= ""
+		and ("Status Cookie: Tersimpan (" .. tostring(#c) .. " karakter)")
+		or "Status Cookie: Kosong"
+	SettingStatusLabel.TextColor3 = okC and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+	notify("Setting", okC and "Cookie tersimpan." or "Gagal menyimpan cookie.")
 end)
 
 -- Navigasi Sidebar
@@ -1089,7 +1149,7 @@ switchTab("CreatePlace")
 local isCreatingPlace = false
 CreatePlaceBtn.MouseButton1Click:Connect(function()
 	if isCreatingPlace then return end
-	local cookieVal = syncCredentialsFromInputs()
+	local cookieVal = syncCookieFromInput()
 	if cookieVal == "" then
 		setCreateProgress("err", 0, "Cookie .ROBLOSECURITY belum diisi di tab Setting.")
 		notify("Create Place", "Cookie kosong.")
@@ -1151,6 +1211,7 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 				saveTextFile("Logs/place_" .. tostring(os.time()) .. "_" .. tostring(i) .. ".json", bodyStr)
 
 				local createdUnivId: string? = nil
+				local createdRootPlaceId: string? = nil
 				local okDec, decoded = pcall(function()
 					return HttpService:JSONDecode(bodyStr)
 				end)
@@ -1160,19 +1221,27 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 					elseif decoded.id ~= nil then
 						createdUnivId = tostring(decoded.id):match("%d+")
 					end
+					if decoded.rootPlaceId ~= nil then
+						createdRootPlaceId = tostring(decoded.rootPlaceId):match("%d+")
+					end
 				end
 				if not createdUnivId then
 					createdUnivId = bodyStr:match('"universeId"%s*:%s*(%d+)')
 				end
+				if not createdRootPlaceId then
+					createdRootPlaceId = bodyStr:match('"rootPlaceId"%s*:%s*(%d+)')
+				end
 
 				if createdUnivId and createdUnivId ~= "" then
-					local cardData = fetchCreatedGameCardData(createdUnivId, cookieVal)
+					local cardData = fetchRealtimeGameData(createdUnivId, cookieVal, createdRootPlaceId)
 					appendResultCard(cardData)
 				else
 					appendResultCard({
+						universeId = "",
+						rootPlaceId = createdRootPlaceId,
 						iconImage = "rbxasset://textures/ui/GuiImagePlaceholder.png",
 						gameName = "Place Baru #" .. tostring(i),
-						status = "private",
+						status = "tidak diketahui",
 						metaInfo = "Universe ID tidak terbaca dari respons",
 						isError = false,
 					})
@@ -1180,6 +1249,8 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 			else
 				gagal += 1
 				appendResultCard({
+					universeId = "",
+					rootPlaceId = nil,
 					iconImage = "rbxasset://textures/ui/GuiImagePlaceholder.png",
 					gameName = "Place #" .. tostring(i) .. " (" .. info .. ")",
 					status = "private",
