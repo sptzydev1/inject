@@ -136,6 +136,7 @@ local fnReadFile = type(ENV.readfile) == "function" and ENV.readfile or nil
 local fnIsFile = type(ENV.isfile) == "function" and ENV.isfile or nil
 local fnIsFolder = type(ENV.isfolder) == "function" and ENV.isfolder or nil
 local fnMakeFolder = type(ENV.makefolder) == "function" and ENV.makefolder or nil
+local fnListFiles = type(ENV.listfiles) == "function" and ENV.listfiles or nil
 
 local function ensureFolders()
 	if not fnMakeFolder then return end
@@ -212,6 +213,58 @@ local function loadTextFile(relPath: string): string?
 		return MEMORY_FILES[cleanRel]
 	end
 	return nil
+end
+
+-- Mengambil daftar file di folder IkyyStudioLite/Assets
+local function listAssetsFolderFiles(): {string}
+	ensureFolders()
+	local results: {string} = {}
+	local seen: {[string]: boolean} = {}
+
+	local function addAssetRel(rawPath: string)
+		local cleanRel = normalizeWorkspaceRelPath(rawPath)
+		if cleanRel:sub(1, 7) ~= "Assets/" then return end
+		if cleanRel:sub(-1) == "/" then return end
+		local subPart = cleanRel:sub(8)
+		if subPart == "" or subPart:find("/") then return end -- hanya file langsung di dalam Assets/
+		if not seen[cleanRel] then
+			seen[cleanRel] = true
+			table.insert(results, cleanRel)
+		end
+	end
+
+	if fnListFiles then
+		local assetsFolder = CONFIG.WorkspaceRoot .. "/Assets"
+		local okList, listRes = pcall(fnListFiles, assetsFolder)
+		if okList and type(listRes) == "table" then
+			for _, entry in ipairs(listRes) do
+				if type(entry) == "string" then
+					local cleanRel = normalizeWorkspaceRelPath(entry)
+					if cleanRel:sub(1, 7) ~= "Assets/" then
+						cleanRel = "Assets/" .. cleanRel:gsub("^/+", "")
+					end
+					local isDir = false
+					if fnIsFolder then
+						local okDir, resDir = pcall(fnIsFolder, entry)
+						if not okDir then
+							okDir, resDir = pcall(fnIsFolder, CONFIG.WorkspaceRoot .. "/" .. cleanRel)
+						end
+						isDir = okDir and (resDir == true)
+					end
+					if not isDir then
+						addAssetRel(cleanRel)
+					end
+				end
+			end
+		end
+	end
+
+	for k in pairs(MEMORY_FILES) do
+		addAssetRel(k)
+	end
+
+	table.sort(results)
+	return results
 end
 
 local savedCookie = loadTextFile("cookie.txt")
@@ -806,7 +859,7 @@ local function uploadAssetAndGetId(params: {
 	displayName: string,
 	description: string,
 	groupId: string?,
-	filePathOrContent: string,
+	selectedAssetRelPath: string,
 	requestPublicCatalog: boolean,
 }): (boolean, string?, string, string)
 	local cleanKey = trim(params.apiKey)
@@ -815,16 +868,16 @@ local function uploadAssetAndGetId(params: {
 		return false, nil, "API_KEY_MISSING", "Open Cloud API Key kosong. Isi di tab Setting."
 	end
 
-	local filePayload = params.filePathOrContent
-	local loadedFile = loadTextFile(filePayload)
-	if loadedFile then
-		filePayload = loadedFile
-		pushConsole("INFO", "Membaca file aset dari workspace: " .. filePayload:sub(1, 0) .. params.filePathOrContent)
+	local cleanRelPath = normalizeWorkspaceRelPath(params.selectedAssetRelPath)
+	if cleanRelPath == "" then
+		return false, nil, "NO_FILE_SELECTED", "Belum ada file di folder Assets yang dipilih."
 	end
 
-	if trim(filePayload) == "" then
-		return false, nil, "EMPTY_PAYLOAD", "Konten/path file aset kosong."
+	local filePayload = loadTextFile(cleanRelPath)
+	if not filePayload or trim(filePayload) == "" then
+		return false, nil, "EMPTY_PAYLOAD", "File '" .. cleanRelPath .. "' kosong atau gagal dibaca."
 	end
+	pushConsole("INFO", "Membaca file aset dari folder: " .. CONFIG.WorkspaceRoot .. "/" .. cleanRelPath)
 
 	local creatorTbl: {[string]: any}
 	local cleanGroup = params.groupId and (trim(params.groupId):match("%d+") or "") or ""
@@ -847,8 +900,9 @@ local function uploadAssetAndGetId(params: {
 		},
 	}
 
+	local baseName = cleanRelPath:match("([^/]+)$") or "asset_payload.rbxm"
 	local boundary = "----IkyyStudioLiteBoundary" .. tostring(os.time())
-	local multipartBody = buildMultipartAssetBody(boundary, HttpService:JSONEncode(reqObj), filePayload, "asset_payload.rbxm")
+	local multipartBody = buildMultipartAssetBody(boundary, HttpService:JSONEncode(reqObj), filePayload, baseName)
 
 	local hdrs: {[string]: string} = {
 		["x-api-key"] = cleanKey,
@@ -1960,7 +2014,7 @@ MyPlacesEmptyHint.Font = Enum.Font.Gotham
 MyPlacesEmptyHint.Parent = MyPlacesScroll
 
 -- ==========================================
--- HALAMAN 3: UPLOAD ASSET -> DAPAT ASSET ID + TOGGLE PUBLIK
+-- HALAMAN 3: UPLOAD ASSET -> DAPAT ASSET ID + LIST FOLDER ASSETS
 -- ==========================================
 local UploadAssetPage = Instance.new("Frame")
 UploadAssetPage.Size = UDim2.fromScale(1, 1)
@@ -1981,8 +2035,8 @@ AssetPageTitle.TextXAlignment = Enum.TextXAlignment.Left
 AssetPageTitle.Parent = UploadAssetPage
 
 local AssetNameBox = Instance.new("TextBox")
-AssetNameBox.Size = UDim2.new(0.56, -10, 0, 21)
-AssetNameBox.Position = UDim2.new(0, 12, 0, 20)
+AssetNameBox.Size = UDim2.new(0.56, -10, 0, 20)
+AssetNameBox.Position = UDim2.new(0, 12, 0, 19)
 AssetNameBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 AssetNameBox.Text = "StudioLite_Model"
 AssetNameBox.PlaceholderText = "Nama Aset"
@@ -1995,11 +2049,11 @@ AssetNameBox.Parent = UploadAssetPage
 Instance.new("UICorner", AssetNameBox).CornerRadius = UDim.new(0, 6)
 
 local AssetTypeBox = Instance.new("TextBox")
-AssetTypeBox.Size = UDim2.new(0.44, -12, 0, 21)
-AssetTypeBox.Position = UDim2.new(0.56, 0, 0, 20)
+AssetTypeBox.Size = UDim2.new(0.24, -6, 0, 20)
+AssetTypeBox.Position = UDim2.new(0.56, 0, 0, 19)
 AssetTypeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 AssetTypeBox.Text = "Model"
-AssetTypeBox.PlaceholderText = "Model / Audio / Decal"
+AssetTypeBox.PlaceholderText = "Model/Audio"
 AssetTypeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 AssetTypeBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 AssetTypeBox.TextSize = 9
@@ -2009,11 +2063,11 @@ AssetTypeBox.Parent = UploadAssetPage
 Instance.new("UICorner", AssetTypeBox).CornerRadius = UDim.new(0, 6)
 
 local AssetGroupBox = Instance.new("TextBox")
-AssetGroupBox.Size = UDim2.new(0.36, -10, 0, 21)
-AssetGroupBox.Position = UDim2.new(0, 12, 0, 44)
+AssetGroupBox.Size = UDim2.new(0.20, -8, 0, 20)
+AssetGroupBox.Position = UDim2.new(0.80, 0, 0, 19)
 AssetGroupBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 AssetGroupBox.Text = ""
-AssetGroupBox.PlaceholderText = "Group ID (opsional)"
+AssetGroupBox.PlaceholderText = "Group ID"
 AssetGroupBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 AssetGroupBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 AssetGroupBox.TextSize = 9
@@ -2022,23 +2076,39 @@ AssetGroupBox.ClearTextOnFocus = false
 AssetGroupBox.Parent = UploadAssetPage
 Instance.new("UICorner", AssetGroupBox).CornerRadius = UDim.new(0, 6)
 
-local AssetFileBox = Instance.new("TextBox")
-AssetFileBox.Size = UDim2.new(0.64, -12, 0, 21)
-AssetFileBox.Position = UDim2.new(0.36, 0, 0, 44)
-AssetFileBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-AssetFileBox.Text = ""
-AssetFileBox.PlaceholderText = "Path file workspace (misal Assets/test.rbxm) atau isi"
-AssetFileBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-AssetFileBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-AssetFileBox.TextSize = 9
-AssetFileBox.Font = Enum.Font.Gotham
-AssetFileBox.ClearTextOnFocus = false
-AssetFileBox.Parent = UploadAssetPage
-Instance.new("UICorner", AssetFileBox).CornerRadius = UDim.new(0, 6)
+-- Picker File Internal Folder Assets (Tanpa Input Path Manual)
+local selectedAssetRelPath: string? = nil
+
+local AssetFilePickerBtn = Instance.new("TextButton")
+AssetFilePickerBtn.Size = UDim2.new(1, -54, 0, 21)
+AssetFilePickerBtn.Position = UDim2.new(0, 12, 0, 42)
+AssetFilePickerBtn.BackgroundColor3 = Color3.fromRGB(18, 17, 28)
+AssetFilePickerBtn.Text = "  📂 Pilih file dari folder Assets..."
+AssetFilePickerBtn.TextColor3 = Color3.fromRGB(220, 216, 248)
+AssetFilePickerBtn.TextSize = 9
+AssetFilePickerBtn.Font = Enum.Font.GothamBold
+AssetFilePickerBtn.TextXAlignment = Enum.TextXAlignment.Left
+AssetFilePickerBtn.TextTruncate = Enum.TextTruncate.AtEnd
+AssetFilePickerBtn.Parent = UploadAssetPage
+Instance.new("UICorner", AssetFilePickerBtn).CornerRadius = UDim.new(0, 6)
+local PickerStroke = Instance.new("UIStroke", AssetFilePickerBtn)
+PickerStroke.Color = Color3.fromRGB(72, 66, 116)
+PickerStroke.Thickness = 1
+
+local RefreshAssetListBtn = Instance.new("TextButton")
+RefreshAssetListBtn.Size = UDim2.fromOffset(26, 21)
+RefreshAssetListBtn.Position = UDim2.new(1, -38, 0, 42)
+RefreshAssetListBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 52)
+RefreshAssetListBtn.Text = "↻"
+RefreshAssetListBtn.TextColor3 = Color3.fromRGB(220, 216, 248)
+RefreshAssetListBtn.TextSize = 11
+RefreshAssetListBtn.Font = Enum.Font.GothamBold
+RefreshAssetListBtn.Parent = UploadAssetPage
+Instance.new("UICorner", RefreshAssetListBtn).CornerRadius = UDim.new(0, 6)
 
 local AssetPublicRow = Instance.new("Frame")
-AssetPublicRow.Size = UDim2.new(1, -24, 0, 22)
-AssetPublicRow.Position = UDim2.new(0, 12, 0, 68)
+AssetPublicRow.Size = UDim2.new(1, -24, 0, 21)
+AssetPublicRow.Position = UDim2.new(0, 12, 0, 66)
 AssetPublicRow.BackgroundColor3 = Color3.fromRGB(17, 16, 26)
 AssetPublicRow.BorderSizePixel = 0
 AssetPublicRow.Parent = UploadAssetPage
@@ -2060,12 +2130,12 @@ local AssetPublicSwitch = createModernToggleSwitch(AssetPublicRow, false, functi
 		and "Mode Publik: ON (set distribusi di Creator Dashboard)"
 		or "Mode Publik: OFF (tetap privat / terbatas)"
 end)
-AssetPublicSwitch.Button.Size = UDim2.fromOffset(58, 18)
-AssetPublicSwitch.Button.Position = UDim2.new(1, -64, 0.5, -9)
+AssetPublicSwitch.Button.Size = UDim2.fromOffset(58, 17)
+AssetPublicSwitch.Button.Position = UDim2.new(1, -64, 0.5, -8)
 
 local UploadAssetBtn = Instance.new("TextButton")
-UploadAssetBtn.Size = UDim2.new(1, -24, 0, 24)
-UploadAssetBtn.Position = UDim2.new(0, 12, 0, 93)
+UploadAssetBtn.Size = UDim2.new(1, -24, 0, 23)
+UploadAssetBtn.Position = UDim2.new(0, 12, 0, 90)
 UploadAssetBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
 UploadAssetBtn.Text = "📦  UPLOAD & GENERATE ASSET ID"
 UploadAssetBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -2075,8 +2145,8 @@ UploadAssetBtn.Parent = UploadAssetPage
 Instance.new("UICorner", UploadAssetBtn).CornerRadius = UDim.new(0, 7)
 
 local AssetResultCard = Instance.new("Frame")
-AssetResultCard.Size = UDim2.new(1, -24, 1, -125)
-AssetResultCard.Position = UDim2.new(0, 12, 0, 121)
+AssetResultCard.Size = UDim2.new(1, -24, 1, -121)
+AssetResultCard.Position = UDim2.new(0, 12, 0, 117)
 AssetResultCard.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
 AssetResultCard.BorderSizePixel = 0
 AssetResultCard.Parent = UploadAssetPage
@@ -2087,7 +2157,7 @@ AssetCardStroke.Thickness = 1
 
 local AssetIdDisplay = Instance.new("TextLabel")
 AssetIdDisplay.Size = UDim2.new(1, -86, 0, 20)
-AssetIdDisplay.Position = UDim2.new(0, 10, 0, 8)
+AssetIdDisplay.Position = UDim2.new(0, 10, 0, 6)
 AssetIdDisplay.BackgroundTransparency = 1
 AssetIdDisplay.Text = "Asset ID: -"
 AssetIdDisplay.TextColor3 = Color3.fromRGB(248, 248, 255)
@@ -2098,7 +2168,7 @@ AssetIdDisplay.Parent = AssetResultCard
 
 local CopyAssetIdBtn = Instance.new("TextButton")
 CopyAssetIdBtn.Size = UDim2.fromOffset(66, 20)
-CopyAssetIdBtn.Position = UDim2.new(1, -74, 0, 8)
+CopyAssetIdBtn.Position = UDim2.new(1, -74, 0, 6)
 CopyAssetIdBtn.BackgroundColor3 = Color3.fromRGB(42, 38, 72)
 CopyAssetIdBtn.Text = "📋 Copy ID"
 CopyAssetIdBtn.TextColor3 = Color3.fromRGB(220, 215, 255)
@@ -2108,10 +2178,10 @@ CopyAssetIdBtn.Parent = AssetResultCard
 Instance.new("UICorner", CopyAssetIdBtn).CornerRadius = UDim.new(0, 5)
 
 local AssetStatusDetail = Instance.new("TextLabel")
-AssetStatusDetail.Size = UDim2.new(1, -20, 1, -34)
-AssetStatusDetail.Position = UDim2.new(0, 10, 0, 30)
+AssetStatusDetail.Size = UDim2.new(1, -20, 1, -30)
+AssetStatusDetail.Position = UDim2.new(0, 10, 0, 26)
 AssetStatusDetail.BackgroundTransparency = 1
-AssetStatusDetail.Text = "Butuh Open Cloud API Key (tab Setting). API membuat aset & mengembalikan Asset ID; publikasi penuh ke katalog/Creator Store tetap melewati moderasi & pengaturan distribusi."
+AssetStatusDetail.Text = "Pilih file dari folder " .. CONFIG.WorkspaceRoot .. "/Assets lalu klik Upload. Butuh Open Cloud API Key (tab Setting)."
 AssetStatusDetail.TextColor3 = Color3.fromRGB(165, 162, 194)
 AssetStatusDetail.TextSize = 9
 AssetStatusDetail.Font = Enum.Font.GothamMedium
@@ -2119,6 +2189,126 @@ AssetStatusDetail.TextXAlignment = Enum.TextXAlignment.Left
 AssetStatusDetail.TextYAlignment = Enum.TextYAlignment.Top
 AssetStatusDetail.TextWrapped = true
 AssetStatusDetail.Parent = AssetResultCard
+
+-- Dropdown List File di Folder Assets
+local AssetFileDropdown = Instance.new("ScrollingFrame")
+AssetFileDropdown.Name = "AssetFolderList"
+AssetFileDropdown.Size = UDim2.new(1, -24, 0, 116)
+AssetFileDropdown.Position = UDim2.new(0, 12, 0, 65)
+AssetFileDropdown.BackgroundColor3 = Color3.fromRGB(15, 14, 24)
+AssetFileDropdown.BorderSizePixel = 0
+AssetFileDropdown.ScrollBarThickness = 3
+AssetFileDropdown.CanvasSize = UDim2.new(0, 0, 0, 0)
+AssetFileDropdown.AutomaticCanvasSize = Enum.AutomaticSize.Y
+AssetFileDropdown.Visible = false
+AssetFileDropdown.ZIndex = 20
+AssetFileDropdown.Parent = UploadAssetPage
+Instance.new("UICorner", AssetFileDropdown).CornerRadius = UDim.new(0, 7)
+local DropStroke = Instance.new("UIStroke", AssetFileDropdown)
+DropStroke.Color = Color3.fromRGB(108, 86, 245)
+DropStroke.Thickness = 1.2
+
+local DropLayout = Instance.new("UIListLayout")
+DropLayout.Padding = UDim.new(0, 3)
+DropLayout.SortOrder = Enum.SortOrder.LayoutOrder
+DropLayout.Parent = AssetFileDropdown
+
+local DropPad = Instance.new("UIPadding")
+DropPad.PaddingTop = UDim.new(0, 5)
+DropPad.PaddingBottom = UDim.new(0, 5)
+DropPad.PaddingLeft = UDim.new(0, 5)
+DropPad.PaddingRight = UDim.new(0, 5)
+DropPad.Parent = AssetFileDropdown
+
+local function rebuildAssetFileList(autoSelectFirst: boolean)
+	for _, child in ipairs(AssetFileDropdown:GetChildren()) do
+		if child:IsA("TextButton") or child:IsA("TextLabel") then
+			child:Destroy()
+		end
+	end
+
+	local files = listAssetsFolderFiles()
+	if #files == 0 then
+		selectedAssetRelPath = nil
+		AssetFilePickerBtn.Text = "  📂 Folder Assets kosong (" .. CONFIG.WorkspaceRoot .. "/Assets)"
+		local emptyLbl = Instance.new("TextLabel")
+		emptyLbl.Size = UDim2.new(1, 0, 0, 28)
+		emptyLbl.BackgroundTransparency = 1
+		emptyLbl.Text = "Tidak ada file di " .. CONFIG.WorkspaceRoot .. "/Assets"
+		emptyLbl.TextColor3 = Color3.fromRGB(165, 155, 195)
+		emptyLbl.TextSize = 9
+		emptyLbl.Font = Enum.Font.Gotham
+		emptyLbl.ZIndex = 21
+		emptyLbl.Parent = AssetFileDropdown
+		return
+	end
+
+	local stillExists = false
+	if selectedAssetRelPath then
+		for _, f in ipairs(files) do
+			if f == selectedAssetRelPath then
+				stillExists = true
+				break
+			end
+		end
+	end
+
+	if not stillExists and autoSelectFirst then
+		selectedAssetRelPath = files[1]
+	elseif not stillExists then
+		selectedAssetRelPath = nil
+	end
+
+	if selectedAssetRelPath then
+		AssetFilePickerBtn.Text = "  📄 " .. selectedAssetRelPath:match("([^/]+)$") .. " (" .. selectedAssetRelPath .. ")"
+	else
+		AssetFilePickerBtn.Text = string.format("  📂 Pilih file dari folder Assets (%d file)", #files)
+	end
+
+	for idx, relFile in ipairs(files) do
+		local shortName = relFile:match("([^/]+)$") or relFile
+		local isSelected = (relFile == selectedAssetRelPath)
+
+		local itemBtn = Instance.new("TextButton")
+		itemBtn.Name = "AssetFile_" .. tostring(idx)
+		itemBtn.Size = UDim2.new(1, 0, 0, 22)
+		itemBtn.BackgroundColor3 = isSelected and Color3.fromRGB(58, 48, 96) or Color3.fromRGB(24, 22, 38)
+		itemBtn.Text = (isSelected and "  ✓ " or "  📄 ") .. shortName
+		itemBtn.TextColor3 = isSelected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(210, 206, 238)
+		itemBtn.TextSize = 9
+		itemBtn.Font = Enum.Font.GothamBold
+		itemBtn.TextXAlignment = Enum.TextXAlignment.Left
+		itemBtn.TextTruncate = Enum.TextTruncate.AtEnd
+		itemBtn.LayoutOrder = idx
+		itemBtn.ZIndex = 21
+		itemBtn.Parent = AssetFileDropdown
+		Instance.new("UICorner", itemBtn).CornerRadius = UDim.new(0, 5)
+
+		itemBtn.MouseButton1Click:Connect(function()
+			selectedAssetRelPath = relFile
+			AssetFilePickerBtn.Text = "  📄 " .. shortName .. " (" .. relFile .. ")"
+			AssetFileDropdown.Visible = false
+			pushConsole("INFO", "File aset dipilih: " .. CONFIG.WorkspaceRoot .. "/" .. relFile)
+		end)
+	end
+end
+
+AssetFilePickerBtn.MouseButton1Click:Connect(function()
+	local nextVis = not AssetFileDropdown.Visible
+	if nextVis then
+		rebuildAssetFileList(false)
+	end
+	AssetFileDropdown.Visible = nextVis
+end)
+
+RefreshAssetListBtn.MouseButton1Click:Connect(function()
+	rebuildAssetFileList(false)
+	local countFiles = #listAssetsFolderFiles()
+	pushConsole("INFO", string.format("List folder Assets diperbarui (%d file).", countFiles))
+	notify("Folder Assets", tostring(countFiles) .. " file ditemukan.")
+end)
+
+rebuildAssetFileList(true)
 
 local lastGeneratedAssetId: string? = nil
 
@@ -2681,6 +2871,8 @@ createNavButton("MyPlaces", "🎮  Place Saya", 2).MouseButton1Click:Connect(fun
 	switchTab("MyPlaces")
 end)
 createNavButton("UploadAsset", "📦  Asset ID", 3).MouseButton1Click:Connect(function()
+	AssetFileDropdown.Visible = false
+	rebuildAssetFileList(true)
 	switchTab("UploadAsset")
 end)
 createNavButton("VoiceChat", "🎙  Voice Chat", 4).MouseButton1Click:Connect(function()
@@ -2706,6 +2898,12 @@ local isUploadingAsset = false
 
 UploadAssetBtn.MouseButton1Click:Connect(function()
 	if isUploadingAsset then return end
+	AssetFileDropdown.Visible = false
+
+	if not selectedAssetRelPath or selectedAssetRelPath == "" then
+		rebuildAssetFileList(true)
+	end
+
 	local apiKeyVal = syncApiKeyFromInput()
 	local cookieVal = syncCookieFromInput()
 	local wantPublic = AssetPublicSwitch.GetState()
@@ -2723,7 +2921,7 @@ UploadAssetBtn.MouseButton1Click:Connect(function()
 			displayName = AssetNameBox.Text,
 			description = "Uploaded via Ikyy Plugin Studio Lite",
 			groupId = AssetGroupBox.Text,
-			filePathOrContent = AssetFileBox.Text,
+			selectedAssetRelPath = selectedAssetRelPath or "",
 			requestPublicCatalog = wantPublic,
 		})
 
