@@ -56,6 +56,13 @@ local function normalizeCookie(rawCookie: string): string
 	return c
 end
 
+local function sanitizeApiKey(rawKey: string): string
+	local k = trim(rawKey)
+	if k == "" then return "" end
+	k = k:gsub("[\r\n]+", "")
+	return trim(k)
+end
+
 local function notify(title: string, text: string)
 	pcall(function()
 		StarterGui:SetCore("SendNotification", {
@@ -273,7 +280,7 @@ end
 
 local savedApiKey = loadTextFile("apikey.txt")
 if savedApiKey and trim(savedApiKey) ~= "" then
-	CONFIG.ApiKey = trim(savedApiKey)
+	CONFIG.ApiKey = sanitizeApiKey(savedApiKey)
 end
 
 -- ==========================================
@@ -853,14 +860,25 @@ local function guessMimeType(fileName: string, assetType: string): string
 	return "application/octet-stream"
 end
 
-local function buildMultipartAssetBody(boundary: string, requestJson: string, fileContent: string, fileName: string, mimeType: string): string
+local function buildMultipartAssetBody(
+	boundary: string,
+	requestJson: string,
+	fileContent: string,
+	fileName: string,
+	mimeType: string,
+	includeFilename: boolean
+): string
+	local fileDisp = includeFilename
+		and string.format('Content-Disposition: form-data; name="fileContent"; filename="%s"\r\n', fileName)
+		or 'Content-Disposition: form-data; name="fileContent"\r\n'
+
 	local parts = {
 		"--" .. boundary .. "\r\n",
 		'Content-Disposition: form-data; name="request"\r\n',
-		"Content-Type: application/json; charset=utf-8\r\n\r\n",
+		"Content-Type: application/json\r\n\r\n",
 		requestJson .. "\r\n",
 		"--" .. boundary .. "\r\n",
-		string.format('Content-Disposition: form-data; name="fileContent"; filename="%s"\r\n', fileName),
+		fileDisp,
 		"Content-Type: " .. mimeType .. "\r\n\r\n",
 		fileContent .. "\r\n",
 		"--" .. boundary .. "--\r\n",
@@ -878,7 +896,7 @@ local function uploadAssetAndGetId(params: {
 	selectedAssetRelPath: string,
 	requestPublicCatalog: boolean,
 }): (boolean, string?, string, string)
-	local cleanKey = trim(params.apiKey)
+	local cleanKey = sanitizeApiKey(params.apiKey)
 	local cleanCookie = normalizeCookie(params.cookieVal)
 	if cleanKey == "" then
 		return false, nil, "API_KEY_MISSING", "Open Cloud API Key kosong. Isi di tab Setting."
@@ -922,34 +940,64 @@ local function uploadAssetAndGetId(params: {
 		},
 	}
 
-	local boundary = "IkyyStudioLiteBoundary" .. tostring(os.time()) .. tostring(math.random(1000, 9999))
 	local mimeType = guessMimeType(baseName, resolvedAssetType)
 	local encodedRequestJson = HttpService:JSONEncode(reqObj)
-	local multipartBody = buildMultipartAssetBody(boundary, encodedRequestJson, filePayload, baseName, mimeType)
 
-	pushConsole("INFO", string.format("Payload multipart siap: field=fileContent (%s, %s), total=%d bytes", baseName, mimeType, #multipartBody))
-
-	local hdrs: {[string]: string} = {
-		["x-api-key"] = cleanKey,
-		["Content-Type"] = "multipart/form-data; boundary=" .. boundary,
-		["Accept"] = "application/json",
+	local attemptsPlan = {
+		{ boundary = "RbxBoundary" .. tostring(os.time()) .. "A", includeFilename = true, label = "multipart-filename" },
+		{ boundary = "RbxBoundary" .. tostring(os.time()) .. "B", includeFilename = false, label = "multipart-no-filename" },
 	}
 
-	local res, ok, info = apiRequest({
-		Url = "https://apis.roblox.com/assets/v1/assets",
-		Method = "POST",
-		Headers = hdrs,
-		Body = multipartBody,
-		Retries = 1,
-	})
+	local res: any = nil
+	local ok = false
+	local info = "Gagal mengirim"
+
+	for idx, plan in ipairs(attemptsPlan) do
+		local multipartBody = buildMultipartAssetBody(
+			plan.boundary,
+			encodedRequestJson,
+			filePayload,
+			baseName,
+			mimeType,
+			plan.includeFilename
+		)
+		pushConsole("INFO", string.format("Payload [%s] siap: field=fileContent (%s, %s), total=%d bytes", plan.label, baseName, mimeType, #multipartBody))
+
+		local hdrs: {[string]: string} = {
+			["x-api-key"] = cleanKey,
+			["Content-Type"] = "multipart/form-data; boundary=" .. plan.boundary,
+			["Accept"] = "application/json",
+		}
+
+		res, ok, info = apiRequest({
+			Url = "https://apis.roblox.com/assets/v1/assets",
+			Method = "POST",
+			Headers = hdrs,
+			Body = multipartBody,
+			Retries = 1,
+		})
+
+		local bodyStr = res and tostring(res.Body or "") or ""
+		if bodyStr ~= "" then
+			saveTextFile("Logs/asset_upload_" .. tostring(os.time()) .. "_" .. tostring(idx) .. ".json", bodyStr)
+		end
+
+		if ok and res then
+			break
+		end
+
+		local missingFileContent = bodyStr:find("FileContent") ~= nil
+		if not missingFileContent or idx == #attemptsPlan then
+			break
+		end
+		pushConsole("WARN", "Percobaan " .. plan.label .. " masih meminta FileContent; mencoba variasi format berikutnya...")
+	end
 
 	if not ok or not res then
 		return false, nil, "UPLOAD_FAILED", info
 	end
 
 	local bodyStr = tostring(res.Body or "")
-	saveTextFile("Logs/asset_upload_" .. tostring(os.time()) .. ".json", bodyStr)
-
 	local okDec, decoded = pcall(function()
 		return HttpService:JSONDecode(bodyStr)
 	end)
@@ -1596,6 +1644,7 @@ ContentArea.Size = UDim2.new(1, -152, 1, -54)
 ContentArea.Position = UDim2.new(0, 142, 0, 48)
 ContentArea.BackgroundColor3 = Color3.fromRGB(20, 19, 30)
 ContentArea.BorderSizePixel = 0
+ContentArea.ClipsDescendants = true
 ContentArea.Parent = MainWindow
 Instance.new("UICorner", ContentArea).CornerRadius = UDim.new(0, 10)
 local ContStroke = Instance.new("UIStroke", ContentArea)
@@ -2285,6 +2334,9 @@ local function rebuildAssetFileList(autoSelectFirst: boolean)
 
 	if selectedAssetRelPath then
 		AssetFilePickerBtn.Text = "  📄 " .. selectedAssetRelPath:match("([^/]+)$") .. " (" .. selectedAssetRelPath .. ")"
+		if selectedAssetRelPath:lower():match("%.mp3$") or selectedAssetRelPath:lower():match("%.ogg$") or selectedAssetRelPath:lower():match("%.wav$") then
+			AssetTypeBox.Text = "Audio"
+		end
 	else
 		AssetFilePickerBtn.Text = string.format("  📂 Pilih file dari folder Assets (%d file)", #files)
 	end
@@ -2643,24 +2695,33 @@ SalesStatusText.Parent = SalesPreviewCard
 local SettingPage = Instance.new("Frame")
 SettingPage.Size = UDim2.fromScale(1, 1)
 SettingPage.BackgroundTransparency = 1
+SettingPage.ClipsDescendants = true
 SettingPage.Visible = false
 SettingPage.Parent = ContentArea
 tabPages["Setting"] = SettingPage
 
+local SettingPad = Instance.new("UIPadding")
+SettingPad.PaddingTop = UDim.new(0, 6)
+SettingPad.PaddingBottom = UDim.new(0, 6)
+SettingPad.PaddingLeft = UDim.new(0, 12)
+SettingPad.PaddingRight = UDim.new(0, 12)
+SettingPad.Parent = SettingPage
+
 local SettingTitle = Instance.new("TextLabel")
-SettingTitle.Size = UDim2.new(1, -24, 0, 16)
-SettingTitle.Position = UDim2.new(0, 12, 0, 6)
+SettingTitle.Size = UDim2.new(1, 0, 0, 15)
+SettingTitle.Position = UDim2.new(0, 0, 0, 0)
 SettingTitle.BackgroundTransparency = 1
 SettingTitle.Text = "Pengaturan Cookie & Open Cloud Key"
 SettingTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-SettingTitle.TextSize = 12
+SettingTitle.TextSize = 11
 SettingTitle.Font = Enum.Font.GothamBold
 SettingTitle.TextXAlignment = Enum.TextXAlignment.Left
+SettingTitle.TextTruncate = Enum.TextTruncate.AtEnd
 SettingTitle.Parent = SettingPage
 
 local CookieBox = Instance.new("TextBox")
-CookieBox.Size = UDim2.new(1, -24, 0, 64)
-CookieBox.Position = UDim2.new(0, 12, 0, 26)
+CookieBox.Size = UDim2.new(1, 0, 0, 56)
+CookieBox.Position = UDim2.new(0, 0, 0, 18)
 CookieBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 CookieBox.Text = CONFIG.Cookie
 CookieBox.PlaceholderText = "Tempel .ROBLOSECURITY Cookie di sini..."
@@ -2671,47 +2732,83 @@ CookieBox.Font = Enum.Font.Gotham
 CookieBox.ClearTextOnFocus = false
 CookieBox.MultiLine = true
 CookieBox.TextWrapped = true
+CookieBox.ClipsDescendants = true
 CookieBox.TextXAlignment = Enum.TextXAlignment.Left
 CookieBox.TextYAlignment = Enum.TextYAlignment.Top
 CookieBox.Parent = SettingPage
 Instance.new("UICorner", CookieBox).CornerRadius = UDim.new(0, 7)
 
+local CookieBoxPad = Instance.new("UIPadding")
+CookieBoxPad.PaddingTop = UDim.new(0, 5)
+CookieBoxPad.PaddingBottom = UDim.new(0, 5)
+CookieBoxPad.PaddingLeft = UDim.new(0, 7)
+CookieBoxPad.PaddingRight = UDim.new(0, 7)
+CookieBoxPad.Parent = CookieBox
+
+local ApiKeyLabel = Instance.new("TextLabel")
+ApiKeyLabel.Size = UDim2.new(1, 0, 0, 12)
+ApiKeyLabel.Position = UDim2.new(0, 0, 0, 78)
+ApiKeyLabel.BackgroundTransparency = 1
+ApiKeyLabel.Text = "Open Cloud API Key"
+ApiKeyLabel.TextColor3 = Color3.fromRGB(175, 172, 204)
+ApiKeyLabel.TextSize = 8
+ApiKeyLabel.Font = Enum.Font.GothamBold
+ApiKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
+ApiKeyLabel.Parent = SettingPage
+
 local ApiKeyBox = Instance.new("TextBox")
-ApiKeyBox.Size = UDim2.new(1, -24, 0, 26)
-ApiKeyBox.Position = UDim2.new(0, 12, 0, 96)
+ApiKeyBox.Name = "ApiKeyInputBox"
+ApiKeyBox.Size = UDim2.new(1, 0, 0, 42)
+ApiKeyBox.Position = UDim2.new(0, 0, 0, 92)
 ApiKeyBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 ApiKeyBox.Text = CONFIG.ApiKey
-ApiKeyBox.PlaceholderText = "Open Cloud API Key (untuk Upload Asset ID)..."
+ApiKeyBox.PlaceholderText = "Tempel Open Cloud API Key di sini..."
 ApiKeyBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 ApiKeyBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-ApiKeyBox.TextSize = 9
-ApiKeyBox.Font = Enum.Font.Gotham
+ApiKeyBox.TextSize = 8
+ApiKeyBox.Font = Enum.Font.Code
 ApiKeyBox.ClearTextOnFocus = false
+ApiKeyBox.MultiLine = true
+ApiKeyBox.TextWrapped = true
+ApiKeyBox.ClipsDescendants = true
+ApiKeyBox.TextXAlignment = Enum.TextXAlignment.Left
+ApiKeyBox.TextYAlignment = Enum.TextYAlignment.Top
 ApiKeyBox.Parent = SettingPage
 Instance.new("UICorner", ApiKeyBox).CornerRadius = UDim.new(0, 7)
+local ApiKeyStroke = Instance.new("UIStroke", ApiKeyBox)
+ApiKeyStroke.Color = Color3.fromRGB(64, 58, 104)
+ApiKeyStroke.Thickness = 1
+
+local ApiKeyBoxPad = Instance.new("UIPadding")
+ApiKeyBoxPad.PaddingTop = UDim.new(0, 5)
+ApiKeyBoxPad.PaddingBottom = UDim.new(0, 5)
+ApiKeyBoxPad.PaddingLeft = UDim.new(0, 7)
+ApiKeyBoxPad.PaddingRight = UDim.new(0, 7)
+ApiKeyBoxPad.Parent = ApiKeyBox
 
 local SaveSettingBtn = Instance.new("TextButton")
-SaveSettingBtn.Size = UDim2.new(1, -24, 0, 28)
-SaveSettingBtn.Position = UDim2.new(0, 12, 0, 128)
+SaveSettingBtn.Size = UDim2.new(1, 0, 0, 26)
+SaveSettingBtn.Position = UDim2.new(0, 0, 0, 140)
 SaveSettingBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
 SaveSettingBtn.Text = "💾  SIMPAN COOKIE & API KEY"
 SaveSettingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SaveSettingBtn.TextSize = 10
+SaveSettingBtn.TextSize = 9
 SaveSettingBtn.Font = Enum.Font.GothamBold
 SaveSettingBtn.Parent = SettingPage
 Instance.new("UICorner", SaveSettingBtn).CornerRadius = UDim.new(0, 8)
 
 local SettingStatusLabel = Instance.new("TextLabel")
-SettingStatusLabel.Size = UDim2.new(1, -24, 0, 48)
-SettingStatusLabel.Position = UDim2.new(0, 12, 0, 162)
+SettingStatusLabel.Size = UDim2.new(1, 0, 1, -172)
+SettingStatusLabel.Position = UDim2.new(0, 0, 0, 172)
 SettingStatusLabel.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+SettingStatusLabel.ClipsDescendants = true
 SettingStatusLabel.Text = string.format(
 	"Cookie: %s | API Key: %s",
 	CONFIG.Cookie ~= "" and (tostring(#CONFIG.Cookie) .. " chars") or "Kosong",
 	CONFIG.ApiKey ~= "" and (tostring(#CONFIG.ApiKey) .. " chars") or "Kosong"
 )
 SettingStatusLabel.TextColor3 = Color3.fromRGB(185, 205, 255)
-SettingStatusLabel.TextSize = 9
+SettingStatusLabel.TextSize = 8
 SettingStatusLabel.Font = Enum.Font.Code
 SettingStatusLabel.TextWrapped = true
 SettingStatusLabel.Parent = SettingPage
@@ -2856,7 +2953,7 @@ local function syncCookieFromInput(): string
 end
 
 local function syncApiKeyFromInput(): string
-	local boxKey = trim(ApiKeyBox.Text)
+	local boxKey = sanitizeApiKey(ApiKeyBox.Text)
 	if boxKey ~= "" then
 		CONFIG.ApiKey = boxKey
 	end
@@ -2868,12 +2965,12 @@ CookieBox:GetPropertyChangedSignal("Text"):Connect(function()
 end)
 
 ApiKeyBox:GetPropertyChangedSignal("Text"):Connect(function()
-	CONFIG.ApiKey = trim(ApiKeyBox.Text)
+	CONFIG.ApiKey = sanitizeApiKey(ApiKeyBox.Text)
 end)
 
 SaveSettingBtn.MouseButton1Click:Connect(function()
 	local c = normalizeCookie(CookieBox.Text)
-	local k = trim(ApiKeyBox.Text)
+	local k = sanitizeApiKey(ApiKeyBox.Text)
 	CONFIG.Cookie = c
 	CONFIG.ApiKey = k
 	CookieBox.Text = c
