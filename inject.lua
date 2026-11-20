@@ -1,6 +1,6 @@
 --!strict
--- Plugin Studio Lite (Delta Executor Edition - Create Place, Voice Chat & Setting) by Ikyy
--- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Realtime (Icon Game, Name Game, Status)
+-- Plugin Studio Lite (Delta Executor Edition - Create Place, Voice Chat, Setting & Console) by Ikyy
+-- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Realtime (Icon Game, Name Game, Status + Console)
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -29,6 +29,7 @@ local CONFIG = {
 }
 
 local MEMORY_FILES: {[string]: string} = {}
+local CONSOLE_LINES: {string} = {}
 
 local WINDOW_SIZE = UDim2.fromOffset(540, 320)
 local WINDOW_POS = UDim2.new(0.5, -270, 0.5, -160)
@@ -108,6 +109,17 @@ local function getDeltaHttpFunc()
 		end
 	end
 	return nil
+end
+
+local function setClipboardText(text: string): boolean
+	local clipFns = { ENV.setclipboard, ENV.toclipboard, ENV.set_clipboard }
+	for _, fn in ipairs(clipFns) do
+		if type(fn) == "function" then
+			local ok = pcall(fn, text)
+			if ok then return true end
+		end
+	end
+	return false
 end
 
 local fnWriteFile = type(ENV.writefile) == "function" and ENV.writefile or nil
@@ -197,6 +209,23 @@ if savedCookie and trim(savedCookie) ~= "" then
 	CONFIG.Cookie = normalizeCookie(savedCookie)
 end
 
+-- ==========================================
+-- CONSOLE LOGGER BRIDGE (TERHUBUNG KE TAB CONSOLE)
+-- ==========================================
+local appendConsoleLineFn: ((level: string, message: string) -> ())? = nil
+
+local function pushConsole(level: string, message: string)
+	local stamp = os.date("%H:%M:%S")
+	local line = string.format("[%s] [%s] %s", tostring(stamp), level, message)
+	table.insert(CONSOLE_LINES, line)
+	if #CONSOLE_LINES > 200 then
+		table.remove(CONSOLE_LINES, 1)
+	end
+	if appendConsoleLineFn then
+		appendConsoleLineFn(level, line)
+	end
+end
+
 local function apiRequest(options: {
 	Url: string,
 	Method: string?,
@@ -206,8 +235,12 @@ local function apiRequest(options: {
 })
 	local reqFn = getDeltaHttpFunc()
 	if not reqFn then
+		pushConsole("ERR", "HTTP function tidak tersedia di executor")
 		return nil, false, "HTTP function tidak tersedia di executor"
 	end
+
+	local methodStr = options.Method or "GET"
+	pushConsole("REQ", methodStr .. " " .. options.Url)
 
 	local maxAttempts = math.max(1, options.Retries or 1)
 	local baseHeaders: {[string]: string} = {
@@ -226,23 +259,32 @@ local function apiRequest(options: {
 	for attempt = 1, maxAttempts do
 		local ok, res = pcall(reqFn, {
 			Url = options.Url,
-			Method = options.Method or "GET",
+			Method = methodStr,
 			Headers = baseHeaders,
 			Body = options.Body,
 		})
 		if ok and type(res) == "table" then
 			lastRes = res
 			local code = tonumber(res.StatusCode or res.Status or res.status_code) or 0
+			local rawBody = tostring(res.Body or "")
+			local snippet = rawBody:gsub("[\r\n]+", " ")
+			if #snippet > 140 then
+				snippet = snippet:sub(1, 140) .. "..."
+			end
+
 			lastOk = (code >= 200 and code < 300)
 			if lastOk then
+				pushConsole("OK", string.format("HTTP %d %s | %s", code, methodStr, snippet ~= "" and snippet or "(empty body)"))
 				return res, true, "HTTP " .. tostring(code)
 			end
 			lastErr = "HTTP " .. tostring(code)
+			pushConsole("WARN", string.format("HTTP %d %s | %s", code, methodStr, snippet ~= "" and snippet or "(no body)"))
 			if code == 400 or code == 401 or code == 403 or code == 404 then
 				return res, false, lastErr
 			end
 		else
 			lastErr = tostring(res)
+			pushConsole("ERR", methodStr .. " gagal: " .. lastErr)
 		end
 		if attempt < maxAttempts then
 			task.wait(0.6)
@@ -511,6 +553,7 @@ local function patchUniverseVoiceChat(universeId: string, cookieVal: string, ena
 	if not ok and res and tonumber(res.StatusCode or res.Status or res.status_code) == 403 then
 		local newToken = getHeaderCaseInsensitive(res.Headers, "x-csrf-token")
 		if newToken and newToken ~= "" then
+			pushConsole("INFO", "Refresh X-CSRF-TOKEN otomatis untuk PATCH Voice Chat")
 			currentCsrf = newToken
 			res, ok, info = sendPatch(currentCsrf)
 		end
@@ -864,7 +907,7 @@ NavListFrame.BackgroundTransparency = 1
 NavListFrame.Parent = Sidebar
 
 local NavLayout = Instance.new("UIListLayout")
-NavLayout.Padding = UDim.new(0, 6)
+NavLayout.Padding = UDim.new(0, 5)
 NavLayout.SortOrder = Enum.SortOrder.LayoutOrder
 NavLayout.Parent = NavListFrame
 
@@ -874,7 +917,7 @@ local tabButtons: {[string]: TextButton} = {}
 local function createNavButton(name: string, label: string, order: number)
 	local btn = Instance.new("TextButton")
 	btn.Name = "Nav_" .. name
-	btn.Size = UDim2.new(1, 0, 0, 36)
+	btn.Size = UDim2.new(1, 0, 0, 32)
 	btn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
 	btn.Text = "  " .. label
 	btn.TextColor3 = Color3.fromRGB(185, 182, 210)
@@ -1253,7 +1296,6 @@ local SyncStroke = Instance.new("UIStroke", SyncVoiceBtn)
 SyncStroke.Color = Color3.fromRGB(82, 76, 124)
 SyncStroke.Thickness = 1
 
--- Kartu Toggle Switch Kanan-Kiri
 local SwitchCard = Instance.new("Frame")
 SwitchCard.Size = UDim2.new(1, -24, 0, 52)
 SwitchCard.Position = UDim2.new(0, 12, 0, 60)
@@ -1305,7 +1347,6 @@ ApplyVoiceBtn.Font = Enum.Font.GothamBold
 ApplyVoiceBtn.Parent = VoicePage
 Instance.new("UICorner", ApplyVoiceBtn).CornerRadius = UDim.new(0, 7)
 
--- Kartu Info Universe & Status Voice Real-time
 local VoicePreviewCard = Instance.new("Frame")
 VoicePreviewCard.Size = UDim2.new(1, -24, 1, -162)
 VoicePreviewCard.Position = UDim2.new(0, 12, 0, 155)
@@ -1414,6 +1455,136 @@ SettingStatusLabel.TextWrapped = true
 SettingStatusLabel.Parent = SettingPage
 Instance.new("UICorner", SettingStatusLabel).CornerRadius = UDim.new(0, 7)
 
+-- ==========================================
+-- HALAMAN 4: CONSOLE OUTPUT SERVER / PERMINTAAN
+-- ==========================================
+local ConsolePage = Instance.new("Frame")
+ConsolePage.Size = UDim2.fromScale(1, 1)
+ConsolePage.BackgroundTransparency = 1
+ConsolePage.Visible = false
+ConsolePage.Parent = ContentArea
+tabPages["Console"] = ConsolePage
+
+local ConsoleTitle = Instance.new("TextLabel")
+ConsoleTitle.Size = UDim2.new(1, -138, 0, 18)
+ConsoleTitle.Position = UDim2.new(0, 12, 0, 6)
+ConsoleTitle.BackgroundTransparency = 1
+ConsoleTitle.Text = "Server & Request Console"
+ConsoleTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+ConsoleTitle.TextSize = 12
+ConsoleTitle.Font = Enum.Font.GothamBold
+ConsoleTitle.TextXAlignment = Enum.TextXAlignment.Left
+ConsoleTitle.Parent = ConsolePage
+
+local CopyConsoleBtn = Instance.new("TextButton")
+CopyConsoleBtn.Size = UDim2.fromOffset(54, 20)
+CopyConsoleBtn.Position = UDim2.new(1, -120, 0, 5)
+CopyConsoleBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 52)
+CopyConsoleBtn.Text = "📋 Copy"
+CopyConsoleBtn.TextColor3 = Color3.fromRGB(215, 212, 248)
+CopyConsoleBtn.TextSize = 8
+CopyConsoleBtn.Font = Enum.Font.GothamBold
+CopyConsoleBtn.Parent = ConsolePage
+Instance.new("UICorner", CopyConsoleBtn).CornerRadius = UDim.new(0, 5)
+
+local ClearConsoleBtn = Instance.new("TextButton")
+ClearConsoleBtn.Size = UDim2.fromOffset(52, 20)
+ClearConsoleBtn.Position = UDim2.new(1, -62, 0, 5)
+ClearConsoleBtn.BackgroundColor3 = Color3.fromRGB(58, 26, 36)
+ClearConsoleBtn.Text = "🗑 Clear"
+ClearConsoleBtn.TextColor3 = Color3.fromRGB(255, 185, 195)
+ClearConsoleBtn.TextSize = 8
+ClearConsoleBtn.Font = Enum.Font.GothamBold
+ClearConsoleBtn.Parent = ConsolePage
+Instance.new("UICorner", ClearConsoleBtn).CornerRadius = UDim.new(0, 5)
+
+local ConsoleScroll = Instance.new("ScrollingFrame")
+ConsoleScroll.Name = "ConsoleOutputScroll"
+ConsoleScroll.Size = UDim2.new(1, -24, 1, -34)
+ConsoleScroll.Position = UDim2.new(0, 12, 0, 28)
+ConsoleScroll.BackgroundColor3 = Color3.fromRGB(10, 10, 16)
+ConsoleScroll.BorderSizePixel = 0
+ConsoleScroll.ScrollBarThickness = 3
+ConsoleScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ConsoleScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ConsoleScroll.Parent = ConsolePage
+Instance.new("UICorner", ConsoleScroll).CornerRadius = UDim.new(0, 8)
+local ConsoleStroke = Instance.new("UIStroke", ConsoleScroll)
+ConsoleStroke.Color = Color3.fromRGB(52, 48, 82)
+ConsoleStroke.Thickness = 1
+
+local ConsoleListLayout = Instance.new("UIListLayout")
+ConsoleListLayout.Padding = UDim.new(0, 3)
+ConsoleListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ConsoleListLayout.Parent = ConsoleScroll
+
+local ConsolePad = Instance.new("UIPadding")
+ConsolePad.PaddingTop = UDim.new(0, 6)
+ConsolePad.PaddingBottom = UDim.new(0, 6)
+ConsolePad.PaddingLeft = UDim.new(0, 7)
+ConsolePad.PaddingRight = UDim.new(0, 7)
+ConsolePad.Parent = ConsoleScroll
+
+local consoleRowOrder = 0
+
+local function getLevelColor(level: string): Color3
+	if level == "OK" then
+		return Color3.fromRGB(120, 255, 180)
+	elseif level == "WARN" then
+		return Color3.fromRGB(255, 215, 120)
+	elseif level == "ERR" then
+		return Color3.fromRGB(255, 125, 140)
+	elseif level == "REQ" then
+		return Color3.fromRGB(130, 205, 255)
+	end
+	return Color3.fromRGB(195, 192, 222)
+end
+
+appendConsoleLineFn = function(level: string, formattedLine: string)
+	consoleRowOrder += 1
+	local row = Instance.new("TextLabel")
+	row.Name = "LogRow_" .. tostring(consoleRowOrder)
+	row.Size = UDim2.new(1, -4, 0, 0)
+	row.AutomaticSize = Enum.AutomaticSize.Y
+	row.BackgroundTransparency = 1
+	row.Text = formattedLine
+	row.TextColor3 = getLevelColor(level)
+	row.TextSize = 8
+	row.Font = Enum.Font.Code
+	row.TextWrapped = true
+	row.TextXAlignment = Enum.TextXAlignment.Left
+	row.LayoutOrder = consoleRowOrder
+	row.Parent = ConsoleScroll
+
+	task.defer(function()
+		ConsoleScroll.CanvasPosition = Vector2.new(0, math.max(0, ConsoleScroll.AbsoluteCanvasSize.Y))
+	end)
+end
+
+ClearConsoleBtn.MouseButton1Click:Connect(function()
+	table.clear(CONSOLE_LINES)
+	consoleRowOrder = 0
+	for _, child in ipairs(ConsoleScroll:GetChildren()) do
+		if child:IsA("TextLabel") then
+			child:Destroy()
+		end
+	end
+	pushConsole("INFO", "Console dibersihkan.")
+end)
+
+CopyConsoleBtn.MouseButton1Click:Connect(function()
+	local joined = table.concat(CONSOLE_LINES, "\n")
+	if joined == "" then
+		notify("Console", "Belum ada log untuk disalin.")
+		return
+	end
+	local copied = setClipboardText(joined)
+	notify("Console", copied and "Log console disalin ke clipboard." or "Clipboard tidak didukung di executor ini.")
+end)
+
+-- ==========================================
+-- LOGIKA COOKIE & NAVIGASI
+-- ==========================================
 local function syncCookieFromInput(): string
 	local boxCookie = normalizeCookie(CookieBox.Text)
 	if boxCookie ~= "" then
@@ -1436,10 +1607,10 @@ SaveSettingBtn.MouseButton1Click:Connect(function()
 		and ("Status Cookie: Tersimpan (" .. tostring(#c) .. " karakter)")
 		or "Status Cookie: Kosong"
 	SettingStatusLabel.TextColor3 = okC and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+	pushConsole(okC and "OK" or "ERR", okC and ("Cookie disimpan (" .. tostring(#c) .. " chars)") or "Gagal menyimpan cookie.txt")
 	notify("Setting", okC and "Cookie tersimpan." or "Gagal menyimpan cookie.")
 end)
 
--- Navigasi Sidebar
 createNavButton("CreatePlace", "🏗  Create Place", 1).MouseButton1Click:Connect(function()
 	switchTab("CreatePlace")
 end)
@@ -1449,7 +1620,12 @@ end)
 createNavButton("Setting", "⚙  Setting", 3).MouseButton1Click:Connect(function()
 	switchTab("Setting")
 end)
+createNavButton("Console", "🖥  Console", 4).MouseButton1Click:Connect(function()
+	switchTab("Console")
+end)
 switchTab("CreatePlace")
+
+pushConsole("INFO", "Plugin Studio Lite siap. Semua respons server tampil di sini.")
 
 -- ==========================================
 -- LOGIKA VOICE CHAT UNIVERSE
@@ -1469,9 +1645,11 @@ local function refreshVoiceUniversePreview(univId: string, cookieVal: string)
 		VoiceSwitch.SetState(voiceOn, true)
 		VoiceStatusText.TextColor3 = voiceOn and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 210, 140)
 		VoiceStatusText.Text = "Voice Chat saat ini: " .. (voiceOn and "AKTIF (ON)" or "NONAKTIF (OFF)")
+		pushConsole("INFO", string.format("Universe #%s isVoiceEnabled = %s", univId, tostring(voiceOn)))
 	else
 		VoiceStatusText.TextColor3 = Color3.fromRGB(175, 172, 205)
 		VoiceStatusText.Text = "Info Universe terbaca • Konfigurasi Voice: " .. errCfg
+		pushConsole("WARN", string.format("Universe #%s konfigurasi voice: %s", univId, errCfg))
 	end
 end
 
@@ -1482,6 +1660,7 @@ SyncVoiceBtn.MouseButton1Click:Connect(function()
 	if univId == "" then
 		VoiceStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
 		VoiceStatusText.Text = "Masukkan Universe ID yang valid."
+		pushConsole("WARN", "Cek Status Voice dibatalkan: Universe ID kosong/tidak valid.")
 		return
 	end
 
@@ -1500,6 +1679,7 @@ ApplyVoiceBtn.MouseButton1Click:Connect(function()
 	if cookieVal == "" then
 		VoiceStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
 		VoiceStatusText.Text = "Cookie .ROBLOSECURITY kosong. Isi di tab Setting."
+		pushConsole("ERR", "Apply Voice gagal: Cookie kosong.")
 		notify("Voice Chat", "Cookie belum diisi.")
 		return
 	end
@@ -1508,6 +1688,7 @@ ApplyVoiceBtn.MouseButton1Click:Connect(function()
 	if univId == "" then
 		VoiceStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
 		VoiceStatusText.Text = "Universe ID tidak valid."
+		pushConsole("ERR", "Apply Voice gagal: Universe ID tidak valid.")
 		return
 	end
 
@@ -1524,11 +1705,13 @@ ApplyVoiceBtn.MouseButton1Click:Connect(function()
 		if okPatch then
 			VoiceStatusText.TextColor3 = Color3.fromRGB(145, 255, 190)
 			VoiceStatusText.Text = msgPatch
+			pushConsole("OK", msgPatch .. " (Universe #" .. univId .. ")")
 			notify("Voice Chat", msgPatch)
 			refreshVoiceUniversePreview(univId, cookieVal)
 		else
 			VoiceStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
 			VoiceStatusText.Text = "Gagal: " .. msgPatch
+			pushConsole("ERR", "Apply Voice gagal (#" .. univId .. "): " .. msgPatch)
 			notify("Voice Chat", "Gagal mengubah status Voice Chat.")
 		end
 
@@ -1546,6 +1729,7 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 	local cookieVal = syncCookieFromInput()
 	if cookieVal == "" then
 		setCreateProgress("err", 0, "Cookie .ROBLOSECURITY belum diisi di tab Setting.")
+		pushConsole("ERR", "Create Place gagal: Cookie kosong.")
 		notify("Create Place", "Cookie kosong.")
 		return
 	end
@@ -1557,6 +1741,7 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 	isCreatingPlace = true
 	clearResultCards()
 	setCreateProgress("working", 0.1, "Membuat " .. tostring(count) .. " place...")
+	pushConsole("INFO", string.format("Mulai Create Place: count=%d, template=%d, group=%s", count, tplId, grpId and tostring(grpId) or "none"))
 
 	task.spawn(function()
 		local csrf = ""
@@ -1594,6 +1779,7 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 			if not ok and res and tonumber(res.StatusCode or res.Status or res.status_code) == 403 then
 				local newCsrf = getHeaderCaseInsensitive(res.Headers, "x-csrf-token")
 				if newCsrf and newCsrf ~= "" then
+					pushConsole("INFO", "Refresh X-CSRF-TOKEN otomatis untuk Create Place #" .. tostring(i))
 					csrf = newCsrf
 					res, ok, info = sendCreateRequest(csrf)
 				end
@@ -1627,9 +1813,11 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 				end
 
 				if createdUnivId and createdUnivId ~= "" then
+					pushConsole("OK", string.format("Place #%d dibuat -> UniverseId: %s | RootPlaceId: %s", i, createdUnivId, tostring(createdRootPlaceId or "-")))
 					local cardData = fetchRealtimeGameData(createdUnivId, cookieVal, createdRootPlaceId)
 					appendResultCard(cardData)
 				else
+					pushConsole("WARN", string.format("Place #%d sukses (%s), namun UniverseId tidak terbaca", i, info))
 					appendResultCard({
 						universeId = "",
 						rootPlaceId = createdRootPlaceId,
@@ -1642,6 +1830,7 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 				end
 			else
 				gagal += 1
+				pushConsole("ERR", string.format("Place #%d gagal (%s): %s", i, info, bodyStr:sub(1, 100)))
 				appendResultCard({
 					universeId = "",
 					rootPlaceId = nil,
@@ -1661,6 +1850,7 @@ CreatePlaceBtn.MouseButton1Click:Connect(function()
 
 		local allOk = (sukses > 0 and gagal == 0)
 		setCreateProgress(allOk and "ok" or "err", 1, string.format("Selesai: %d berhasil, %d gagal.", sukses, gagal))
+		pushConsole("INFO", string.format("Create Place selesai: %d berhasil, %d gagal.", sukses, gagal))
 		notify("Create Place", string.format("Selesai: %d berhasil, %d gagal.", sukses, gagal))
 		isCreatingPlace = false
 	end)
