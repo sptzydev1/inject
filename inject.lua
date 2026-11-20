@@ -1,5 +1,5 @@
 --!strict
--- Plugin Studio Lite (Delta Executor Edition - Create Place, Voice Chat, 3rd Party Sales, Setting & Console) by Ikyy
+-- Plugin Studio Lite (Delta Executor Edition - Create Place, My Places, Voice Chat, 3rd Party Sales, Setting & Console) by Ikyy
 -- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Realtime (Icon Game, Name Game, Status + Console)
 
 local Players = game:GetService("Players")
@@ -30,6 +30,7 @@ local CONFIG = {
 
 local MEMORY_FILES: {[string]: string} = {}
 local CONSOLE_LINES: {string} = {}
+local LAST_KNOWN_THIRD_PARTY: {[string]: boolean} = {}
 
 local WINDOW_SIZE = UDim2.fromOffset(540, 320)
 local WINDOW_POS = UDim2.new(0.5, -270, 0.5, -160)
@@ -119,6 +120,13 @@ local function setClipboardText(text: string): boolean
 			if ok then return true end
 		end
 	end
+	pcall(function()
+		StarterGui:SetCore("SendNotification", {
+			Title = "Universe ID",
+			Text = text,
+			Duration = 4,
+		})
+	end)
 	return false
 end
 
@@ -456,6 +464,187 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 end
 
 -- ==========================================
+-- API CEK PLACE SAYA (USER / GROUP UNIVERSES)
+-- ==========================================
+local function getAuthenticatedUserId(cookieVal: string): number?
+	local hdrs: {[string]: string} = {
+		["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
+	}
+	local res, ok = apiRequest({
+		Url = "https://users.roblox.com/v1/users/authenticated",
+		Method = "GET",
+		Headers = hdrs,
+		Retries = 1,
+	})
+	if ok and res and res.Body then
+		local okDec, decoded = pcall(function()
+			return HttpService:JSONDecode(tostring(res.Body))
+		end)
+		if okDec and type(decoded) == "table" and decoded.id ~= nil then
+			return tonumber(tostring(decoded.id):match("%d+"))
+		end
+	end
+	return LocalPlayer.UserId
+end
+
+local function fetchMyPlacesList(cookieVal: string, groupIdNum: number?): (boolean, {GameResultCardData}, string)
+	local hdrs: {[string]: string} = {
+		["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
+	}
+	local listUrl: string
+	if groupIdNum and groupIdNum > 0 then
+		listUrl = string.format("https://develop.roblox.com/v1/groups/%d/universes?sortOrder=Desc&limit=50", groupIdNum)
+	else
+		local uid = getAuthenticatedUserId(cookieVal)
+		if not uid then
+			return false, {}, "Gagal mendapatkan User ID dari cookie"
+		end
+		listUrl = string.format("https://develop.roblox.com/v1/users/%d/universes?sortOrder=Desc&limit=50", uid)
+	end
+
+	local res, ok, info = apiRequest({
+		Url = listUrl,
+		Method = "GET",
+		Headers = hdrs,
+		Retries = 2,
+	})
+	if not ok or not res or not res.Body then
+		return false, {}, info
+	end
+
+	local okDec, decoded = pcall(function()
+		return HttpService:JSONDecode(tostring(res.Body))
+	end)
+	if not okDec or type(decoded) ~= "table" or type(decoded.data) ~= "table" then
+		return false, {}, "Format respons daftar place tidak valid"
+	end
+
+	local rawItems: {{univId: string, rootPlaceId: string?, name: string?, isActive: boolean?, privacyType: string?}} = {}
+	for _, item in ipairs(decoded.data) do
+		if type(item) == "table" then
+			local uidStr = item.id ~= nil and tostring(item.id):match("%d+") or (item.universeId ~= nil and tostring(item.universeId):match("%d+") or "")
+			if uidStr ~= "" then
+				local rpStr = item.rootPlaceId ~= nil and tostring(item.rootPlaceId):match("%d+") or nil
+				table.insert(rawItems, {
+					univId = uidStr,
+					rootPlaceId = rpStr,
+					name = type(item.name) == "string" and trim(item.name) or nil,
+					isActive = type(item.isActive) == "boolean" and item.isActive or nil,
+					privacyType = type(item.privacyType) == "string" and item.privacyType or nil,
+				})
+			end
+		end
+	end
+
+	-- Batch fetch nama & status publik/private lewat games.roblox.com
+	local gamesInfoMap: {[string]: {name: string?, status: "publik" | "private" | "tidak diketahui", rootPlaceId: string?}} = {}
+	if #rawItems > 0 then
+		local idsArr: {string} = {}
+		for _, it in ipairs(rawItems) do
+			table.insert(idsArr, it.univId)
+		end
+		local gRes, gOk = apiRequest({
+			Url = "https://games.roblox.com/v1/games?universeIds=" .. table.concat(idsArr, ","),
+			Method = "GET",
+			Headers = hdrs,
+			Retries = 1,
+		})
+		if gOk and gRes and gRes.Body then
+			local okG, gDec = pcall(function()
+				return HttpService:JSONDecode(tostring(gRes.Body))
+			end)
+			if okG and type(gDec) == "table" and type(gDec.data) == "table" then
+				for _, gEntry in ipairs(gDec.data) do
+					if type(gEntry) == "table" and gEntry.id ~= nil then
+						local gid = tostring(gEntry.id):match("%d+") or ""
+						if gid ~= "" then
+							local st: "publik" | "private" | "tidak diketahui" = "tidak diketahui"
+							if type(gEntry.isPlayable) == "boolean" then
+								st = gEntry.isPlayable and "publik" or "private"
+							end
+							gamesInfoMap[gid] = {
+								name = type(gEntry.name) == "string" and trim(gEntry.name) or nil,
+								status = st,
+								rootPlaceId = gEntry.rootPlaceId ~= nil and tostring(gEntry.rootPlaceId):match("%d+") or nil,
+							}
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- Batch fetch icon lewat thumbnails.roblox.com
+	local iconMap: {[string]: string} = {}
+	if #rawItems > 0 then
+		local idsArr: {string} = {}
+		for _, it in ipairs(rawItems) do
+			table.insert(idsArr, it.univId)
+		end
+		local tRes, tOk = apiRequest({
+			Url = "https://thumbnails.roblox.com/v1/games/icons?universeIds=" .. table.concat(idsArr, ",") .. "&size=150x150&format=Png&isCircular=false",
+			Method = "GET",
+			Headers = hdrs,
+			Retries = 1,
+		})
+		if tOk and tRes and tRes.Body then
+			local okT, tDec = pcall(function()
+				return HttpService:JSONDecode(tostring(tRes.Body))
+			end)
+			if okT and type(tDec) == "table" and type(tDec.data) == "table" then
+				for _, tEntry in ipairs(tDec.data) do
+					if type(tEntry) == "table" and tEntry.targetId ~= nil then
+						local tid = tostring(tEntry.targetId):match("%d+") or ""
+						if tid ~= "" and tEntry.state == "Completed" and type(tEntry.imageUrl) == "string" and tEntry.imageUrl ~= "" then
+							iconMap[tid] = "rbxthumb://type=GameIcon&id=" .. tid .. "&w=150&h=150"
+						end
+					end
+				end
+			end
+		end
+	end
+
+	local cards: {GameResultCardData} = {}
+	for _, it in ipairs(rawItems) do
+		local gInfo = gamesInfoMap[it.univId]
+		local finalName = (gInfo and gInfo.name and gInfo.name ~= "") and gInfo.name or ((it.name and it.name ~= "") and it.name or ("Place #" .. it.univId))
+		local finalPlace = (gInfo and gInfo.rootPlaceId) or it.rootPlaceId
+
+		local finalStatus: "publik" | "private" | "tidak diketahui" = "tidak diketahui"
+		if it.isActive ~= nil then
+			finalStatus = it.isActive and "publik" or "private"
+		elseif it.privacyType then
+			local pLow = it.privacyType:lower()
+			if pLow:find("public") or pLow:find("open") then
+				finalStatus = "publik"
+			elseif pLow:find("private") or pLow:find("closed") then
+				finalStatus = "private"
+			end
+		elseif gInfo and gInfo.status ~= "tidak diketahui" then
+			finalStatus = gInfo.status
+		end
+
+		local iconUri = iconMap[it.univId]
+			or (finalPlace and ("rbxthumb://type=Asset&id=" .. finalPlace .. "&w=150&h=150"))
+			or ("rbxthumb://type=GameIcon&id=" .. it.univId .. "&w=150&h=150")
+
+		local metaStr = "Universe: " .. it.univId .. (finalPlace and (" • Place: " .. finalPlace) or "")
+
+		table.insert(cards, {
+			universeId = it.univId,
+			rootPlaceId = finalPlace,
+			iconImage = iconUri,
+			gameName = finalName,
+			status = finalStatus,
+			metaInfo = metaStr,
+			isError = false,
+		})
+	end
+
+	return true, cards, "OK"
+end
+
+-- ==========================================
 -- API VOICE CHAT UNIVERSE
 -- ==========================================
 local function getUniverseVoiceSettings(universeId: string, cookieVal: string): (boolean, boolean?, {[string]: any}, string)
@@ -551,7 +740,7 @@ local function setUniverseVoiceSettings(universeId: string, cookieVal: string, e
 end
 
 -- ==========================================
--- API ALLOW THIRD PARTY SALES (DEVELOP V2)
+-- API ALLOW THIRD PARTY SALES (DEVELOP V2 + 403 FALLBACK)
 -- ==========================================
 local function getUniverseThirdPartySales(universeId: string, cookieVal: string): (boolean, boolean?, {[string]: any}, string)
 	local cleanUniv = trim(universeId):match("%d+") or ""
@@ -571,24 +760,45 @@ local function getUniverseThirdPartySales(universeId: string, cookieVal: string)
 		Retries = 1,
 	})
 
-	if not ok or not res then
-		return false, nil, {}, info
+	if ok and res then
+		local bodyStr = tostring(res.Body or "")
+		local okDec, decoded = pcall(function()
+			return HttpService:JSONDecode(bodyStr)
+		end)
+		if okDec and type(decoded) == "table" and type(decoded.allowThirdPartySales) == "boolean" then
+			LAST_KNOWN_THIRD_PARTY[cleanUniv] = decoded.allowThirdPartySales
+			return true, decoded.allowThirdPartySales, decoded, "OK"
+		end
 	end
 
-	local bodyStr = tostring(res.Body or "")
-	local okDec, decoded = pcall(function()
-		return HttpService:JSONDecode(bodyStr)
-	end)
-	if not okDec or type(decoded) ~= "table" then
-		return false, nil, {}, "Gagal decode JSON konfigurasi universe"
+	local code = res and (tonumber(res.StatusCode or res.Status or res.status_code) or 0) or 0
+	if code == 403 then
+		local v1Res, v1Ok = apiRequest({
+			Url = "https://develop.roblox.com/v1/universes/" .. cleanUniv,
+			Method = "GET",
+			Headers = hdrs,
+			Retries = 1,
+		})
+		local v1Decoded: {[string]: any} = {}
+		if v1Ok and v1Res and v1Res.Body then
+			pcall(function()
+				local d = HttpService:JSONDecode(tostring(v1Res.Body))
+				if type(d) == "table" then
+					v1Decoded = d
+					if type(d.allowThirdPartySales) == "boolean" then
+						LAST_KNOWN_THIRD_PARTY[cleanUniv] = d.allowThirdPartySales
+					end
+				end
+			end)
+		end
+
+		if LAST_KNOWN_THIRD_PARTY[cleanUniv] ~= nil then
+			return true, LAST_KNOWN_THIRD_PARTY[cleanUniv], v1Decoded, "SYNC_LOCAL_STATE"
+		end
+		return true, nil, v1Decoded, "GET_403_PATCH_SUPPORTED"
 	end
 
-	local salesState: boolean? = nil
-	if type(decoded.allowThirdPartySales) == "boolean" then
-		salesState = decoded.allowThirdPartySales
-	end
-
-	return true, salesState, decoded, "OK"
+	return false, nil, {}, info
 end
 
 local function setUniverseThirdPartySales(universeId: string, cookieVal: string, enabled: boolean, csrfSeed: string): (boolean, string, string)
@@ -633,6 +843,7 @@ local function setUniverseThirdPartySales(universeId: string, cookieVal: string,
 
 	local bodyStr = res and tostring(res.Body or "") or ""
 	if ok then
+		LAST_KNOWN_THIRD_PARTY[cleanUniv] = enabled
 		saveTextFile("Logs/thirdparty_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyStr)
 		return true, "Allow Third Party Sales berhasil " .. (enabled and "DIAKTIFKAN" or "DINONAKTIFKAN"), currentCsrf
 	end
@@ -817,10 +1028,10 @@ LogoIcon.Font = Enum.Font.GothamBold
 LogoIcon.Parent = HeaderLogoBox
 
 local SubTitleLabel = Instance.new("TextLabel")
-SubTitleLabel.Size = UDim2.new(0, 280, 0, 11)
+SubTitleLabel.Size = UDim2.new(0, 300, 0, 11)
 SubTitleLabel.Position = UDim2.new(0, 48, 0, 5)
 SubTitleLabel.BackgroundTransparency = 1
-SubTitleLabel.Text = "IKYYSTUDIO • PLACE, VOICE & 3RD PARTY SALES"
+SubTitleLabel.Text = "IKYYSTUDIO • PLACE, MY PLACES, VOICE & 3RD PARTY"
 SubTitleLabel.TextColor3 = Color3.fromRGB(130, 126, 155)
 SubTitleLabel.TextSize = 8
 SubTitleLabel.Font = Enum.Font.GothamBold
@@ -978,7 +1189,7 @@ NavListFrame.BackgroundTransparency = 1
 NavListFrame.Parent = Sidebar
 
 local NavLayout = Instance.new("UIListLayout")
-NavLayout.Padding = UDim.new(0, 4)
+NavLayout.Padding = UDim.new(0, 3)
 NavLayout.SortOrder = Enum.SortOrder.LayoutOrder
 NavLayout.Parent = NavListFrame
 
@@ -988,11 +1199,11 @@ local tabButtons: {[string]: TextButton} = {}
 local function createNavButton(name: string, label: string, order: number)
 	local btn = Instance.new("TextButton")
 	btn.Name = "Nav_" .. name
-	btn.Size = UDim2.new(1, 0, 0, 29)
+	btn.Size = UDim2.new(1, 0, 0, 26)
 	btn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
 	btn.Text = "  " .. label
 	btn.TextColor3 = Color3.fromRGB(185, 182, 210)
-	btn.TextSize = 10
+	btn.TextSize = 9
 	btn.Font = Enum.Font.GothamBold
 	btn.TextXAlignment = Enum.TextXAlignment.Left
 	btn.LayoutOrder = order
@@ -1028,6 +1239,149 @@ local function switchTab(tabName: string)
 		btn.BackgroundColor3 = active and Color3.fromRGB(45, 42, 68) or Color3.fromRGB(28, 27, 42)
 		btn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(185, 182, 210)
 	end
+end
+
+-- ==========================================
+-- REUSABLE GAME CARD BUILDER (SUPPORT COPY UNIVERSE ID)
+-- ==========================================
+local function styleStatusBadge(badge: TextLabel, status: "publik" | "private" | "tidak diketahui", isError: boolean?)
+	if isError then
+		badge.BackgroundColor3 = Color3.fromRGB(115, 32, 45)
+		badge.Text = "gagal"
+		badge.TextColor3 = Color3.fromRGB(255, 200, 208)
+	elseif status == "publik" then
+		badge.BackgroundColor3 = Color3.fromRGB(24, 92, 56)
+		badge.Text = "publik"
+		badge.TextColor3 = Color3.fromRGB(145, 255, 190)
+	elseif status == "private" then
+		badge.BackgroundColor3 = Color3.fromRGB(88, 62, 24)
+		badge.Text = "private"
+		badge.TextColor3 = Color3.fromRGB(255, 222, 145)
+	else
+		badge.BackgroundColor3 = Color3.fromRGB(48, 46, 68)
+		badge.Text = "cek status..."
+		badge.TextColor3 = Color3.fromRGB(205, 202, 230)
+	end
+end
+
+local function createGameCard(parent: Instance, order: number, data: GameResultCardData, getCookieFn: () -> string): Frame
+	local card = Instance.new("Frame")
+	card.Name = "GameCard_" .. tostring(order)
+	card.Size = UDim2.new(1, -2, 0, 68)
+	card.BackgroundColor3 = data.isError and Color3.fromRGB(34, 18, 24) or Color3.fromRGB(21, 20, 33)
+	card.BorderSizePixel = 0
+	card.LayoutOrder = order
+	card.Parent = parent
+	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+	local cardStroke = Instance.new("UIStroke", card)
+	cardStroke.Color = data.isError and Color3.fromRGB(165, 65, 85) or Color3.fromRGB(64, 58, 104)
+	cardStroke.Thickness = 1
+
+	local iconFrame = Instance.new("Frame")
+	iconFrame.Size = UDim2.fromOffset(54, 54)
+	iconFrame.Position = UDim2.new(0, 7, 0.5, -27)
+	iconFrame.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+	iconFrame.BorderSizePixel = 0
+	iconFrame.Parent = card
+	Instance.new("UICorner", iconFrame).CornerRadius = UDim.new(0, 8)
+	local iconStroke = Instance.new("UIStroke", iconFrame)
+	iconStroke.Color = Color3.fromRGB(92, 82, 148)
+	iconStroke.Thickness = 1
+
+	local gameIconImg = Instance.new("ImageLabel")
+	gameIconImg.Size = UDim2.fromScale(1, 1)
+	gameIconImg.BackgroundTransparency = 1
+	gameIconImg.Image = data.iconImage
+	gameIconImg.ScaleType = Enum.ScaleType.Crop
+	gameIconImg.Parent = iconFrame
+	Instance.new("UICorner", gameIconImg).CornerRadius = UDim.new(0, 8)
+
+	local gameNameLabel = Instance.new("TextLabel")
+	gameNameLabel.Size = UDim2.new(1, -166, 0, 18)
+	gameNameLabel.Position = UDim2.new(0, 68, 0, 7)
+	gameNameLabel.BackgroundTransparency = 1
+	gameNameLabel.Text = data.gameName
+	gameNameLabel.TextColor3 = data.isError and Color3.fromRGB(255, 160, 170) or Color3.fromRGB(248, 248, 255)
+	gameNameLabel.TextSize = 11
+	gameNameLabel.Font = Enum.Font.GothamBold
+	gameNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	gameNameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	gameNameLabel.Parent = card
+
+	local statusBadge = Instance.new("TextLabel")
+	statusBadge.Size = UDim2.fromOffset(74, 17)
+	statusBadge.Position = UDim2.new(0, 68, 0, 27)
+	statusBadge.TextSize = 9
+	statusBadge.Font = Enum.Font.GothamBold
+	statusBadge.Parent = card
+	Instance.new("UICorner", statusBadge).CornerRadius = UDim.new(0, 5)
+	styleStatusBadge(statusBadge, data.status, data.isError)
+
+	local metaLabel = Instance.new("TextLabel")
+	metaLabel.Size = UDim2.new(1, -76, 0, 14)
+	metaLabel.Position = UDim2.new(0, 68, 0, 47)
+	metaLabel.BackgroundTransparency = 1
+	metaLabel.Text = data.metaInfo
+	metaLabel.TextColor3 = Color3.fromRGB(150, 146, 178)
+	metaLabel.TextSize = 8
+	metaLabel.Font = Enum.Font.Code
+	metaLabel.TextXAlignment = Enum.TextXAlignment.Left
+	metaLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	metaLabel.Parent = card
+
+	if not data.isError and data.universeId ~= "" then
+		local copyUnivBtn = Instance.new("TextButton")
+		copyUnivBtn.Size = UDim2.fromOffset(52, 18)
+		copyUnivBtn.Position = UDim2.new(1, -102, 0, 7)
+		copyUnivBtn.BackgroundColor3 = Color3.fromRGB(42, 38, 72)
+		copyUnivBtn.Text = "📋 Copy ID"
+		copyUnivBtn.TextColor3 = Color3.fromRGB(220, 215, 255)
+		copyUnivBtn.TextSize = 8
+		copyUnivBtn.Font = Enum.Font.GothamBold
+		copyUnivBtn.Parent = card
+		Instance.new("UICorner", copyUnivBtn).CornerRadius = UDim.new(0, 5)
+
+		copyUnivBtn.MouseButton1Click:Connect(function()
+			local okCopy = setClipboardText(data.universeId)
+			pushConsole("INFO", string.format("Universe ID %s %s", data.universeId, okCopy and "disalin ke clipboard" or "ditampilkan via notifikasi"))
+			notify("Universe ID", (okCopy and "Disalin: " or "ID: ") .. data.universeId)
+			copyUnivBtn.Text = "✓ Copied"
+			task.delay(1.2, function()
+				if copyUnivBtn and copyUnivBtn.Parent then
+					copyUnivBtn.Text = "📋 Copy ID"
+				end
+			end)
+		end)
+
+		local refreshBtn = Instance.new("TextButton")
+		refreshBtn.Size = UDim2.fromOffset(44, 18)
+		refreshBtn.Position = UDim2.new(1, -46, 0, 7)
+		refreshBtn.BackgroundColor3 = Color3.fromRGB(36, 34, 56)
+		refreshBtn.Text = "↻ Cek"
+		refreshBtn.TextColor3 = Color3.fromRGB(215, 212, 245)
+		refreshBtn.TextSize = 8
+		refreshBtn.Font = Enum.Font.GothamBold
+		refreshBtn.Parent = card
+		Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0, 5)
+
+		local isRefreshing = false
+		refreshBtn.MouseButton1Click:Connect(function()
+			if isRefreshing then return end
+			isRefreshing = true
+			refreshBtn.Text = "..."
+			task.spawn(function()
+				local latest = fetchRealtimeGameData(data.universeId, getCookieFn(), data.rootPlaceId)
+				gameIconImg.Image = latest.iconImage
+				gameNameLabel.Text = latest.gameName
+				metaLabel.Text = latest.metaInfo
+				styleStatusBadge(statusBadge, latest.status, false)
+				refreshBtn.Text = "↻ Cek"
+				isRefreshing = false
+			end)
+		end)
+	end
+
+	return card
 end
 
 -- ==========================================
@@ -1202,122 +1556,12 @@ local function clearResultCards()
 	EmptyResultHint.Visible = true
 end
 
-local function styleStatusBadge(badge: TextLabel, status: "publik" | "private" | "tidak diketahui", isError: boolean?)
-	if isError then
-		badge.BackgroundColor3 = Color3.fromRGB(115, 32, 45)
-		badge.Text = "gagal"
-		badge.TextColor3 = Color3.fromRGB(255, 200, 208)
-	elseif status == "publik" then
-		badge.BackgroundColor3 = Color3.fromRGB(24, 92, 56)
-		badge.Text = "publik"
-		badge.TextColor3 = Color3.fromRGB(145, 255, 190)
-	elseif status == "private" then
-		badge.BackgroundColor3 = Color3.fromRGB(88, 62, 24)
-		badge.Text = "private"
-		badge.TextColor3 = Color3.fromRGB(255, 222, 145)
-	else
-		badge.BackgroundColor3 = Color3.fromRGB(48, 46, 68)
-		badge.Text = "cek status..."
-		badge.TextColor3 = Color3.fromRGB(205, 202, 230)
-	end
-end
-
 local function appendResultCard(data: GameResultCardData)
 	EmptyResultHint.Visible = false
 	resultCardOrder += 1
-
-	local card = Instance.new("Frame")
-	card.Name = "GameCard_" .. tostring(resultCardOrder)
-	card.Size = UDim2.new(1, -2, 0, 68)
-	card.BackgroundColor3 = data.isError and Color3.fromRGB(34, 18, 24) or Color3.fromRGB(21, 20, 33)
-	card.BorderSizePixel = 0
-	card.LayoutOrder = resultCardOrder
-	card.Parent = ResultsScroll
-	Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
-	local cardStroke = Instance.new("UIStroke", card)
-	cardStroke.Color = data.isError and Color3.fromRGB(165, 65, 85) or Color3.fromRGB(64, 58, 104)
-	cardStroke.Thickness = 1
-
-	local iconFrame = Instance.new("Frame")
-	iconFrame.Size = UDim2.fromOffset(54, 54)
-	iconFrame.Position = UDim2.new(0, 7, 0.5, -27)
-	iconFrame.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-	iconFrame.BorderSizePixel = 0
-	iconFrame.Parent = card
-	Instance.new("UICorner", iconFrame).CornerRadius = UDim.new(0, 8)
-	local iconStroke = Instance.new("UIStroke", iconFrame)
-	iconStroke.Color = Color3.fromRGB(92, 82, 148)
-	iconStroke.Thickness = 1
-
-	local gameIconImg = Instance.new("ImageLabel")
-	gameIconImg.Size = UDim2.fromScale(1, 1)
-	gameIconImg.BackgroundTransparency = 1
-	gameIconImg.Image = data.iconImage
-	gameIconImg.ScaleType = Enum.ScaleType.Crop
-	gameIconImg.Parent = iconFrame
-	Instance.new("UICorner", gameIconImg).CornerRadius = UDim.new(0, 8)
-
-	local gameNameLabel = Instance.new("TextLabel")
-	gameNameLabel.Size = UDim2.new(1, -124, 0, 18)
-	gameNameLabel.Position = UDim2.new(0, 68, 0, 7)
-	gameNameLabel.BackgroundTransparency = 1
-	gameNameLabel.Text = data.gameName
-	gameNameLabel.TextColor3 = data.isError and Color3.fromRGB(255, 160, 170) or Color3.fromRGB(248, 248, 255)
-	gameNameLabel.TextSize = 11
-	gameNameLabel.Font = Enum.Font.GothamBold
-	gameNameLabel.TextXAlignment = Enum.TextXAlignment.Left
-	gameNameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	gameNameLabel.Parent = card
-
-	local statusBadge = Instance.new("TextLabel")
-	statusBadge.Size = UDim2.fromOffset(74, 17)
-	statusBadge.Position = UDim2.new(0, 68, 0, 27)
-	statusBadge.TextSize = 9
-	statusBadge.Font = Enum.Font.GothamBold
-	statusBadge.Parent = card
-	Instance.new("UICorner", statusBadge).CornerRadius = UDim.new(0, 5)
-	styleStatusBadge(statusBadge, data.status, data.isError)
-
-	local metaLabel = Instance.new("TextLabel")
-	metaLabel.Size = UDim2.new(1, -76, 0, 14)
-	metaLabel.Position = UDim2.new(0, 68, 0, 47)
-	metaLabel.BackgroundTransparency = 1
-	metaLabel.Text = data.metaInfo
-	metaLabel.TextColor3 = Color3.fromRGB(150, 146, 178)
-	metaLabel.TextSize = 8
-	metaLabel.Font = Enum.Font.Code
-	metaLabel.TextXAlignment = Enum.TextXAlignment.Left
-	metaLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	metaLabel.Parent = card
-
-	if not data.isError and data.universeId ~= "" then
-		local refreshBtn = Instance.new("TextButton")
-		refreshBtn.Size = UDim2.fromOffset(44, 18)
-		refreshBtn.Position = UDim2.new(1, -50, 0, 7)
-		refreshBtn.BackgroundColor3 = Color3.fromRGB(36, 34, 56)
-		refreshBtn.Text = "↻ Cek"
-		refreshBtn.TextColor3 = Color3.fromRGB(215, 212, 245)
-		refreshBtn.TextSize = 8
-		refreshBtn.Font = Enum.Font.GothamBold
-		refreshBtn.Parent = card
-		Instance.new("UICorner", refreshBtn).CornerRadius = UDim.new(0, 5)
-
-		local isRefreshing = false
-		refreshBtn.MouseButton1Click:Connect(function()
-			if isRefreshing then return end
-			isRefreshing = true
-			refreshBtn.Text = "..."
-			task.spawn(function()
-				local latest = fetchRealtimeGameData(data.universeId, CONFIG.Cookie, data.rootPlaceId)
-				gameIconImg.Image = latest.iconImage
-				gameNameLabel.Text = latest.gameName
-				metaLabel.Text = latest.metaInfo
-				styleStatusBadge(statusBadge, latest.status, false)
-				refreshBtn.Text = "↻ Cek"
-				isRefreshing = false
-			end)
-		end)
-	end
+	createGameCard(ResultsScroll, resultCardOrder, data, function()
+		return CONFIG.Cookie
+	end)
 end
 
 local function setCreateProgress(state: "idle" | "working" | "ok" | "err", ratio: number, msg: string)
@@ -1342,7 +1586,101 @@ local function setCreateProgress(state: "idle" | "working" | "ok" | "err", ratio
 end
 
 -- ==========================================
--- HALAMAN 2: VOICE CHAT UNIVERSE
+-- HALAMAN 2: CEK PLACE SAYA (CARD + COPY UNIVERSE ID)
+-- ==========================================
+local MyPlacesPage = Instance.new("Frame")
+MyPlacesPage.Size = UDim2.fromScale(1, 1)
+MyPlacesPage.BackgroundTransparency = 1
+MyPlacesPage.Visible = false
+MyPlacesPage.Parent = ContentArea
+tabPages["MyPlaces"] = MyPlacesPage
+
+local MyPlacesTitle = Instance.new("TextLabel")
+MyPlacesTitle.Size = UDim2.new(1, -24, 0, 15)
+MyPlacesTitle.Position = UDim2.new(0, 12, 0, 3)
+MyPlacesTitle.BackgroundTransparency = 1
+MyPlacesTitle.Text = "Cek Place Saya"
+MyPlacesTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+MyPlacesTitle.TextSize = 12
+MyPlacesTitle.Font = Enum.Font.GothamBold
+MyPlacesTitle.TextXAlignment = Enum.TextXAlignment.Left
+MyPlacesTitle.Parent = MyPlacesPage
+
+local MyPlacesGroupBox = Instance.new("TextBox")
+MyPlacesGroupBox.Size = UDim2.new(0.46, -12, 0, 24)
+MyPlacesGroupBox.Position = UDim2.new(0, 12, 0, 21)
+MyPlacesGroupBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+MyPlacesGroupBox.Text = ""
+MyPlacesGroupBox.PlaceholderText = "Group ID (kosong = akun sendiri)"
+MyPlacesGroupBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+MyPlacesGroupBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+MyPlacesGroupBox.TextSize = 9
+MyPlacesGroupBox.Font = Enum.Font.Gotham
+MyPlacesGroupBox.ClearTextOnFocus = false
+MyPlacesGroupBox.Parent = MyPlacesPage
+Instance.new("UICorner", MyPlacesGroupBox).CornerRadius = UDim.new(0, 6)
+
+local LoadMyPlacesBtn = Instance.new("TextButton")
+LoadMyPlacesBtn.Size = UDim2.new(0.54, -8, 0, 24)
+LoadMyPlacesBtn.Position = UDim2.new(0.46, 4, 0, 21)
+LoadMyPlacesBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+LoadMyPlacesBtn.Text = "🔎  CEK DAFTAR PLACE"
+LoadMyPlacesBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+LoadMyPlacesBtn.TextSize = 9
+LoadMyPlacesBtn.Font = Enum.Font.GothamBold
+LoadMyPlacesBtn.Parent = MyPlacesPage
+Instance.new("UICorner", LoadMyPlacesBtn).CornerRadius = UDim.new(0, 6)
+
+local MyPlacesStatusLbl = Instance.new("TextLabel")
+MyPlacesStatusLbl.Size = UDim2.new(1, -24, 0, 14)
+MyPlacesStatusLbl.Position = UDim2.new(0, 12, 0, 48)
+MyPlacesStatusLbl.BackgroundTransparency = 1
+MyPlacesStatusLbl.Text = "Klik 'Cek Daftar Place' untuk memuat place & menyalin Universe ID."
+MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(165, 162, 192)
+MyPlacesStatusLbl.TextSize = 9
+MyPlacesStatusLbl.Font = Enum.Font.GothamMedium
+MyPlacesStatusLbl.TextXAlignment = Enum.TextXAlignment.Left
+MyPlacesStatusLbl.TextTruncate = Enum.TextTruncate.AtEnd
+MyPlacesStatusLbl.Parent = MyPlacesPage
+
+local MyPlacesScroll = Instance.new("ScrollingFrame")
+MyPlacesScroll.Name = "MyPlacesListScroll"
+MyPlacesScroll.Size = UDim2.new(1, -24, 1, -70)
+MyPlacesScroll.Position = UDim2.new(0, 12, 0, 64)
+MyPlacesScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+MyPlacesScroll.BorderSizePixel = 0
+MyPlacesScroll.ScrollBarThickness = 3
+MyPlacesScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+MyPlacesScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+MyPlacesScroll.Parent = MyPlacesPage
+Instance.new("UICorner", MyPlacesScroll).CornerRadius = UDim.new(0, 8)
+local MyPlacesStroke = Instance.new("UIStroke", MyPlacesScroll)
+MyPlacesStroke.Color = Color3.fromRGB(52, 48, 82)
+MyPlacesStroke.Thickness = 1
+
+local MyPlacesLayout = Instance.new("UIListLayout")
+MyPlacesLayout.Padding = UDim.new(0, 6)
+MyPlacesLayout.SortOrder = Enum.SortOrder.LayoutOrder
+MyPlacesLayout.Parent = MyPlacesScroll
+
+local MyPlacesPad = Instance.new("UIPadding")
+MyPlacesPad.PaddingTop = UDim.new(0, 6)
+MyPlacesPad.PaddingBottom = UDim.new(0, 6)
+MyPlacesPad.PaddingLeft = UDim.new(0, 6)
+MyPlacesPad.PaddingRight = UDim.new(0, 6)
+MyPlacesPad.Parent = MyPlacesScroll
+
+local MyPlacesEmptyHint = Instance.new("TextLabel")
+MyPlacesEmptyHint.Size = UDim2.new(1, 0, 0, 36)
+MyPlacesEmptyHint.BackgroundTransparency = 1
+MyPlacesEmptyHint.Text = "Belum ada daftar place dimuat.\nSetiap card mendukung 📋 Copy ID untuk menyalin Universe ID."
+MyPlacesEmptyHint.TextColor3 = Color3.fromRGB(105, 102, 130)
+MyPlacesEmptyHint.TextSize = 9
+MyPlacesEmptyHint.Font = Enum.Font.Gotham
+MyPlacesEmptyHint.Parent = MyPlacesScroll
+
+-- ==========================================
+-- HALAMAN 3: VOICE CHAT UNIVERSE
 -- ==========================================
 local VoicePage = Instance.new("Frame")
 VoicePage.Size = UDim2.fromScale(1, 1)
@@ -1486,7 +1824,7 @@ VoiceStatusText.TextWrapped = true
 VoiceStatusText.Parent = VoicePreviewCard
 
 -- ==========================================
--- HALAMAN 3: ALLOW THIRD PARTY SALES
+-- HALAMAN 4: ALLOW THIRD PARTY SALES
 -- ==========================================
 local ThirdPartyPage = Instance.new("Frame")
 ThirdPartyPage.Size = UDim2.fromScale(1, 1)
@@ -1630,7 +1968,7 @@ SalesStatusText.TextWrapped = true
 SalesStatusText.Parent = SalesPreviewCard
 
 -- ==========================================
--- HALAMAN 4: SETTING (COOKIE)
+-- HALAMAN 5: SETTING (COOKIE)
 -- ==========================================
 local SettingPage = Instance.new("Frame")
 SettingPage.Size = UDim2.fromScale(1, 1)
@@ -1694,7 +2032,7 @@ SettingStatusLabel.Parent = SettingPage
 Instance.new("UICorner", SettingStatusLabel).CornerRadius = UDim.new(0, 7)
 
 -- ==========================================
--- HALAMAN 5: CONSOLE OUTPUT SERVER / PERMINTAAN
+-- HALAMAN 6: CONSOLE OUTPUT SERVER / PERMINTAAN
 -- ==========================================
 local ConsolePage = Instance.new("Frame")
 ConsolePage.Size = UDim2.fromScale(1, 1)
@@ -1852,21 +2190,86 @@ end)
 createNavButton("CreatePlace", "🏗  Create Place", 1).MouseButton1Click:Connect(function()
 	switchTab("CreatePlace")
 end)
-createNavButton("VoiceChat", "🎙  Voice Chat", 2).MouseButton1Click:Connect(function()
+createNavButton("MyPlaces", "🎮  Place Saya", 2).MouseButton1Click:Connect(function()
+	switchTab("MyPlaces")
+end)
+createNavButton("VoiceChat", "🎙  Voice Chat", 3).MouseButton1Click:Connect(function()
 	switchTab("VoiceChat")
 end)
-createNavButton("ThirdPartySales", "🛒  3rd Party", 3).MouseButton1Click:Connect(function()
+createNavButton("ThirdPartySales", "🛒  3rd Party", 4).MouseButton1Click:Connect(function()
 	switchTab("ThirdPartySales")
 end)
-createNavButton("Setting", "⚙  Setting", 4).MouseButton1Click:Connect(function()
+createNavButton("Setting", "⚙  Setting", 5).MouseButton1Click:Connect(function()
 	switchTab("Setting")
 end)
-createNavButton("Console", "🖥  Console", 5).MouseButton1Click:Connect(function()
+createNavButton("Console", "🖥  Console", 6).MouseButton1Click:Connect(function()
 	switchTab("Console")
 end)
 switchTab("CreatePlace")
 
-pushConsole("INFO", "Plugin Studio Lite siap (Voice + Allow Third Party Sales aktif).")
+pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya, Voice & 3rd Party Sales aktif).")
+
+-- ==========================================
+-- LOGIKA CEK PLACE SAYA
+-- ==========================================
+local isLoadingMyPlaces = false
+
+local function clearMyPlacesCards()
+	for _, child in ipairs(MyPlacesScroll:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+	MyPlacesEmptyHint.Visible = true
+end
+
+LoadMyPlacesBtn.MouseButton1Click:Connect(function()
+	if isLoadingMyPlaces then return end
+	local cookieVal = syncCookieFromInput()
+	if cookieVal == "" then
+		MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
+		MyPlacesStatusLbl.Text = "Cookie .ROBLOSECURITY kosong. Isi di tab Setting."
+		pushConsole("ERR", "Cek Place Saya gagal: Cookie kosong.")
+		notify("Place Saya", "Cookie belum diisi.")
+		return
+	end
+
+	local grpNum = tonumber(trim(MyPlacesGroupBox.Text):match("%d+"))
+	isLoadingMyPlaces = true
+	LoadMyPlacesBtn.Text = "⏳  MEMUAT..."
+	MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
+	MyPlacesStatusLbl.Text = grpNum and ("Memuat place Group #" .. tostring(grpNum) .. "...") or "Memuat daftar place akun..."
+	clearMyPlacesCards()
+
+	task.spawn(function()
+		local okList, cards, errList = fetchMyPlacesList(cookieVal, grpNum)
+		if okList then
+			if #cards == 0 then
+				MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(255, 215, 130)
+				MyPlacesStatusLbl.Text = "Tidak ada place ditemukan."
+				pushConsole("WARN", "Daftar place kosong.")
+			else
+				MyPlacesEmptyHint.Visible = false
+				for idx, cardData in ipairs(cards) do
+					createGameCard(MyPlacesScroll, idx, cardData, function()
+						return CONFIG.Cookie
+					end)
+				end
+				MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(145, 255, 190)
+				MyPlacesStatusLbl.Text = string.format("Ditemukan %d place (klik Copy ID untuk salin Universe ID).", #cards)
+				pushConsole("OK", string.format("Berhasil memuat %d place.", #cards))
+			end
+		else
+			MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
+			MyPlacesStatusLbl.Text = "Gagal memuat place: " .. errList
+			pushConsole("ERR", "Cek Place Saya gagal: " .. errList)
+			notify("Place Saya", "Gagal memuat daftar place.")
+		end
+
+		LoadMyPlacesBtn.Text = "🔎  CEK DAFTAR PLACE"
+		isLoadingMyPlaces = false
+	end)
+end)
 
 -- ==========================================
 -- LOGIKA VOICE CHAT UNIVERSE
@@ -1971,21 +2374,26 @@ local isSyncingSales = false
 local isApplyingSales = false
 local cachedSalesCsrf = ""
 
-local function refreshSalesUniversePreview(univId: string, cookieVal: string)
+local function refreshSalesUniversePreview(univId: string, cookieVal: string, overrideState: boolean?)
 	local cardInfo = fetchRealtimeGameData(univId, cookieVal, nil)
 	SalesIconImg.Image = cardInfo.iconImage
 	SalesGameName.Text = cardInfo.gameName .. " (" .. cardInfo.status .. ")"
+
+	if type(overrideState) == "boolean" then
+		LAST_KNOWN_THIRD_PARTY[univId] = overrideState
+	end
 
 	local okSales, salesOn, rawSalesData, errSales = getUniverseThirdPartySales(univId, cookieVal)
 	if okSales and type(salesOn) == "boolean" then
 		SalesSwitch.SetState(salesOn, true)
 		SalesStatusText.TextColor3 = salesOn and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 210, 140)
-		SalesStatusText.Text = "Third Party Sales saat ini: " .. (salesOn and "AKTIF (ON)" or "NONAKTIF (OFF)")
-		pushConsole("OK", string.format("Universe #%s allowThirdPartySales = %s", univId, tostring(salesOn)))
+		local suffix = (errSales == "SYNC_LOCAL_STATE") and " (tersinkron dari PATCH)" or ""
+		SalesStatusText.Text = "Third Party Sales: " .. (salesOn and "AKTIF (ON)" or "NONAKTIF (OFF)") .. suffix
+		pushConsole("OK", string.format("Universe #%s allowThirdPartySales = %s%s", univId, tostring(salesOn), suffix))
 	elseif okSales then
 		SalesStatusText.TextColor3 = Color3.fromRGB(185, 205, 255)
-		SalesStatusText.Text = "Konfigurasi terbaca (cek Console)"
-		pushConsole("INFO", string.format("Universe #%s config JSON: %s", univId, HttpService:JSONEncode(rawSalesData)))
+		SalesStatusText.Text = "GET konfigurasi dibatasi (403), namun PATCH aktif. Geser ON/OFF lalu Terapkan."
+		pushConsole("INFO", string.format("Universe #%s GET configuration 403; gunakan toggle + Terapkan untuk mengubah. JSON: %s", univId, HttpService:JSONEncode(rawSalesData)))
 	else
 		SalesStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
 		SalesStatusText.Text = "Gagal cek Third Party Sales: " .. errSales
@@ -2007,7 +2415,7 @@ SyncSalesBtn.MouseButton1Click:Connect(function()
 	isSyncingSales = true
 	SyncSalesBtn.Text = "..."
 	task.spawn(function()
-		refreshSalesUniversePreview(univId, cookieVal)
+		refreshSalesUniversePreview(univId, cookieVal, nil)
 		SyncSalesBtn.Text = "↻ Cek Status"
 		isSyncingSales = false
 	end)
@@ -2047,7 +2455,7 @@ ApplySalesBtn.MouseButton1Click:Connect(function()
 			SalesStatusText.Text = msgPatch
 			pushConsole("OK", msgPatch .. " (Universe #" .. univId .. ")")
 			notify("3rd Party Sales", msgPatch)
-			refreshSalesUniversePreview(univId, cookieVal)
+			refreshSalesUniversePreview(univId, cookieVal, targetState)
 		else
 			SalesStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
 			SalesStatusText.Text = "Gagal: " .. msgPatch
