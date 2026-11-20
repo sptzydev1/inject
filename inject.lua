@@ -1,5 +1,5 @@
 --!strict
--- Plugin Studio Lite (Delta Executor Edition - Create Place & Setting) by Ikyy
+-- Plugin Studio Lite (Delta Executor Edition - Create Place, Voice Chat & Setting) by Ikyy
 -- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Realtime (Icon Game, Name Game, Status)
 
 local Players = game:GetService("Players")
@@ -24,6 +24,7 @@ local CONFIG = {
 	Cookie = "",
 	IsMinimized = false,
 	ActiveTab = "CreatePlace",
+	DefaultUniverseId = "10516113765",
 	UserAgent = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
 }
 
@@ -284,7 +285,6 @@ local function resolveRealtimeGameIcon(universeId: string, rootPlaceId: string?,
 		authHeaders["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal)
 	end
 
-	-- 1. Cek status GameIcon dari Thumbnails API terlebih dahulu (dengan Cookie agar game private juga terbaca)
 	if cleanUniv ~= "" then
 		local uRes, uOk = apiRequest({
 			Url = string.format("https://thumbnails.roblox.com/v1/games/icons?universeIds=%s&size=150x150&format=Png&isCircular=false", cleanUniv),
@@ -299,14 +299,12 @@ local function resolveRealtimeGameIcon(universeId: string, rootPlaceId: string?,
 			if okDec and type(decoded) == "table" and type(decoded.data) == "table" and type(decoded.data[1]) == "table" then
 				local entry = decoded.data[1]
 				if entry.state == "Completed" and type(entry.imageUrl) == "string" and entry.imageUrl ~= "" then
-					-- Di Roblox Client, rbxthumb:// adalah URI resmi yang bisa dirender oleh ImageLabel
 					return "rbxthumb://type=GameIcon&id=" .. cleanUniv .. "&w=150&h=150"
 				end
 			end
 		end
 	end
 
-	-- 2. Fallback cek thumbnail Place / Asset jika GameIcon universe belum tersedia
 	if cleanPlace ~= "" then
 		local pRes, pOk = apiRequest({
 			Url = string.format("https://thumbnails.roblox.com/v1/places/gameicons?placeIds=%s&size=150x150&format=Png&isCircular=false", cleanPlace),
@@ -346,7 +344,6 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 		devHeaders["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal)
 	end
 
-	-- 1. Sumber utama & realtime untuk status privasi (develop API terautentikasi)
 	local devRes, devOk = apiRequest({
 		Url = "https://develop.roblox.com/v1/universes/" .. cleanUniv,
 		Method = "GET",
@@ -378,7 +375,6 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 		end
 	end
 
-	-- 2. Cek games.roblox.com hanya untuk melengkapi nama/rootPlaceId jika belum didapat (TIDAK memaksa status jadi publik)
 	if not nameVal or not rootPlaceId then
 		local gameRes, gameOk = apiRequest({
 			Url = "https://games.roblox.com/v1/games?universeIds=" .. cleanUniv,
@@ -402,7 +398,6 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 		end
 	end
 
-	-- 3. Jika develop API tidak mengembalikan isActive/privacyType, cek endpoint konfigurasi universe sebagai verifikasi cadangan
 	if statusVal == "tidak diketahui" and trim(cookieVal) ~= "" then
 		local cfgRes, cfgOk = apiRequest({
 			Url = "https://develop.roblox.com/v2/universes/" .. cleanUniv .. "/configuration",
@@ -443,6 +438,94 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 	}
 end
 
+local function getUniverseConfigurationData(universeId: string, cookieVal: string): (boolean, {[string]: any}, string)
+	local cleanUniv = trim(universeId):match("%d+") or ""
+	if cleanUniv == "" then
+		return false, {}, "Universe ID tidak valid"
+	end
+
+	local hdrs: {[string]: string} = {}
+	if trim(cookieVal) ~= "" then
+		hdrs["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal)
+	end
+
+	local res, ok, info = apiRequest({
+		Url = "https://develop.roblox.com/v1/universes/" .. cleanUniv .. "/configuration",
+		Method = "GET",
+		Headers = hdrs,
+		Retries = 1,
+	})
+
+	if not ok or not res then
+		return false, {}, info
+	end
+
+	local bodyStr = tostring(res.Body or "")
+	local okDec, decoded = pcall(function()
+		return HttpService:JSONDecode(bodyStr)
+	end)
+	if not okDec or type(decoded) ~= "table" then
+		return false, {}, "Gagal decode JSON konfigurasi"
+	end
+
+	return true, decoded, "OK"
+end
+
+local function patchUniverseVoiceChat(universeId: string, cookieVal: string, enabled: boolean, csrfSeed: string): (boolean, string, string)
+	local cleanUniv = trim(universeId):match("%d+") or ""
+	if cleanUniv == "" then
+		return false, "Universe ID tidak valid", csrfSeed
+	end
+
+	local okCfg, cfgData = getUniverseConfigurationData(cleanUniv, cookieVal)
+	local payload: {[string]: any} = {
+		isVoiceEnabled = enabled,
+	}
+	if okCfg and type(cfgData.optInRegions) == "table" then
+		payload.optInRegions = cfgData.optInRegions
+	end
+
+	local jsonBody = HttpService:JSONEncode(payload)
+	local currentCsrf = csrfSeed
+
+	local function sendPatch(token: string)
+		local hdrs: {[string]: string} = {
+			["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
+			["Content-Type"] = "application/json",
+			["Origin"] = "https://create.roblox.com",
+			["Referer"] = "https://create.roblox.com/",
+		}
+		if token ~= "" then
+			hdrs["X-CSRF-TOKEN"] = token
+		end
+		return apiRequest({
+			Url = "https://develop.roblox.com/v1/universes/" .. cleanUniv .. "/configuration",
+			Method = "PATCH",
+			Headers = hdrs,
+			Body = jsonBody,
+			Retries = 1,
+		})
+	end
+
+	local res, ok, info = sendPatch(currentCsrf)
+	if not ok and res and tonumber(res.StatusCode or res.Status or res.status_code) == 403 then
+		local newToken = getHeaderCaseInsensitive(res.Headers, "x-csrf-token")
+		if newToken and newToken ~= "" then
+			currentCsrf = newToken
+			res, ok, info = sendPatch(currentCsrf)
+		end
+	end
+
+	local bodyStr = res and tostring(res.Body or "") or ""
+	if ok then
+		saveTextFile("Logs/voice_" .. cleanUniv .. "_" .. tostring(os.time()) .. ".json", bodyStr)
+		return true, "Voice Chat Universe berhasil " .. (enabled and "DIAKTIFKAN" or "DINONAKTIFKAN"), currentCsrf
+	end
+
+	local detail = bodyStr ~= "" and (" (" .. bodyStr:sub(1, 100) .. ")") or ""
+	return false, info .. detail, currentCsrf
+end
+
 local function getUserAvatarAsync(userId: number): string
 	local ok, content = pcall(function()
 		return Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
@@ -451,6 +534,88 @@ local function getUserAvatarAsync(userId: number): string
 		return content
 	end
 	return "rbxasset://textures/ui/GuiImagePlaceholder.png"
+end
+
+-- ==========================================
+-- KOMPONEN UI MODERN: TOGGLE SWITCH KANAN-KIRI
+-- ==========================================
+local function createModernToggleSwitch(parent: Instance, initialState: boolean?, onChanged: ((boolean) -> ())?)
+	local isOn = initialState == true
+
+	local capsule = Instance.new("TextButton")
+	capsule.Name = "ModernToggleSwitch"
+	capsule.Size = UDim2.fromOffset(74, 28)
+	capsule.BackgroundColor3 = isOn and Color3.fromRGB(34, 197, 94) or Color3.fromRGB(42, 40, 62)
+	capsule.Text = ""
+	capsule.AutoButtonColor = false
+	capsule.Parent = parent
+	Instance.new("UICorner", capsule).CornerRadius = UDim.new(1, 0)
+
+	local capStroke = Instance.new("UIStroke", capsule)
+	capStroke.Color = isOn and Color3.fromRGB(110, 245, 160) or Color3.fromRGB(92, 86, 132)
+	capStroke.Thickness = 1.2
+
+	local sideLabel = Instance.new("TextLabel")
+	sideLabel.Size = UDim2.new(1, -30, 1, 0)
+	sideLabel.Position = isOn and UDim2.new(0, 8, 0, 0) or UDim2.new(0, 22, 0, 0)
+	sideLabel.BackgroundTransparency = 1
+	sideLabel.Text = isOn and "ON" or "OFF"
+	sideLabel.TextColor3 = isOn and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(185, 182, 212)
+	sideLabel.TextSize = 9
+	sideLabel.Font = Enum.Font.GothamBold
+	sideLabel.TextXAlignment = isOn and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right
+	sideLabel.Parent = capsule
+
+	local knob = Instance.new("Frame")
+	knob.Name = "Knob"
+	knob.Size = UDim2.fromOffset(22, 22)
+	knob.Position = isOn and UDim2.new(1, -25, 0.5, -11) or UDim2.new(0, 3, 0.5, -11)
+	knob.BackgroundColor3 = Color3.fromRGB(250, 250, 255)
+	knob.BorderSizePixel = 0
+	knob.Parent = capsule
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+	local function applyVisual(state: boolean, animate: boolean)
+		isOn = state
+		local targetBg = state and Color3.fromRGB(34, 197, 94) or Color3.fromRGB(42, 40, 62)
+		local targetStroke = state and Color3.fromRGB(110, 245, 160) or Color3.fromRGB(92, 86, 132)
+		local targetKnobPos = state and UDim2.new(1, -25, 0.5, -11) or UDim2.new(0, 3, 0.5, -11)
+
+		sideLabel.Text = state and "ON" or "OFF"
+		sideLabel.TextColor3 = state and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(185, 182, 212)
+		sideLabel.TextXAlignment = state and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right
+		sideLabel.Position = state and UDim2.new(0, 9, 0, 0) or UDim2.new(0, 21, 0, 0)
+		capStroke.Color = targetStroke
+
+		if animate then
+			TweenService:Create(capsule, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				BackgroundColor3 = targetBg,
+			}):Play()
+			TweenService:Create(knob, TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+				Position = targetKnobPos,
+			}):Play()
+		else
+			capsule.BackgroundColor3 = targetBg
+			knob.Position = targetKnobPos
+		end
+	end
+
+	capsule.MouseButton1Click:Connect(function()
+		applyVisual(not isOn, true)
+		if onChanged then
+			onChanged(isOn)
+		end
+	end)
+
+	return {
+		Button = capsule,
+		GetState = function(): boolean
+			return isOn
+		end,
+		SetState = function(state: boolean, animate: boolean?)
+			applyVisual(state, animate ~= false)
+		end,
+	}
 end
 
 -- ==========================================
@@ -537,10 +702,10 @@ LogoIcon.Font = Enum.Font.GothamBold
 LogoIcon.Parent = HeaderLogoBox
 
 local SubTitleLabel = Instance.new("TextLabel")
-SubTitleLabel.Size = UDim2.new(0, 230, 0, 11)
+SubTitleLabel.Size = UDim2.new(0, 240, 0, 11)
 SubTitleLabel.Position = UDim2.new(0, 48, 0, 5)
 SubTitleLabel.BackgroundTransparency = 1
-SubTitleLabel.Text = "IKYYSTUDIO • CREATE PLACE"
+SubTitleLabel.Text = "IKYYSTUDIO • CREATE PLACE & VOICE"
 SubTitleLabel.TextColor3 = Color3.fromRGB(130, 126, 155)
 SubTitleLabel.TextSize = 8
 SubTitleLabel.Font = Enum.Font.GothamBold
@@ -562,7 +727,7 @@ local MetaLabel = Instance.new("TextLabel")
 MetaLabel.Size = UDim2.new(0, 240, 0, 11)
 MetaLabel.Position = UDim2.new(0, 48, 0, 31)
 MetaLabel.BackgroundTransparency = 1
-MetaLabel.Text = "by Ikyy • Create Place • @" .. LocalPlayer.Name
+MetaLabel.Text = "by Ikyy • Studio & Universe • @" .. LocalPlayer.Name
 MetaLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
 MetaLabel.TextSize = 8
 MetaLabel.Font = Enum.Font.GothamMedium
@@ -678,7 +843,7 @@ CloseCircleBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- SIDEBAR KIRI (HANYA CREATE PLACE & SETTING)
+-- SIDEBAR KIRI
 -- ==========================================
 local Sidebar = Instance.new("Frame")
 Sidebar.Name = "Sidebar"
@@ -825,7 +990,6 @@ CreatePlaceBtn.Font = Enum.Font.GothamBold
 CreatePlaceBtn.Parent = CreatePlacePage
 Instance.new("UICorner", CreatePlaceBtn).CornerRadius = UDim.new(0, 7)
 
--- Progress Bar
 local ProgressTrack = Instance.new("Frame")
 ProgressTrack.Size = UDim2.new(1, -24, 0, 4)
 ProgressTrack.Position = UDim2.new(0, 12, 0, 78)
@@ -853,7 +1017,6 @@ StatusBanner.TextXAlignment = Enum.TextXAlignment.Left
 StatusBanner.TextTruncate = Enum.TextTruncate.AtEnd
 StatusBanner.Parent = CreatePlacePage
 
--- Area Hasil Realtime: [Icon Game (ukuran sedang)] | [Name Game] | [Status: private / publik]
 local ResultsScroll = Instance.new("ScrollingFrame")
 ResultsScroll.Name = "CreatedGamesResults"
 ResultsScroll.Size = UDim2.new(1, -24, 1, -106)
@@ -938,7 +1101,6 @@ local function appendResultCard(data: GameResultCardData)
 	cardStroke.Color = data.isError and Color3.fromRGB(165, 65, 85) or Color3.fromRGB(64, 58, 104)
 	cardStroke.Thickness = 1
 
-	-- 1. Icon Game (ukuran sedang: 54x54 px menggunakan rbxthumb:// realtime)
 	local iconFrame = Instance.new("Frame")
 	iconFrame.Size = UDim2.fromOffset(54, 54)
 	iconFrame.Position = UDim2.new(0, 7, 0.5, -27)
@@ -958,7 +1120,6 @@ local function appendResultCard(data: GameResultCardData)
 	gameIconImg.Parent = iconFrame
 	Instance.new("UICorner", gameIconImg).CornerRadius = UDim.new(0, 8)
 
-	-- 2. Name Game
 	local gameNameLabel = Instance.new("TextLabel")
 	gameNameLabel.Size = UDim2.new(1, -124, 0, 18)
 	gameNameLabel.Position = UDim2.new(0, 68, 0, 7)
@@ -971,7 +1132,6 @@ local function appendResultCard(data: GameResultCardData)
 	gameNameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	gameNameLabel.Parent = card
 
-	-- 3. Status Realtime (private / publik)
 	local statusBadge = Instance.new("TextLabel")
 	statusBadge.Size = UDim2.fromOffset(74, 17)
 	statusBadge.Position = UDim2.new(0, 68, 0, 27)
@@ -993,7 +1153,6 @@ local function appendResultCard(data: GameResultCardData)
 	metaLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	metaLabel.Parent = card
 
-	-- Tombol Refresh Realtime per card (cek ulang icon & status publik/private langsung ke API)
 	if not data.isError and data.universeId ~= "" then
 		local refreshBtn = Instance.new("TextButton")
 		refreshBtn.Size = UDim2.fromOffset(44, 18)
@@ -1046,7 +1205,153 @@ local function setCreateProgress(state: "idle" | "working" | "ok" | "err", ratio
 end
 
 -- ==========================================
--- HALAMAN 2: SETTING (HANYA COOKIE)
+-- HALAMAN 2: VOICE CHAT UNIVERSE (TOGGLE KANAN-KIRI)
+-- ==========================================
+local VoicePage = Instance.new("Frame")
+VoicePage.Size = UDim2.fromScale(1, 1)
+VoicePage.BackgroundTransparency = 1
+VoicePage.Visible = false
+VoicePage.Parent = ContentArea
+tabPages["VoiceChat"] = VoicePage
+
+local VoiceTitle = Instance.new("TextLabel")
+VoiceTitle.Size = UDim2.new(1, -24, 0, 16)
+VoiceTitle.Position = UDim2.new(0, 12, 0, 6)
+VoiceTitle.BackgroundTransparency = 1
+VoiceTitle.Text = "Voice Chat Universe"
+VoiceTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
+VoiceTitle.TextSize = 12
+VoiceTitle.Font = Enum.Font.GothamBold
+VoiceTitle.TextXAlignment = Enum.TextXAlignment.Left
+VoiceTitle.Parent = VoicePage
+
+local VoiceUniverseBox = Instance.new("TextBox")
+VoiceUniverseBox.Size = UDim2.new(1, -108, 0, 26)
+VoiceUniverseBox.Position = UDim2.new(0, 12, 0, 26)
+VoiceUniverseBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
+VoiceUniverseBox.Text = CONFIG.DefaultUniverseId
+VoiceUniverseBox.PlaceholderText = "Masukkan Universe ID..."
+VoiceUniverseBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
+VoiceUniverseBox.TextColor3 = Color3.fromRGB(235, 235, 250)
+VoiceUniverseBox.TextSize = 10
+VoiceUniverseBox.Font = Enum.Font.Gotham
+VoiceUniverseBox.ClearTextOnFocus = false
+VoiceUniverseBox.Parent = VoicePage
+Instance.new("UICorner", VoiceUniverseBox).CornerRadius = UDim.new(0, 7)
+
+local SyncVoiceBtn = Instance.new("TextButton")
+SyncVoiceBtn.Size = UDim2.fromOffset(78, 26)
+SyncVoiceBtn.Position = UDim2.new(1, -90, 0, 26)
+SyncVoiceBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 52)
+SyncVoiceBtn.Text = "↻ Cek Status"
+SyncVoiceBtn.TextColor3 = Color3.fromRGB(215, 212, 248)
+SyncVoiceBtn.TextSize = 9
+SyncVoiceBtn.Font = Enum.Font.GothamBold
+SyncVoiceBtn.Parent = VoicePage
+Instance.new("UICorner", SyncVoiceBtn).CornerRadius = UDim.new(0, 7)
+local SyncStroke = Instance.new("UIStroke", SyncVoiceBtn)
+SyncStroke.Color = Color3.fromRGB(82, 76, 124)
+SyncStroke.Thickness = 1
+
+-- Kartu Toggle Switch Kanan-Kiri
+local SwitchCard = Instance.new("Frame")
+SwitchCard.Size = UDim2.new(1, -24, 0, 52)
+SwitchCard.Position = UDim2.new(0, 12, 0, 60)
+SwitchCard.BackgroundColor3 = Color3.fromRGB(24, 23, 38)
+SwitchCard.BorderSizePixel = 0
+SwitchCard.Parent = VoicePage
+Instance.new("UICorner", SwitchCard).CornerRadius = UDim.new(0, 9)
+local SwitchCardStroke = Instance.new("UIStroke", SwitchCard)
+SwitchCardStroke.Color = Color3.fromRGB(68, 62, 112)
+SwitchCardStroke.Thickness = 1
+
+local SwitchTitle = Instance.new("TextLabel")
+SwitchTitle.Size = UDim2.new(1, -104, 0, 16)
+SwitchTitle.Position = UDim2.new(0, 12, 0, 9)
+SwitchTitle.BackgroundTransparency = 1
+SwitchTitle.Text = "Enable Voice Chat (Universe)"
+SwitchTitle.TextColor3 = Color3.fromRGB(248, 248, 255)
+SwitchTitle.TextSize = 11
+SwitchTitle.Font = Enum.Font.GothamBold
+SwitchTitle.TextXAlignment = Enum.TextXAlignment.Left
+SwitchTitle.Parent = SwitchCard
+
+local SwitchDesc = Instance.new("TextLabel")
+SwitchDesc.Size = UDim2.new(1, -104, 0, 14)
+SwitchDesc.Position = UDim2.new(0, 12, 0, 26)
+SwitchDesc.BackgroundTransparency = 1
+SwitchDesc.Text = "Geser kiri/kanan untuk memilih OFF atau ON"
+SwitchDesc.TextColor3 = Color3.fromRGB(150, 146, 182)
+SwitchDesc.TextSize = 9
+SwitchDesc.Font = Enum.Font.GothamMedium
+SwitchDesc.TextXAlignment = Enum.TextXAlignment.Left
+SwitchDesc.Parent = SwitchCard
+
+local VoiceSwitch = createModernToggleSwitch(SwitchCard, false, function(state: boolean)
+	SwitchDesc.Text = state
+		and "Target: Voice Chat DIAKTIFKAN (klik Terapkan)"
+		or "Target: Voice Chat DINONAKTIFKAN (klik Terapkan)"
+end)
+VoiceSwitch.Button.Position = UDim2.new(1, -86, 0.5, -14)
+
+local ApplyVoiceBtn = Instance.new("TextButton")
+ApplyVoiceBtn.Size = UDim2.new(1, -24, 0, 28)
+ApplyVoiceBtn.Position = UDim2.new(0, 12, 0, 120)
+ApplyVoiceBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+ApplyVoiceBtn.Text = "⚡  TERAPKAN PENGATURAN VOICE CHAT"
+ApplyVoiceBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ApplyVoiceBtn.TextSize = 10
+ApplyVoiceBtn.Font = Enum.Font.GothamBold
+ApplyVoiceBtn.Parent = VoicePage
+Instance.new("UICorner", ApplyVoiceBtn).CornerRadius = UDim.new(0, 7)
+
+-- Kartu Info Universe & Status Voice Real-time
+local VoicePreviewCard = Instance.new("Frame")
+VoicePreviewCard.Size = UDim2.new(1, -24, 1, -162)
+VoicePreviewCard.Position = UDim2.new(0, 12, 0, 155)
+VoicePreviewCard.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+VoicePreviewCard.BorderSizePixel = 0
+VoicePreviewCard.Parent = VoicePage
+Instance.new("UICorner", VoicePreviewCard).CornerRadius = UDim.new(0, 8)
+local VoicePrevStroke = Instance.new("UIStroke", VoicePreviewCard)
+VoicePrevStroke.Color = Color3.fromRGB(52, 48, 82)
+VoicePrevStroke.Thickness = 1
+
+local VoiceIconImg = Instance.new("ImageLabel")
+VoiceIconImg.Size = UDim2.fromOffset(52, 52)
+VoiceIconImg.Position = UDim2.new(0, 8, 0.5, -26)
+VoiceIconImg.BackgroundColor3 = Color3.fromRGB(20, 19, 32)
+VoiceIconImg.Image = resolveRealtimeGameIcon(CONFIG.DefaultUniverseId, nil, CONFIG.Cookie)
+VoiceIconImg.ScaleType = Enum.ScaleType.Crop
+VoiceIconImg.Parent = VoicePreviewCard
+Instance.new("UICorner", VoiceIconImg).CornerRadius = UDim.new(0, 8)
+
+local VoiceGameName = Instance.new("TextLabel")
+VoiceGameName.Size = UDim2.new(1, -74, 0, 16)
+VoiceGameName.Position = UDim2.new(0, 68, 0, 8)
+VoiceGameName.BackgroundTransparency = 1
+VoiceGameName.Text = "Universe #" .. CONFIG.DefaultUniverseId
+VoiceGameName.TextColor3 = Color3.fromRGB(245, 245, 255)
+VoiceGameName.TextSize = 11
+VoiceGameName.Font = Enum.Font.GothamBold
+VoiceGameName.TextXAlignment = Enum.TextXAlignment.Left
+VoiceGameName.TextTruncate = Enum.TextTruncate.AtEnd
+VoiceGameName.Parent = VoicePreviewCard
+
+local VoiceStatusText = Instance.new("TextLabel")
+VoiceStatusText.Size = UDim2.new(1, -74, 0, 26)
+VoiceStatusText.Position = UDim2.new(0, 68, 0, 26)
+VoiceStatusText.BackgroundTransparency = 1
+VoiceStatusText.Text = "Siap sinkronisasi status Voice Chat universe."
+VoiceStatusText.TextColor3 = Color3.fromRGB(165, 162, 194)
+VoiceStatusText.TextSize = 9
+VoiceStatusText.Font = Enum.Font.GothamMedium
+VoiceStatusText.TextXAlignment = Enum.TextXAlignment.Left
+VoiceStatusText.TextWrapped = true
+VoiceStatusText.Parent = VoicePreviewCard
+
+-- ==========================================
+-- HALAMAN 3: SETTING (COOKIE)
 -- ==========================================
 local SettingPage = Instance.new("Frame")
 SettingPage.Size = UDim2.fromScale(1, 1)
@@ -1138,10 +1443,99 @@ end)
 createNavButton("CreatePlace", "🏗  Create Place", 1).MouseButton1Click:Connect(function()
 	switchTab("CreatePlace")
 end)
-createNavButton("Setting", "⚙  Setting", 2).MouseButton1Click:Connect(function()
+createNavButton("VoiceChat", "🎙  Voice Chat", 2).MouseButton1Click:Connect(function()
+	switchTab("VoiceChat")
+end)
+createNavButton("Setting", "⚙  Setting", 3).MouseButton1Click:Connect(function()
 	switchTab("Setting")
 end)
 switchTab("CreatePlace")
+
+-- ==========================================
+-- LOGIKA VOICE CHAT UNIVERSE
+-- ==========================================
+local isSyncingVoice = false
+local isApplyingVoice = false
+local cachedVoiceCsrf = ""
+
+local function refreshVoiceUniversePreview(univId: string, cookieVal: string)
+	local cardInfo = fetchRealtimeGameData(univId, cookieVal, nil)
+	VoiceIconImg.Image = cardInfo.iconImage
+	VoiceGameName.Text = cardInfo.gameName .. " (" .. cardInfo.status .. ")"
+
+	local okCfg, cfgData, errCfg = getUniverseConfigurationData(univId, cookieVal)
+	if okCfg and type(cfgData.isVoiceEnabled) == "boolean" then
+		local voiceOn: boolean = cfgData.isVoiceEnabled
+		VoiceSwitch.SetState(voiceOn, true)
+		VoiceStatusText.TextColor3 = voiceOn and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 210, 140)
+		VoiceStatusText.Text = "Voice Chat saat ini: " .. (voiceOn and "AKTIF (ON)" or "NONAKTIF (OFF)")
+	else
+		VoiceStatusText.TextColor3 = Color3.fromRGB(175, 172, 205)
+		VoiceStatusText.Text = "Info Universe terbaca • Konfigurasi Voice: " .. errCfg
+	end
+end
+
+SyncVoiceBtn.MouseButton1Click:Connect(function()
+	if isSyncingVoice or isApplyingVoice then return end
+	local cookieVal = syncCookieFromInput()
+	local univId = trim(VoiceUniverseBox.Text):match("%d+") or ""
+	if univId == "" then
+		VoiceStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
+		VoiceStatusText.Text = "Masukkan Universe ID yang valid."
+		return
+	end
+
+	isSyncingVoice = true
+	SyncVoiceBtn.Text = "..."
+	task.spawn(function()
+		refreshVoiceUniversePreview(univId, cookieVal)
+		SyncVoiceBtn.Text = "↻ Cek Status"
+		isSyncingVoice = false
+	end)
+end)
+
+ApplyVoiceBtn.MouseButton1Click:Connect(function()
+	if isApplyingVoice or isSyncingVoice then return end
+	local cookieVal = syncCookieFromInput()
+	if cookieVal == "" then
+		VoiceStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
+		VoiceStatusText.Text = "Cookie .ROBLOSECURITY kosong. Isi di tab Setting."
+		notify("Voice Chat", "Cookie belum diisi.")
+		return
+	end
+
+	local univId = trim(VoiceUniverseBox.Text):match("%d+") or ""
+	if univId == "" then
+		VoiceStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
+		VoiceStatusText.Text = "Universe ID tidak valid."
+		return
+	end
+
+	local targetState = VoiceSwitch.GetState()
+	isApplyingVoice = true
+	ApplyVoiceBtn.Text = "⏳  MENGIRIM..."
+	VoiceStatusText.TextColor3 = Color3.fromRGB(175, 205, 255)
+	VoiceStatusText.Text = "Mengirim pengaturan Voice Chat = " .. (targetState and "ON" or "OFF") .. "..."
+
+	task.spawn(function()
+		local okPatch, msgPatch, nextCsrf = patchUniverseVoiceChat(univId, cookieVal, targetState, cachedVoiceCsrf)
+		cachedVoiceCsrf = nextCsrf
+
+		if okPatch then
+			VoiceStatusText.TextColor3 = Color3.fromRGB(145, 255, 190)
+			VoiceStatusText.Text = msgPatch
+			notify("Voice Chat", msgPatch)
+			refreshVoiceUniversePreview(univId, cookieVal)
+		else
+			VoiceStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
+			VoiceStatusText.Text = "Gagal: " .. msgPatch
+			notify("Voice Chat", "Gagal mengubah status Voice Chat.")
+		end
+
+		ApplyVoiceBtn.Text = "⚡  TERAPKAN PENGATURAN VOICE CHAT"
+		isApplyingVoice = false
+	end)
+end)
 
 -- ==========================================
 -- LOGIKA CREATE PLACE
