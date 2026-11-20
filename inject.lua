@@ -398,7 +398,7 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 		Url = "https://develop.roblox.com/v1/universes/" .. cleanUniv,
 		Method = "GET",
 		Headers = devHeaders,
-		Retries = 2,
+		Retries = 1,
 	})
 
 	if devOk and devRes and devRes.Body then
@@ -464,7 +464,7 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 end
 
 -- ==========================================
--- API CEK PLACE SAYA (OTOMATIS DARI COOKIE • SEMUA PRIVATE & PUBLIK)
+-- API CEK PLACE SAYA (MULTI-ENDPOINT FALLBACK • PRIVATE & PUBLIK)
 -- ==========================================
 local function getAuthenticatedUserFromCookie(cookieVal: string): (number?, string?)
 	local hdrs: {[string]: string} = {
@@ -489,6 +489,24 @@ local function getAuthenticatedUserFromCookie(cookieVal: string): (number?, stri
 	return nil, nil
 end
 
+local function placeIdToUniverseId(placeId: string, hdrs: {[string]: string}): string?
+	local res, ok = apiRequest({
+		Url = "https://apis.roblox.com/universes/v1/places/" .. placeId .. "/universe",
+		Method = "GET",
+		Headers = hdrs,
+		Retries = 1,
+	})
+	if ok and res and res.Body then
+		local okDec, decoded = pcall(function()
+			return HttpService:JSONDecode(tostring(res.Body))
+		end)
+		if okDec and type(decoded) == "table" and decoded.universeId ~= nil then
+			return tostring(decoded.universeId):match("%d+")
+		end
+	end
+	return nil
+end
+
 local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardData}, string)
 	local hdrs: {[string]: string} = {
 		["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal),
@@ -499,79 +517,169 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		return false, {}, "Cookie tidak valid atau sesi expired"
 	end
 
-	local endpoints = {
+	type RawPlaceEntry = {
+		univId: string,
+		rootPlaceId: string?,
+		name: string?,
+		status: "publik" | "private" | "tidak diketahui",
+	}
+
+	local rawItems: {RawPlaceEntry} = {}
+	local seenUniv: {[string]: boolean} = {}
+
+	local function addItem(univId: string?, rootPlaceId: string?, name: string?, status: "publik" | "private" | "tidak diketahui")
+		local cleanU = univId and trim(univId):match("%d+") or ""
+		if cleanU == "" then return end
+		if seenUniv[cleanU] then
+			for _, existing in ipairs(rawItems) do
+				if existing.univId == cleanU then
+					if (not existing.rootPlaceId or existing.rootPlaceId == "") and rootPlaceId and rootPlaceId ~= "" then
+						existing.rootPlaceId = rootPlaceId
+					end
+					if (not existing.name or existing.name == "") and name and name ~= "" then
+						existing.name = name
+					end
+					if existing.status == "tidak diketahui" and status ~= "tidak diketahui" then
+						existing.status = status
+					end
+					break
+				end
+			end
+			return
+		end
+		seenUniv[cleanU] = true
+		table.insert(rawItems, {
+			univId = cleanU,
+			rootPlaceId = rootPlaceId,
+			name = name,
+			status = status,
+		})
+	end
+
+	-- 1. Coba endpoint universe langsung
+	local directUniverseEndpoints = {
 		string.format("https://develop.roblox.com/v1/users/%d/universes?sortOrder=Desc&limit=100", uid),
 		string.format("https://apis.roblox.com/universes/v1/users/%d/universes?sortOrder=Desc&limit=100", uid),
 	}
 
-	local decoded: any = nil
-	local lastErr = "Gagal mengambil daftar pengalaman virtual"
-
-	for _, url in ipairs(endpoints) do
-		local res, ok, info = apiRequest({
+	for _, url in ipairs(directUniverseEndpoints) do
+		local res, ok = apiRequest({
 			Url = url,
 			Method = "GET",
 			Headers = hdrs,
-			Retries = 2,
+			Retries = 1,
 		})
 		if ok and res and res.Body then
 			local okDec, parsed = pcall(function()
 				return HttpService:JSONDecode(tostring(res.Body))
 			end)
 			if okDec and type(parsed) == "table" and type(parsed.data) == "table" then
-				decoded = parsed
-				break
-			else
-				lastErr = "Format respons daftar place tidak valid"
-			end
-		else
-			lastErr = info
-		end
-	end
-
-	if not decoded then
-		return false, {}, lastErr
-	end
-
-	local rawItems: {{
-		univId: string,
-		rootPlaceId: string?,
-		name: string?,
-		status: "publik" | "private" | "tidak diketahui",
-	}} = {}
-
-	for _, item in ipairs(decoded.data) do
-		if type(item) == "table" then
-			local uidStr = item.id ~= nil and tostring(item.id):match("%d+")
-				or (item.universeId ~= nil and tostring(item.universeId):match("%d+") or "")
-			if uidStr ~= "" then
-				local rpStr = item.rootPlaceId ~= nil and tostring(item.rootPlaceId):match("%d+") or nil
-
-				local st: "publik" | "private" | "tidak diketahui" = "tidak diketahui"
-				if type(item.isActive) == "boolean" then
-					st = item.isActive and "publik" or "private"
-				elseif type(item.privacyType) == "string" then
-					local pLow = item.privacyType:lower()
-					if pLow:find("public") or pLow:find("open") then
-						st = "publik"
-					elseif pLow:find("private") or pLow:find("closed") then
-						st = "private"
+				for _, item in ipairs(parsed.data) do
+					if type(item) == "table" then
+						local uidStr = item.id ~= nil and tostring(item.id):match("%d+")
+							or (item.universeId ~= nil and tostring(item.universeId):match("%d+") or "")
+						local rpStr = item.rootPlaceId ~= nil and tostring(item.rootPlaceId):match("%d+") or nil
+						local st: "publik" | "private" | "tidak diketahui" = "tidak diketahui"
+						if type(item.isActive) == "boolean" then
+							st = item.isActive and "publik" or "private"
+						elseif type(item.privacyType) == "string" then
+							local pLow = item.privacyType:lower()
+							if pLow:find("public") or pLow:find("open") then
+								st = "publik"
+							elseif pLow:find("private") or pLow:find("closed") then
+								st = "private"
+							end
+						elseif type(item.isPublic) == "boolean" then
+							st = item.isPublic and "publik" or "private"
+						end
+						addItem(uidStr, rpStr, type(item.name) == "string" and trim(item.name) or nil, st)
 					end
-				elseif type(item.isPublic) == "boolean" then
-					st = item.isPublic and "publik" or "private"
 				end
-
-				table.insert(rawItems, {
-					univId = uidStr,
-					rootPlaceId = rpStr,
-					name = type(item.name) == "string" and trim(item.name) or nil,
-					status = st,
-				})
 			end
 		end
 	end
 
-	-- Batch fetch nama & rootPlaceId lewat games.roblox.com (tanpa menimpa status private dari develop)
+	-- 2. Fallback: endpoint daftar place/inventory milik user -> resolve ke universeId
+	if #rawItems == 0 then
+		local placeSearchEndpoints = {
+			string.format("https://develop.roblox.com/v1/user/%d/places/inventory?limit=100&sortOrder=Desc", uid),
+			string.format("https://apis.roblox.com/universes/v1/places/search?creatorTargetId=%d&creatorType=User&limit=100&sortOrder=Desc", uid),
+			string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=All&limit=100&sortOrder=Desc", uid),
+		}
+
+		for _, pUrl in ipairs(placeSearchEndpoints) do
+			local pRes, pOk = apiRequest({
+				Url = pUrl,
+				Method = "GET",
+				Headers = hdrs,
+				Retries = 1,
+			})
+			if pOk and pRes and pRes.Body then
+				local okP, pDec = pcall(function()
+					return HttpService:JSONDecode(tostring(pRes.Body))
+				end)
+				if okP and type(pDec) == "table" and type(pDec.data) == "table" then
+					for _, entry in ipairs(pDec.data) do
+						if type(entry) == "table" then
+							local entryName = type(entry.name) == "string" and trim(entry.name) or nil
+							local entryUniv = entry.universeId ~= nil and tostring(entry.universeId):match("%d+")
+								or (entry.id ~= nil and pUrl:find("/games") and tostring(entry.id):match("%d+") or nil)
+							local entryPlace = entry.placeId ~= nil and tostring(entry.placeId):match("%d+")
+								or (entry.rootPlace and type(entry.rootPlace) == "table" and entry.rootPlace.id ~= nil and tostring(entry.rootPlace.id):match("%d+"))
+								or (entry.id ~= nil and not pUrl:find("/games") and tostring(entry.id):match("%d+") or nil)
+
+							if not entryUniv and entryPlace then
+								entryUniv = placeIdToUniverseId(entryPlace, hdrs)
+							end
+							if entryUniv then
+								addItem(entryUniv, entryPlace, entryName, "tidak diketahui")
+							end
+						end
+					end
+				end
+			end
+			if #rawItems > 0 then
+				break
+			end
+		end
+	end
+
+	-- 3. Lengkapi detail tiap universe (terutama status private/publik & rootPlaceId) via develop.roblox.com/v1/universes/{id}
+	for _, it in ipairs(rawItems) do
+		if it.status == "tidak diketahui" or not it.rootPlaceId or not it.name or it.name == "" then
+			local dRes, dOk = apiRequest({
+				Url = "https://develop.roblox.com/v1/universes/" .. it.univId,
+				Method = "GET",
+				Headers = hdrs,
+				Retries = 1,
+			})
+			if dOk and dRes and dRes.Body then
+				local okD, dDec = pcall(function()
+					return HttpService:JSONDecode(tostring(dRes.Body))
+				end)
+				if okD and type(dDec) == "table" then
+					if (not it.name or it.name == "") and type(dDec.name) == "string" and trim(dDec.name) ~= "" then
+						it.name = trim(dDec.name)
+					end
+					if not it.rootPlaceId and dDec.rootPlaceId ~= nil and tostring(dDec.rootPlaceId):match("%d+") then
+						it.rootPlaceId = tostring(dDec.rootPlaceId):match("%d+")
+					end
+					if type(dDec.isActive) == "boolean" then
+						it.status = dDec.isActive and "publik" or "private"
+					elseif type(dDec.privacyType) == "string" then
+						local pLow = dDec.privacyType:lower()
+						if pLow:find("public") or pLow:find("open") then
+							it.status = "publik"
+						elseif pLow:find("private") or pLow:find("closed") then
+							it.status = "private"
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- 4. Batch fetch nama & rootPlaceId lewat games.roblox.com
 	local gamesInfoMap: {[string]: {name: string?, rootPlaceId: string?}} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -604,7 +712,7 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- Batch fetch icon lewat thumbnails.roblox.com
+	-- 5. Batch fetch icon lewat thumbnails.roblox.com
 	local iconMap: {[string]: string} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -2213,7 +2321,7 @@ createNavButton("Console", "🖥  Console", 6).MouseButton1Click:Connect(functio
 end)
 switchTab("CreatePlace")
 
-pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya otomatis dari cookie, Voice & 3rd Party Sales aktif).")
+pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya multi-endpoint fallback, Voice & 3rd Party Sales aktif).")
 
 -- ==========================================
 -- LOGIKA CEK PLACE SAYA (OTOMATIS DARI COOKIE)
