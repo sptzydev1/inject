@@ -103,7 +103,6 @@ local CONFIG = {
 	JailSpeed = 2.5,
 	JailTargetUserId = 0,
 	JailAnchorLocked = false,
-	JailFarScan = true,
 	PlayerSearchQuery = "",
 }
 
@@ -852,7 +851,7 @@ do
 end
 
 -- ==========================================
--- HALAMAN 2: JAIL (LIGHTWEIGHT + LASER BEAM)
+-- HALAMAN 2: JAIL (ANTI-STUCK + SWING + TARGET CARRY + LASER BEAM)
 -- ==========================================
 local JailPage = Instance.new("Frame")
 JailPage.Size = UDim2.fromScale(1, 1)
@@ -868,7 +867,7 @@ JailTopRow.BackgroundTransparency = 1
 JailTopRow.Parent = JailPage
 
 local JailSwitchBtn = Instance.new("TextButton")
-JailSwitchBtn.Size = UDim2.new(0.36, -3, 1, 0)
+JailSwitchBtn.Size = UDim2.new(0.5, -3, 1, 0)
 JailSwitchBtn.Position = UDim2.new(0, 0, 0, 0)
 JailSwitchBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 50)
 JailSwitchBtn.Text = "⚡ JAIL: OFF"
@@ -878,20 +877,9 @@ JailSwitchBtn.Font = Enum.Font.GothamBold
 JailSwitchBtn.Parent = JailTopRow
 Instance.new("UICorner", JailSwitchBtn).CornerRadius = UDim.new(0, 6)
 
-local JailFarScanBtn = Instance.new("TextButton")
-JailFarScanBtn.Size = UDim2.new(0.32, -3, 1, 0)
-JailFarScanBtn.Position = UDim2.new(0.36, 2, 0, 0)
-JailFarScanBtn.BackgroundColor3 = Color3.fromRGB(52, 46, 86)
-JailFarScanBtn.Text = "📡 Far Scan: ON"
-JailFarScanBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-JailFarScanBtn.TextSize = 8
-JailFarScanBtn.Font = Enum.Font.GothamBold
-JailFarScanBtn.Parent = JailTopRow
-Instance.new("UICorner", JailFarScanBtn).CornerRadius = UDim.new(0, 6)
-
 local JailAnchorLockBtn = Instance.new("TextButton")
-JailAnchorLockBtn.Size = UDim2.new(0.32, -2, 1, 0)
-JailAnchorLockBtn.Position = UDim2.new(0.68, 2, 0, 0)
+JailAnchorLockBtn.Size = UDim2.new(0.5, -3, 1, 0)
+JailAnchorLockBtn.Position = UDim2.new(0.5, 3, 0, 0)
 JailAnchorLockBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
 JailAnchorLockBtn.Text = "🔒 Anchor: OFF"
 JailAnchorLockBtn.TextColor3 = Color3.fromRGB(220, 218, 245)
@@ -904,7 +892,7 @@ local JailStatusLabel = Instance.new("TextLabel")
 JailStatusLabel.Size = UDim2.new(1, -24, 0, 11)
 JailStatusLabel.Position = UDim2.new(0, 12, 0, 29)
 JailStatusLabel.BackgroundTransparency = 1
-JailStatusLabel.Text = "OFF • Far • Mode: OrbitHead"
+JailStatusLabel.Text = "OFF • Mode: OrbitHead"
 JailStatusLabel.TextColor3 = Color3.fromRGB(150, 146, 182)
 JailStatusLabel.TextSize = 8
 JailStatusLabel.Font = Enum.Font.GothamMedium
@@ -1000,7 +988,7 @@ JailTargetHeader.Parent = JailPage
 local JailTargetTitle = Instance.new("TextLabel")
 JailTargetTitle.Size = UDim2.new(0.75, 0, 1, 0)
 JailTargetTitle.BackgroundTransparency = 1
-JailTargetTitle.Text = "👤 Target User (Throw / Pull)"
+JailTargetTitle.Text = "👤 Target User (Carry / Throw / Pull)"
 JailTargetTitle.TextColor3 = Color3.fromRGB(205, 202, 230)
 JailTargetTitle.TextSize = 8
 JailTargetTitle.Font = Enum.Font.GothamBold
@@ -1068,13 +1056,16 @@ UserListPad.PaddingLeft = UDim.new(0, 4)
 UserListPad.PaddingRight = UDim.new(0, 4)
 UserListPad.Parent = UserListScroll
 
--- Logika Scan, Laser Beam & Akses Unanchored Part (Ultra-Lightweight & Zero-Delay)
+-- Logika Scan, Swing Release, Anti-Stuck & Laser Beam
 local scannedUnanchoredParts: {BasePart} = {}
 local trackedPartsSet: {[BasePart]: boolean} = {}
 local activeAttackedParts: {[BasePart]: boolean} = {}
 local lockedAnchoredParts: {[BasePart]: boolean} = {}
+local lastPartPos: {[BasePart]: Vector3} = {}
+local stuckTimerByPart: {[BasePart]: number} = {}
 local throwCycleClock = 0
 local throwPulseIndex = 0
+local forceScanNow: () -> () = function() end
 
 type LaserVisual = {
 	partAtt: Attachment,
@@ -1187,16 +1178,58 @@ local function clearAllLaserVisuals()
 	end
 end
 
-local function detachPartFromReturnPull(part: BasePart)
-	pcall(function()
-		for _, desc in ipairs(part:GetChildren()) do
-			if desc:IsA("Constraint") or desc:IsA("WeldConstraint") then
-				(desc :: any).Enabled = false
-				if desc:IsA("RopeConstraint") then
-					desc.Length = 0.01
-				end
+local function disableBindingOnContainer(container: Instance, part: BasePart)
+	for _, desc in ipairs(container:GetDescendants()) do
+		if desc:IsA("RopeConstraint") or desc:IsA("HingeConstraint") or desc:IsA("SpringConstraint") or desc:IsA("RodConstraint") or desc:IsA("AlignPosition") or desc:IsA("AlignOrientation") or desc:IsA("WeldConstraint") or desc:IsA("BodyMover") then
+			local c = desc :: any
+			local bindsPart = false
+			if c.Part0 == part or c.Part1 == part then
+				bindsPart = true
+			end
+			if c.Attachment0 and (c.Attachment0:IsDescendantOf(part) or c.Attachment0.Parent == part) then
+				bindsPart = true
+			end
+			if c.Attachment1 and (c.Attachment1:IsDescendantOf(part) or c.Attachment1.Parent == part) then
+				bindsPart = true
+			end
+			if desc:IsDescendantOf(part) or desc.Parent == part or bindsPart then
+				pcall(function()
+					if typeof(c.Enabled) == "boolean" then
+						c.Enabled = false
+					end
+					if desc:IsA("RopeConstraint") then
+						desc.Length = 0.01
+					elseif desc:IsA("SpringConstraint") then
+						desc.Stiffness = 0
+					end
+				end)
 			end
 		end
+	end
+end
+
+-- Mendukung lepas ikatan ayunan / swing (Hinge, Rope, Spring, Weld, dll.) agar part bebas gerak
+local function detachPartFromReturnPull(part: BasePart)
+	pcall(function()
+		disableBindingOnContainer(part, part)
+		if part.Parent and part.Parent ~= workspace then
+			disableBindingOnContainer(part.Parent, part)
+			if part.Parent.Parent and part.Parent.Parent ~= workspace then
+				disableBindingOnContainer(part.Parent.Parent, part)
+			end
+		end
+	end)
+end
+
+local function applyUnstickImpulse(part: BasePart, idx: number, speed: number)
+	pcall(function()
+		part.Anchored = false
+		part.AssemblyLinearVelocity = Vector3.new(
+			math.cos(idx * 1.7) * 28 * speed,
+			22 * speed,
+			math.sin(idx * 1.7) * 28 * speed
+		)
+		part.AssemblyAngularVelocity = Vector3.new(18 * speed, 16 * speed, 18 * speed)
 	end)
 end
 
@@ -1216,8 +1249,8 @@ local function scanUnanchoredParts()
 	local originPos = root and root.Position or Vector3.zero
 	local targetPos = targetRoot and targetRoot.Position or originPos
 
-	local maxDist = CONFIG.JailFarScan and 250 or 110
-	local maxParts = CONFIG.JailFarScan and 50 or 25
+	local maxDist = 160
+	local maxParts = 36
 
 	local overlapParams = OverlapParams.new()
 	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -1240,7 +1273,7 @@ local function scanUnanchoredParts()
 		end
 	end
 
-	if targetRoot and (targetPos - originPos).Magnitude > 30 and #scannedUnanchoredParts < maxParts then
+	if targetRoot and (targetPos - originPos).Magnitude > 25 and #scannedUnanchoredParts < maxParts then
 		local targetParts = workspace:GetPartBoundsInRadius(targetPos, maxDist, overlapParams)
 		for _, part in ipairs(targetParts) do
 			if part:IsA("BasePart") and not part.Anchored and not trackedPartsSet[part] then
@@ -1267,6 +1300,8 @@ local function releasePartsToFall()
 	table.clear(activeAttackedParts)
 	table.clear(scannedUnanchoredParts)
 	table.clear(trackedPartsSet)
+	table.clear(lastPartPos)
+	table.clear(stuckTimerByPart)
 end
 
 local function setAnchorLock(locked: boolean)
@@ -1375,17 +1410,9 @@ JailSwitchBtn.MouseButton1Click:Connect(function()
 		pcall(function()
 			LocalPlayer.SimulationRadius = 1000
 		end)
-		scanUnanchoredParts()
+		forceScanNow()
 	else
 		releasePartsToFall()
-	end
-	applyThemeAndFont()
-end)
-
-JailFarScanBtn.MouseButton1Click:Connect(function()
-	CONFIG.JailFarScan = not CONFIG.JailFarScan
-	if CONFIG.JailEnabled then
-		scanUnanchoredParts()
 	end
 	applyThemeAndFont()
 end)
@@ -1450,14 +1477,31 @@ do
 	end)
 end
 
--- Loop eksekusi fisika JAIL (Zero-Delay & Low CPU)
+-- Loop eksekusi fisika JAIL (Anti-Stuck, Swing Release & Target Carry)
 do
 	local jailClock = 0
 	local scanAccum = 0
 	local statusAccum = 0
+	local lastAppliedMode: JailMode? = nil
+
+	local function refreshAndUnstickParts()
+		scanUnanchoredParts()
+		for idx, part in ipairs(scannedUnanchoredParts) do
+			if part.Parent and not part.Anchored then
+				activeAttackedParts[part] = true
+				detachPartFromReturnPull(part)
+				applyUnstickImpulse(part, idx, CONFIG.JailSpeed)
+				lastPartPos[part] = part.Position
+				stuckTimerByPart[part] = 0
+			end
+		end
+	end
+
+	forceScanNow = refreshAndUnstickParts
 
 	RunService.Heartbeat:Connect(function(dt: number)
 		if not CONFIG.JailEnabled then
+			lastAppliedMode = nil
 			if next(laserVisuals) ~= nil or playerLaserAtt ~= nil then
 				clearAllLaserVisuals()
 			end
@@ -1466,17 +1510,22 @@ do
 
 		jailClock += dt
 		scanAccum += dt
-		if scanAccum >= 2.0 then
+		if scanAccum >= 1.5 then
 			scanAccum = 0
 			scanUnanchoredParts()
+		end
+
+		local mode = CONFIG.JailMode
+		local speed = CONFIG.JailSpeed
+		local modeChanged = (lastAppliedMode ~= mode)
+		if modeChanged then
+			lastAppliedMode = mode
 		end
 
 		local myRoot = getCharacterRoot(LocalPlayer)
 		local targetPlr = getSelectedTargetPlayer()
 		local targetRoot = getCharacterRoot(targetPlr) or myRoot
-		local speed = CONFIG.JailSpeed
 		local activeCount = #scannedUnanchoredParts
-		local mode = CONFIG.JailMode
 		local accentColor = GUI_THEMES[CONFIG.ThemeIndex].accent
 
 		local throwInterval = math.max(0.18, 0.45 / math.max(0.5, speed))
@@ -1487,8 +1536,8 @@ do
 		end
 
 		local myPos = myRoot and myRoot.Position or Vector3.zero
-		local targetPos = targetRoot and targetRoot.Position or Vector3.zero
-		local myCf = myRoot and myRoot.CFrame or CFrame.new()
+		local targetPos = targetRoot and targetRoot.Position or myPos
+		local carryBaseCf = (targetRoot and targetRoot.CFrame) or (myRoot and myRoot.CFrame) or CFrame.new()
 
 		for i = activeCount, 1, -1 do
 			local part = scannedUnanchoredParts[i]
@@ -1496,13 +1545,34 @@ do
 				table.remove(scannedUnanchoredParts, i)
 				if part then
 					trackedPartsSet[part] = nil
+					lastPartPos[part] = nil
+					stuckTimerByPart[part] = nil
 					setPartLaserEnabled(part, false)
 				end
 			else
 				if not activeAttackedParts[part] then
 					activeAttackedParts[part] = true
 					detachPartFromReturnPull(part)
+					applyUnstickImpulse(part, i, speed)
+				elseif modeChanged then
+					detachPartFromReturnPull(part)
+					applyUnstickImpulse(part, i, speed)
 				end
+
+				-- Anti-stuck: jika part hampir tidak berpindah posisi selama >0.35s, beri dorongan pelepasan
+				local curPos = part.Position
+				local prevPos = lastPartPos[part]
+				if prevPos and (curPos - prevPos).Magnitude < 0.08 then
+					stuckTimerByPart[part] = (stuckTimerByPart[part] or 0) + dt
+					if stuckTimerByPart[part] >= 0.35 then
+						stuckTimerByPart[part] = 0
+						detachPartFromReturnPull(part)
+						applyUnstickImpulse(part, i, speed * 1.2)
+					end
+				else
+					stuckTimerByPart[part] = 0
+				end
+				lastPartPos[part] = curPos
 
 				setPartLaserEnabled(part, true, accentColor)
 
@@ -1511,13 +1581,13 @@ do
 					local angle = jailClock * (3.2 * speed) + (i * ((math.pi * 2) / math.max(1, activeCount)))
 					local radius = 3.5 + ((i % 3) * 1.1)
 					local desiredPos = center + Vector3.new(math.cos(angle) * radius, math.sin(angle * 1.5) * 0.6, math.sin(angle) * radius)
-					part.AssemblyLinearVelocity = (desiredPos - part.Position) * (10 * speed)
+					part.AssemblyLinearVelocity = (desiredPos - curPos) * (11 * speed)
 					part.AssemblyAngularVelocity = Vector3.new(0, 12 * speed, 0)
 				elseif mode == "ShakePart" then
 					part.AssemblyLinearVelocity = Vector3.new(
-						math.sin(jailClock * 30 * speed + i) * 22 * speed,
-						math.cos(jailClock * 26 * speed + i * 2) * 22 * speed,
-						math.sin(jailClock * 32 * speed + i * 3) * 22 * speed
+						math.sin(jailClock * 30 * speed + i) * 24 * speed,
+						math.cos(jailClock * 26 * speed + i * 2) * 24 * speed,
+						math.sin(jailClock * 32 * speed + i * 3) * 24 * speed
 					)
 					part.AssemblyAngularVelocity = Vector3.new(18 * speed, -16 * speed, 18 * speed)
 				elseif mode == "GravityThrow" then
@@ -1527,7 +1597,7 @@ do
 						1.5 + ((throwPulseIndex + i) % 3) * 1.4,
 						math.sin(spreadPhase) * 2.4
 					)
-					local toTarget = (targetPos + aimJitter) - part.Position
+					local toTarget = (targetPos + aimJitter) - curPos
 					local dist = toTarget.Magnitude
 					local dir = dist > 0.05 and toTarget.Unit or Vector3.new(0, 1, 0)
 					local throwSpeed = math.clamp(dist * 3.5 * speed, 50 * speed, 145 * speed)
@@ -1536,9 +1606,9 @@ do
 				elseif mode == "PullToTarget" then
 					local angle = jailClock * (2.2 * speed) + (i * 0.7)
 					local desiredPos = targetPos + Vector3.new(math.cos(angle) * 2.2, 1.5 + (i % 3), math.sin(angle) * 2.2)
-					part.AssemblyLinearVelocity = (desiredPos - part.Position) * (12 * speed)
+					part.AssemblyLinearVelocity = (desiredPos - curPos) * (12 * speed)
 				elseif mode == "RopeBreak" then
-					local pullDir = myPos - part.Position
+					local pullDir = myPos - curPos
 					local unitDir = pullDir.Magnitude > 0.1 and pullDir.Unit or Vector3.new(0, 1, 0)
 					part.AssemblyLinearVelocity = unitDir * (65 * speed) + Vector3.new(
 						math.sin(jailClock * 34 * speed + i) * 28 * speed,
@@ -1556,8 +1626,8 @@ do
 				elseif mode == "CarryPart" then
 					local col = (i - 1) % 3 - 1
 					local row = math.floor((i - 1) / 3) % 3
-					local carryPos = (myCf * CFrame.new(col * 2.2, 1.2 + (row * 1.6), -4.5)).Position
-					part.AssemblyLinearVelocity = (carryPos - part.Position) * (14 * speed)
+					local carryPos = (carryBaseCf * CFrame.new(col * 2.2, 1.4 + (row * 1.6), -4.2)).Position
+					part.AssemblyLinearVelocity = (carryPos - curPos) * (15 * speed)
 					part.AssemblyAngularVelocity = Vector3.zero
 				end
 			end
@@ -1567,8 +1637,7 @@ do
 		if statusAccum >= 0.3 then
 			statusAccum = 0
 			local targetName = targetPlr and ("@" .. targetPlr.Name) or "Self"
-			local scanTag = CONFIG.JailFarScan and "Far" or "Near"
-			JailStatusLabel.Text = string.format("ON • %d part • %s • %s • %s", #scannedUnanchoredParts, scanTag, mode, targetName)
+			JailStatusLabel.Text = string.format("ON • %d part • %s • %s", #scannedUnanchoredParts, mode, targetName)
 		end
 	end)
 end
@@ -1623,7 +1692,7 @@ AboutText.Text = table.concat({
 	"",
 	"Fitur Aktif:",
 	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
-	"• JAIL        : Akses fisika unanchored part + laser beam (Orbit, Shake, Throw, Pull, Rope, Fall, Carry, Far Scan, Search Player).",
+	"• JAIL        : Akses fisika unanchored part anti-stuck + laser beam (Orbit, Shake, Throw, Pull, Rope, Fall, Carry Target).",
 	"• Settings    : Pengaturan warna tema GUI dan pilihan font secara langsung.",
 	"• About       : Informasi kreator dan versi tools.",
 }, "\n")
@@ -1785,15 +1854,11 @@ applyThemeAndFont = function()
 	JailSwitchBtn.BackgroundColor3 = CONFIG.JailEnabled and theme.accent or Color3.fromRGB(34, 32, 50)
 	JailSwitchBtn.Text = CONFIG.JailEnabled and "⚡ JAIL: ON" or "⚡ JAIL: OFF"
 
-	JailFarScanBtn.BackgroundColor3 = CONFIG.JailFarScan and theme.accentSoft or Color3.fromRGB(32, 30, 48)
-	JailFarScanBtn.Text = CONFIG.JailFarScan and "📡 Far Scan: ON" or "📡 Far Scan: OFF"
-
 	JailAnchorLockBtn.BackgroundColor3 = CONFIG.JailAnchorLocked and theme.accentSoft or Color3.fromRGB(32, 30, 48)
 	JailAnchorLockBtn.Text = CONFIG.JailAnchorLocked and "🔒 Anchor: ON" or "🔒 Anchor: OFF"
 
 	if not CONFIG.JailEnabled then
-		local scanTag = CONFIG.JailFarScan and "Far" or "Near"
-		JailStatusLabel.Text = string.format("OFF • %s • Mode: %s", scanTag, CONFIG.JailMode)
+		JailStatusLabel.Text = string.format("OFF • Mode: %s", CONFIG.JailMode)
 	end
 
 	for modeId, mBtn in pairs(modeButtons) do
@@ -1820,7 +1885,6 @@ applyThemeAndFont = function()
 	PlayPauseBtn.Font = fontPreset.boldFont
 	NextTrackBtn.Font = fontPreset.boldFont
 	JailSwitchBtn.Font = fontPreset.boldFont
-	JailFarScanBtn.Font = fontPreset.boldFont
 	JailAnchorLockBtn.Font = fontPreset.boldFont
 	JailStatusLabel.Font = fontPreset.font
 	JailSpeedLabel.Font = fontPreset.boldFont
