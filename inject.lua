@@ -1,3 +1,5 @@
+DELTA JAIL
+
 --!strict
 -- Plugin Studio Lite (Delta Executor Edition) by Ikyy
 
@@ -40,7 +42,7 @@ export type FontPreset = {
 	boldFont: Enum.Font,
 }
 
-export type JailMode = "OrbitHead" | "ShakePart" | "GravityThrow" | "PullToTarget" | "RopeBreak" | "AttackFall" | "CarryPart" | "FollowStill"
+export type JailMode = "OrbitHead" | "ShakePart" | "GravityThrow" | "PullToTarget" | "RopeBreak" | "AttackFall" | "CarryPart"
 
 local GUI_THEMES: {GuiTheme} = {
 	{
@@ -960,7 +962,7 @@ JailSpeedKnob.AutoButtonColor = false
 JailSpeedKnob.Parent = JailSpeedBg
 Instance.new("UICorner", JailSpeedKnob).CornerRadius = UDim.new(1, 0)
 
--- Pilihan Mode Akses (2 baris x 4 kolom)
+-- Pilihan Mode Akses
 local JailModeGrid = Instance.new("Frame")
 JailModeGrid.Size = UDim2.new(1, -24, 0, 44)
 JailModeGrid.Position = UDim2.new(0, 12, 0, 59)
@@ -981,7 +983,6 @@ local JAIL_MODES: {{id: JailMode, label: string}} = {
 	{ id = "RopeBreak", label = "⛓ Rope" },
 	{ id = "AttackFall", label = "⬇ Fall" },
 	{ id = "CarryPart", label = "🧳 Carry" },
-	{ id = "FollowStill", label = "📌 Still" },
 }
 
 local modeButtons: {[JailMode]: TextButton} = {}
@@ -1012,7 +1013,7 @@ JailTargetHeader.Parent = JailPage
 local JailTargetTitle = Instance.new("TextLabel")
 JailTargetTitle.Size = UDim2.new(0.75, 0, 1, 0)
 JailTargetTitle.BackgroundTransparency = 1
-JailTargetTitle.Text = "👤 Target User (Throw / Pull / Still)"
+JailTargetTitle.Text = "👤 Target User (Throw / Pull)"
 JailTargetTitle.TextColor3 = Color3.fromRGB(205, 202, 230)
 JailTargetTitle.TextSize = 8
 JailTargetTitle.Font = Enum.Font.GothamBold
@@ -1457,6 +1458,7 @@ do
 					part.AssemblyLinearVelocity = shakeVec
 					part.AssemblyAngularVelocity = Vector3.new(26 * speed, -24 * speed, 28 * speed)
 				elseif mode == "GravityThrow" then
+					-- Langsung lempar dari posisi part saat ini ke target berulang-ulang (tidak ditarik ke user dulu)
 					local aimBase = targetRoot and targetRoot.Position or Vector3.zero
 					local spreadPhase = (throwPulseIndex + i) * 1.35
 					local aimJitter = Vector3.new(
@@ -1482,20 +1484,6 @@ do
 					local desiredPos = anchorPos + Vector3.new(math.cos(angle) * 2.2, 1.5 + (i % 3), math.sin(angle) * 2.2)
 					local delta = desiredPos - part.Position
 					part.AssemblyLinearVelocity = delta * (14 * speed)
-				elseif mode == "FollowStill" then
-					-- Part diam tanpa muter/spin/goyang, tetap mengikuti posisi target pilihan
-					local anchorPos = targetRoot and targetRoot.Position or Vector3.zero
-					local slotAngle = (i - 1) * ((math.pi * 2) / math.max(1, math.min(activeCount, 8)))
-					local ringRadius = 3.0 + (math.floor((i - 1) / 8) * 1.8)
-					local heightOffset = 1.2 + ((i - 1) % 3) * 1.35
-					local stillPos = anchorPos + Vector3.new(
-						math.cos(slotAngle) * ringRadius,
-						heightOffset,
-						math.sin(slotAngle) * ringRadius
-					)
-					local delta = stillPos - part.Position
-					part.AssemblyLinearVelocity = delta * math.clamp(12 * speed, 6, 65)
-					part.AssemblyAngularVelocity = Vector3.zero
 				elseif mode == "RopeBreak" then
 					local pullDir = (myRoot and (myRoot.Position - part.Position) or Vector3.new(0, 12, 0))
 					local unitDir = pullDir.Magnitude > 0.1 and pullDir.Unit or Vector3.new(0, 1, 0)
@@ -1582,7 +1570,7 @@ AboutText.Text = table.concat({
 	"",
 	"Fitur Aktif:",
 	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
-	"• JAIL        : Akses fisika unanchored part (Orbit, Shake, Throw, Pull, Rope, Fall, Carry, Still, Far Scan, Search Player).",
+	"• JAIL        : Akses fisika unanchored part (Orbit, Shake, Throw, Pull, Rope, Fall, Carry, Far Scan, Search Player).",
 	"• Settings    : Pengaturan warna tema GUI dan pilihan font secara langsung.",
 	"• About       : Informasi kreator dan versi tools.",
 }, "\n")
