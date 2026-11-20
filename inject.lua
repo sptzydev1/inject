@@ -215,7 +215,6 @@ local function loadTextFile(relPath: string): string?
 	return nil
 end
 
--- Mengambil daftar file di folder IkyyStudioLite/Assets
 local function listAssetsFolderFiles(): {string}
 	ensureFolders()
 	local results: {string} = {}
@@ -226,7 +225,7 @@ local function listAssetsFolderFiles(): {string}
 		if cleanRel:sub(1, 7) ~= "Assets/" then return end
 		if cleanRel:sub(-1) == "/" then return end
 		local subPart = cleanRel:sub(8)
-		if subPart == "" or subPart:find("/") then return end -- hanya file langsung di dalam Assets/
+		if subPart == "" or subPart:find("/") then return end
 		if not seen[cleanRel] then
 			seen[cleanRel] = true
 			table.insert(results, cleanRel)
@@ -837,15 +836,32 @@ end
 -- ==========================================
 -- API UPLOAD ASSET -> DAPAT ASSET ID & CEK STATUS
 -- ==========================================
-local function buildMultipartAssetBody(boundary: string, requestJson: string, fileContent: string, fileName: string): string
+local function guessMimeType(fileName: string, assetType: string): string
+	local lower = fileName:lower()
+	local lowType = assetType:lower()
+	if lowType == "audio" or lower:match("%.mp3$") then
+		return "audio/mpeg"
+	elseif lower:match("%.ogg$") then
+		return "audio/ogg"
+	elseif lower:match("%.wav$") then
+		return "audio/wav"
+	elseif lower:match("%.png$") then
+		return "image/png"
+	elseif lower:match("%.jpg$") or lower:match("%.jpeg$") then
+		return "image/jpeg"
+	end
+	return "application/octet-stream"
+end
+
+local function buildMultipartAssetBody(boundary: string, requestJson: string, fileContent: string, fileName: string, mimeType: string): string
 	local parts = {
 		"--" .. boundary .. "\r\n",
 		'Content-Disposition: form-data; name="request"\r\n',
-		"Content-Type: application/json\r\n\r\n",
+		"Content-Type: application/json; charset=utf-8\r\n\r\n",
 		requestJson .. "\r\n",
 		"--" .. boundary .. "\r\n",
 		string.format('Content-Disposition: form-data; name="fileContent"; filename="%s"\r\n', fileName),
-		"Content-Type: application/octet-stream\r\n\r\n",
+		"Content-Type: " .. mimeType .. "\r\n\r\n",
 		fileContent .. "\r\n",
 		"--" .. boundary .. "--\r\n",
 	}
@@ -874,10 +890,10 @@ local function uploadAssetAndGetId(params: {
 	end
 
 	local filePayload = loadTextFile(cleanRelPath)
-	if not filePayload or trim(filePayload) == "" then
-		return false, nil, "EMPTY_PAYLOAD", "File '" .. cleanRelPath .. "' kosong atau gagal dibaca."
+	if not filePayload or #filePayload == 0 then
+		return false, nil, "EMPTY_PAYLOAD", "File '" .. cleanRelPath .. "' kosong (0 bytes) atau gagal dibaca."
 	end
-	pushConsole("INFO", "Membaca file aset dari folder: " .. CONFIG.WorkspaceRoot .. "/" .. cleanRelPath)
+	pushConsole("INFO", string.format("Membaca file aset: %s/%s (%d bytes)", CONFIG.WorkspaceRoot, cleanRelPath, #filePayload))
 
 	local creatorTbl: {[string]: any}
 	local cleanGroup = params.groupId and (trim(params.groupId):match("%d+") or "") or ""
@@ -891,22 +907,32 @@ local function uploadAssetAndGetId(params: {
 		creatorTbl = { userId = uid }
 	end
 
+	local baseName = cleanRelPath:match("([^/]+)$") or "asset_payload.mp3"
+	local resolvedAssetType = trim(params.assetType)
+	if resolvedAssetType == "" then
+		resolvedAssetType = baseName:lower():match("%.mp3$") and "Audio" or "Model"
+	end
+
 	local reqObj = {
-		assetType = params.assetType,
-		displayName = trim(params.displayName) ~= "" and trim(params.displayName) or "UploadedAsset",
+		assetType = resolvedAssetType,
+		displayName = trim(params.displayName) ~= "" and trim(params.displayName) or baseName,
 		description = trim(params.description) ~= "" and trim(params.description) or "Uploaded via Plugin Studio Lite",
 		creationContext = {
 			creator = creatorTbl,
 		},
 	}
 
-	local baseName = cleanRelPath:match("([^/]+)$") or "asset_payload.rbxm"
-	local boundary = "----IkyyStudioLiteBoundary" .. tostring(os.time())
-	local multipartBody = buildMultipartAssetBody(boundary, HttpService:JSONEncode(reqObj), filePayload, baseName)
+	local boundary = "IkyyStudioLiteBoundary" .. tostring(os.time()) .. tostring(math.random(1000, 9999))
+	local mimeType = guessMimeType(baseName, resolvedAssetType)
+	local encodedRequestJson = HttpService:JSONEncode(reqObj)
+	local multipartBody = buildMultipartAssetBody(boundary, encodedRequestJson, filePayload, baseName, mimeType)
+
+	pushConsole("INFO", string.format("Payload multipart siap: field=fileContent (%s, %s), total=%d bytes", baseName, mimeType, #multipartBody))
 
 	local hdrs: {[string]: string} = {
 		["x-api-key"] = cleanKey,
 		["Content-Type"] = "multipart/form-data; boundary=" .. boundary,
+		["Accept"] = "application/json",
 	}
 
 	local res, ok, info = apiRequest({
@@ -2076,7 +2102,6 @@ AssetGroupBox.ClearTextOnFocus = false
 AssetGroupBox.Parent = UploadAssetPage
 Instance.new("UICorner", AssetGroupBox).CornerRadius = UDim.new(0, 6)
 
--- Picker File Internal Folder Assets (Tanpa Input Path Manual)
 local selectedAssetRelPath: string? = nil
 
 local AssetFilePickerBtn = Instance.new("TextButton")
@@ -2190,7 +2215,6 @@ AssetStatusDetail.TextYAlignment = Enum.TextYAlignment.Top
 AssetStatusDetail.TextWrapped = true
 AssetStatusDetail.Parent = AssetResultCard
 
--- Dropdown List File di Folder Assets
 local AssetFileDropdown = Instance.new("ScrollingFrame")
 AssetFileDropdown.Name = "AssetFolderList"
 AssetFileDropdown.Size = UDim2.new(1, -24, 0, 116)
@@ -2288,6 +2312,9 @@ local function rebuildAssetFileList(autoSelectFirst: boolean)
 			selectedAssetRelPath = relFile
 			AssetFilePickerBtn.Text = "  📄 " .. shortName .. " (" .. relFile .. ")"
 			AssetFileDropdown.Visible = false
+			if shortName:lower():match("%.mp3$") or shortName:lower():match("%.ogg$") or shortName:lower():match("%.wav$") then
+				AssetTypeBox.Text = "Audio"
+			end
 			pushConsole("INFO", "File aset dipilih: " .. CONFIG.WorkspaceRoot .. "/" .. relFile)
 		end)
 	end
