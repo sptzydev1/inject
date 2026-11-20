@@ -456,7 +456,7 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 end
 
 -- ==========================================
--- API VOICE CHAT UNIVERSE (voice.roblox.com)
+-- API VOICE CHAT UNIVERSE
 -- ==========================================
 local function getUniverseVoiceSettings(universeId: string, cookieVal: string): (boolean, boolean?, {[string]: any}, string)
 	local cleanUniv = trim(universeId):match("%d+") or ""
@@ -485,7 +485,7 @@ local function getUniverseVoiceSettings(universeId: string, cookieVal: string): 
 		return HttpService:JSONDecode(bodyStr)
 	end)
 	if not okDec or type(decoded) ~= "table" then
-		return false, nil, {}, "Gagal decode JSON voice.roblox.com"
+		return false, nil, {}, "Gagal decode JSON respons voice"
 	end
 
 	local voiceState: boolean? = nil
@@ -1228,7 +1228,7 @@ local function setCreateProgress(state: "idle" | "working" | "ok" | "err", ratio
 end
 
 -- ==========================================
--- HALAMAN 2: VOICE CHAT UNIVERSE (voice.roblox.com)
+-- HALAMAN 2: VOICE CHAT UNIVERSE
 -- ==========================================
 local VoicePage = Instance.new("Frame")
 VoicePage.Size = UDim2.fromScale(1, 1)
@@ -1241,7 +1241,7 @@ local VoiceTitle = Instance.new("TextLabel")
 VoiceTitle.Size = UDim2.new(1, -24, 0, 16)
 VoiceTitle.Position = UDim2.new(0, 12, 0, 6)
 VoiceTitle.BackgroundTransparency = 1
-VoiceTitle.Text = "Voice Chat Universe (voice.roblox.com)"
+VoiceTitle.Text = "Voice Chat Universe"
 VoiceTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
 VoiceTitle.TextSize = 12
 VoiceTitle.Font = Enum.Font.GothamBold
@@ -1608,7 +1608,7 @@ switchTab("CreatePlace")
 pushConsole("INFO", "Plugin Studio Lite siap (endpoint Voice: voice.roblox.com).")
 
 -- ==========================================
--- LOGIKA VOICE CHAT UNIVERSE (voice.roblox.com)
+-- LOGIKA VOICE CHAT UNIVERSE
 -- ==========================================
 local isSyncingVoice = false
 local isApplyingVoice = false
@@ -1627,7 +1627,7 @@ local function refreshVoiceUniversePreview(univId: string, cookieVal: string)
 		pushConsole("OK", string.format("Universe #%s isUniverseEnabledForVoice = %s", univId, tostring(voiceOn)))
 	elseif okVoice then
 		VoiceStatusText.TextColor3 = Color3.fromRGB(185, 205, 255)
-		VoiceStatusText.Text = "Respons voice.roblox.com terbaca (cek Console)"
+		VoiceStatusText.Text = "Respons pengaturan voice terbaca (cek Console)"
 		pushConsole("INFO", string.format("Universe #%s voice JSON: %s", univId, HttpService:JSONEncode(rawVoiceData)))
 	else
 		VoiceStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
@@ -1679,7 +1679,7 @@ ApplyVoiceBtn.MouseButton1Click:Connect(function()
 	isApplyingVoice = true
 	ApplyVoiceBtn.Text = "⏳  MENGIRIM..."
 	VoiceStatusText.TextColor3 = Color3.fromRGB(175, 205, 255)
-	VoiceStatusText.Text = "Mengirim optIn = " .. tostring(targetState) .. " ke voice.roblox.com..."
+	VoiceStatusText.Text = "Mengirim pengaturan optIn = " .. tostring(targetState) .. "..."
 
 	task.spawn(function()
 		local okPost, msgPost, nextCsrf = setUniverseVoiceSettings(univId, cookieVal, targetState, cachedVoiceCsrf)
