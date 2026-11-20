@@ -9,7 +9,12 @@ local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+if not LocalPlayer then
+	Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+	LocalPlayer = Players.LocalPlayer
+end
+
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
 
 local OLD_GUI = PlayerGui:FindFirstChild("IkyyPluginStudioLite_GUI")
 if OLD_GUI then
@@ -28,8 +33,14 @@ local CONFIG = {
 	UserAgent = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
 }
 
+type GenreEntry = {
+	label: string,
+	apiValue: string,
+	genreType: string,
+}
+
 -- Daftar Genre Resmi Roblox (Dropdown Selector)
-local ROBLOX_GENRES: {{label: string, apiValue: string, genreType: string}} = {
+local ROBLOX_GENRES: {GenreEntry} = {
 	{ label = "All (Semua)", apiValue = "All", genreType = "All" },
 	{ label = "Town and City (Sosial/Kota)", apiValue = "Town and City", genreType = "TownAndCity" },
 	{ label = "Adventure (Petualangan)", apiValue = "Adventure", genreType = "Adventure" },
@@ -64,13 +75,17 @@ local ICON_DEFAULT_POS = UDim2.new(0.5, -21, 0.08, 0)
 local currentIconPos = ICON_DEFAULT_POS
 
 local function trim(s: string?): string
-	if type(s) ~= "string" then return "" end
-	return s:match("^%s*(.-)%s*$") or ""
+	if type(s) ~= "string" then
+		return ""
+	end
+	return (s:match("^%s*(.-)%s*$") or "") :: string
 end
 
 local function normalizeCookie(rawCookie: string): string
 	local c = trim(rawCookie)
-	if c == "" then return "" end
+	if c == "" then
+		return ""
+	end
 	c = c:gsub("^%.ROBLOSECURITY=", "")
 	c = c:gsub("[\r\n]+", "")
 	c = trim(c)
@@ -83,8 +98,8 @@ end
 local function notify(title: string, text: string)
 	pcall(function()
 		StarterGui:SetCore("SendNotification", {
-			Title = title,
-			Text = text,
+			Title = tostring(title),
+			Text = tostring(text),
 			Duration = 3,
 		})
 	end)
@@ -92,7 +107,7 @@ end
 
 local function safeClockString(): string
 	local ok, res = pcall(function()
-		local osLib = (os :: any)
+		local osLib = os :: any
 		if type(osLib) == "table" and type(osLib.date) == "function" then
 			return osLib.date("%H:%M:%S")
 		end
@@ -101,7 +116,8 @@ local function safeClockString(): string
 	if ok and type(res) == "string" and res ~= "" then
 		return res
 	end
-	local t = math.floor(os.clock())
+	local okClk, clk = pcall(os.clock)
+	local t = math.floor((okClk and type(clk) == "number") and clk or 0)
 	local h = math.floor(t / 3600) % 24
 	local m = math.floor(t / 60) % 60
 	local s = t % 60
@@ -110,7 +126,7 @@ end
 
 local function safeTimestamp(): number
 	local ok, res = pcall(function()
-		local osLib = (os :: any)
+		local osLib = os :: any
 		if type(osLib) == "table" and type(osLib.time) == "function" then
 			return osLib.time()
 		end
@@ -119,53 +135,53 @@ local function safeTimestamp(): number
 	if ok and type(res) == "number" then
 		return res
 	end
-	return math.floor(os.clock())
+	local okClk, clk = pcall(os.clock)
+	return math.floor((okClk and type(clk) == "number") and clk or 0)
 end
 
 -- ==========================================
--- DELTA EXECUTOR ENVIRONMENT BRIDGE
+-- DELTA EXECUTOR ENVIRONMENT BRIDGE (SAFE)
 -- ==========================================
 local function getEnvTable(): {[string]: any}
 	local env: {[string]: any} = {}
-	pcall(function()
-		local gg = (getgenv :: any)
-		if type(gg) == "function" then
-			local g = gg()
-			if type(g) == "table" then
-				for k, v in pairs(g) do
-					if type(k) == "string" then
-						env[k] = v
-					end
-				end
-			end
+
+	local function copyFromTable(tbl: any)
+		if type(tbl) ~= "table" then
+			return
 		end
-	end)
-	pcall(function()
-		if type(_G) == "table" then
-			for k, v in pairs(_G) do
+		pcall(function()
+			for k, v in pairs(tbl) do
 				if type(k) == "string" and env[k] == nil then
 					env[k] = v
 				end
 			end
-		end
-	end)
+		end)
+	end
+
 	pcall(function()
-		local sh = (shared :: any)
-		if type(sh) == "table" then
-			for k, v in pairs(sh) do
-				if type(k) == "string" and env[k] == nil then
-					env[k] = v
-				end
+		local rawGetGenv = (getfenv and getfenv(0) and rawget(getfenv(0), "getgenv")) or nil
+		if type(rawGetGenv) == "function" then
+			local okG, g = pcall(rawGetGenv)
+			if okG then
+				copyFromTable(g)
 			end
 		end
 	end)
+
+	copyFromTable(_G)
+
+	pcall(function()
+		local rawShared = (getfenv and getfenv(0) and rawget(getfenv(0), "shared")) or nil
+		copyFromTable(rawShared)
+	end)
+
 	return env
 end
 
 local ENV = getEnvTable()
 
-local function getDeltaHttpFunc()
-	local candidates = {
+local function getDeltaHttpFunc(): ((any) -> any)?
+	local candidates: {any} = {
 		ENV.request,
 		ENV.http_request,
 		type(ENV.syn) == "table" and ENV.syn.request or nil,
@@ -175,38 +191,43 @@ local function getDeltaHttpFunc()
 	}
 	for _, fn in ipairs(candidates) do
 		if type(fn) == "function" then
-			return fn
+			return fn :: (any) -> any
 		end
 	end
 	return nil
 end
 
 local function setClipboardText(text: string): boolean
-	local clipFns = { ENV.setclipboard, ENV.toclipboard, ENV.set_clipboard }
+	local clipFns: {any} = { ENV.setclipboard, ENV.toclipboard, ENV.set_clipboard }
 	for _, fn in ipairs(clipFns) do
 		if type(fn) == "function" then
-			local ok = pcall(fn, text)
-			if ok then return true end
+			local ok = pcall(fn :: (string) -> (), text)
+			if ok then
+				return true
+			end
 		end
 	end
-	pcall(function()
-		StarterGui:SetCore("SendNotification", {
-			Title = "Universe ID",
-			Text = text,
-			Duration = 4,
-		})
-	end)
+	notify("Universe ID", text)
 	return false
 end
 
-local fnWriteFile = type(ENV.writefile) == "function" and ENV.writefile or nil
-local fnReadFile = type(ENV.readfile) == "function" and ENV.readfile or nil
-local fnIsFile = type(ENV.isfile) == "function" and ENV.isfile or nil
-local fnIsFolder = type(ENV.isfolder) == "function" and ENV.isfolder or nil
-local fnMakeFolder = type(ENV.makefolder) == "function" and ENV.makefolder or nil
+local function getCallable(fnVal: any): ((...any) -> ...any)?
+	if type(fnVal) == "function" then
+		return fnVal :: (...any) -> ...any
+	end
+	return nil
+end
+
+local fnWriteFile = getCallable(ENV.writefile)
+local fnReadFile = getCallable(ENV.readfile)
+local fnIsFile = getCallable(ENV.isfile)
+local fnIsFolder = getCallable(ENV.isfolder)
+local fnMakeFolder = getCallable(ENV.makefolder)
 
 local function ensureFolders()
-	if not fnMakeFolder then return end
+	if not fnMakeFolder then
+		return
+	end
 	local folders = {
 		CONFIG.WorkspaceRoot,
 		CONFIG.WorkspaceRoot .. "/Logs",
@@ -304,9 +325,6 @@ local function pushConsole(level: string, message: string)
 	end
 end
 
--- Perbaikan Content-Type ganda pada Delta Executor:
--- Delta otomatis menyisipkan Content-Type: application/json ketika Body diberikan,
--- sehingga jika ada key Content-Type pada Headers, Delta menggabungkannya menjadi "application/json,application/json".
 local function sanitizeHeaders(rawHeaders: {[string]: string}?, hasBody: boolean): {[string]: string}
 	local clean: {[string]: string} = {
 		["User-Agent"] = CONFIG.UserAgent,
@@ -319,7 +337,7 @@ local function sanitizeHeaders(rawHeaders: {[string]: string}?, hasBody: boolean
 			if type(k) == "string" and type(v) == "string" then
 				local lowK = k:lower()
 				if lowK == "content-type" and hasBody then
-					-- Biarkan Delta Executor menyetel Content-Type tunggal dari Body JSON
+					-- Biarkan executor menyetel Content-Type tunggal dari Body JSON
 				elseif not seenLower[lowK] then
 					seenLower[lowK] = true
 					local cleanVal = v:match("^%s*([^,]+)") or v
@@ -351,7 +369,7 @@ local function apiRequest(options: {
 	local maxAttempts = math.max(1, options.Retries or 1)
 	local baseHeaders = sanitizeHeaders(options.Headers, hasBody)
 
-	local lastRes = nil
+	local lastRes: any = nil
 	local lastOk = false
 	local lastErr = "Tidak ada respons"
 
@@ -398,7 +416,9 @@ local function apiRequest(options: {
 end
 
 local function getHeaderCaseInsensitive(headers: any, targetKey: string): string?
-	if type(headers) ~= "table" then return nil end
+	if type(headers) ~= "table" then
+		return nil
+	end
 	local lowerTarget = targetKey:lower()
 	for k, v in pairs(headers) do
 		if type(k) == "string" and k:lower() == lowerTarget then
@@ -411,12 +431,14 @@ end
 -- ==========================================
 -- HELPER REALTIME: ICON GAME, NAME GAME & STATUS
 -- ==========================================
-export type GameResultCardData = {
+type GameStatus = "publik" | "private" | "tidak diketahui"
+
+type GameResultCardData = {
 	universeId: string,
 	rootPlaceId: string?,
 	iconImage: string,
 	gameName: string,
-	status: "publik" | "private" | "tidak diketahui",
+	status: GameStatus,
 	metaInfo: string,
 	isError: boolean?,
 }
@@ -482,7 +504,7 @@ local function fetchRealtimeGameData(universeId: string, cookieVal: string, fall
 	local cleanUniv = trim(universeId):match("%d+") or ""
 	local nameVal: string? = nil
 	local genreVal: string? = nil
-	local statusVal: "publik" | "private" | "tidak diketahui" = "tidak diketahui"
+	local statusVal: GameStatus = "tidak diketahui"
 	local rootPlaceId: string? = fallbackPlaceId
 
 	local devHeaders: {[string]: string} = {}
@@ -625,15 +647,17 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		univId: string,
 		rootPlaceId: string?,
 		name: string?,
-		status: "publik" | "private" | "tidak diketahui",
+		status: GameStatus,
 	}
 
 	local rawItems: {RawPlaceEntry} = {}
 	local seenUniv: {[string]: boolean} = {}
 
-	local function addItem(univId: string?, rootPlaceId: string?, name: string?, status: "publik" | "private" | "tidak diketahui")
+	local function addItem(univId: string?, rootPlaceId: string?, name: string?, status: GameStatus)
 		local cleanU = univId and trim(univId):match("%d+") or ""
-		if cleanU == "" then return end
+		if cleanU == "" then
+			return
+		end
 		if seenUniv[cleanU] then
 			for _, existing in ipairs(rawItems) do
 				if existing.univId == cleanU then
@@ -689,7 +713,7 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 							and tostring(entry.rootPlace.id):match("%d+")
 							or (entry.rootPlaceId ~= nil and tostring(entry.rootPlaceId):match("%d+") or nil)
 						local gName = type(entry.name) == "string" and trim(entry.name) or nil
-						local st: "publik" | "private" | "tidak diketahui" = "tidak diketahui"
+						local st: GameStatus = "tidak diketahui"
 						if pApiUrl:find("accessFilter=2") then
 							st = "publik"
 						elseif pApiUrl:find("accessFilter=4") then
@@ -721,7 +745,9 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 
 		local function collectPlaceId(pid: string?)
 			local cleanP = pid and trim(pid):match("%d+") or ""
-			if cleanP == "" or seenPlace[cleanP] then return end
+			if cleanP == "" or seenPlace[cleanP] then
+				return
+			end
 			seenPlace[cleanP] = true
 			table.insert(discoveredPlaceIds, cleanP)
 		end
@@ -1085,13 +1111,7 @@ local function setUniverseThirdPartySales(universeId: string, cookieVal: string,
 end
 
 -- ==========================================
--- API PERMISSION PLACE:
--- 1. DETAIL PLACE (name, description, genre + genreType) -> KIRIM & TAMPIL HASIL
--- 2. FORM RATING (v1beta1 & experience-guidelines-api):
---    - Tipe Aplikasi = Game
---    - Bagian IARC = semua No
---    - Bagian Roblox = Social Hangout awal Yes, lanjutan Social Hangout No, sisanya No
--- 3. PUBLIKASI / AKTIVASI PLACE (Konfirmasi RootPlace + Activate)
+-- API PERMISSION PLACE
 -- ==========================================
 local function sendAuthedJsonRequest(
 	method: string,
@@ -1175,7 +1195,6 @@ local function normalizeGenreSelection(rawGenre: string): (string, string)
 	return gTrim, gTrim:gsub("%s+", "")
 end
 
--- STEP 1: DETAIL PLACE (Name, Description, Genre) -> Kirim & Tampil Hasil
 local function updateUniverseDetailStep1(
 	universeId: string,
 	cookieVal: string,
@@ -1219,7 +1238,7 @@ local function updateUniverseDetailStep1(
 		descVal = "Experience #" .. cleanUniv
 	end
 
-	local detailSummary = {
+	local detailSummary: {[string]: any} = {
 		universeId = cleanUniv,
 		rootPlaceId = rootPlaceId or "-",
 		name = nameVal,
@@ -1274,7 +1293,7 @@ local function updateUniverseDetailStep1(
 			currentCsrf = csrfPlace
 		end
 
-		local resultMsg = string.format("Detail Tersimpan: '%s' | Genre: %s", detailSummary.name, detailSummary.genre)
+		local resultMsg = string.format("Detail Tersimpan: '%s' | Genre: %s", tostring(detailSummary.name), tostring(detailSummary.genre))
 		pushConsole("OK", "[Step 1: Detail Place] Sukses (HTTP " .. tostring(codeV2) .. ") -> " .. resultMsg)
 		return true, resultMsg, detailSummary, currentCsrf
 	end
@@ -1296,7 +1315,7 @@ local function updateUniverseDetailStep1(
 			detailSummary.description = tostring(decV1.description or descVal)
 			detailSummary.genre = tostring(decV1.genreType or decV1.genre or genreApi)
 		end
-		local resultMsg = string.format("Detail Tersimpan: '%s' | Genre: %s", detailSummary.name, detailSummary.genre)
+		local resultMsg = string.format("Detail Tersimpan: '%s' | Genre: %s", tostring(detailSummary.name), tostring(detailSummary.genre))
 		pushConsole("OK", "[Step 1: Detail Place] Sukses v1 (HTTP " .. tostring(codeV1) .. ") -> " .. resultMsg)
 		return true, resultMsg, detailSummary, currentCsrf
 	end
@@ -1307,10 +1326,6 @@ local function updateUniverseDetailStep1(
 	return false, errMsg, detailSummary, currentCsrf
 end
 
--- STEP 2: LOGIKA KUESIONER RATING:
--- 1) Tipe Aplikasi = Game
--- 2) Bagian IARC = Semua No
--- 3) Bagian Roblox = Social Hangout awal Yes, lanjutan Social Hangout No, dan selanjutnya semua No
 type EvaluatedAnswerItem = {
 	questionId: any,
 	section: string,
@@ -1431,7 +1446,9 @@ local function evaluateQuestionnaireWithCustomLogic(schemaObj: any): ({{[string]
 	end
 
 	local function traverseSchema(node: any, currentSection: string)
-		if type(node) ~= "table" then return end
+		if type(node) ~= "table" then
+			return
+		end
 
 		local nextSection = currentSection
 		if type(node.section) == "string" and node.section ~= "" then
@@ -1569,20 +1586,20 @@ local function submitContentQuestionnaireStep2(
 		{
 			method = "POST",
 			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1beta1/questionnaire",
-			body = HttpService:JSONEncode({ universeId = univNum }),
-			query = nil,
+			body = HttpService:JSONEncode({ universeId = univNum }) :: string?,
+			query = nil :: {[string]: string}?,
 		},
 		{
 			method = "GET",
 			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/v1beta1/questionnaire",
-			body = nil,
-			query = { universeId = cleanUniv },
+			body = nil :: string?,
+			query = { universeId = cleanUniv } :: {[string]: string}?,
 		},
 		{
 			method = "POST",
 			url = "https://apis.roblox.com/experience-guidelines-api/experience-guidelines/get-age-recommendation",
-			body = HttpService:JSONEncode({ universeId = univNum }),
-			query = nil,
+			body = HttpService:JSONEncode({ universeId = univNum }) :: string?,
+			query = nil :: {[string]: string}?,
 		},
 	}
 
@@ -1673,7 +1690,6 @@ local function submitContentQuestionnaireStep2(
 	return false, failMsg, auditList, currentCsrf
 end
 
--- STEP 3: AKTIVASI / PUBLIKASIKAN ATAU PRIVATE PLACE
 local function applyPlacePermissionAction(
 	universeId: string,
 	cookieVal: string,
@@ -2036,7 +2052,9 @@ do
 	end)
 
 	UserInputService.InputChanged:Connect(function(input: InputObject)
-		if not dragging or input ~= activeInput then return end
+		if not dragging or input ~= activeInput then
+			return
+		end
 		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
 			local delta = input.Position - dragStart
 			if delta.Magnitude > DRAG_THRESHOLD then
@@ -2145,7 +2163,7 @@ end
 -- ==========================================
 -- REUSABLE GAME CARD BUILDER (SUPPORT COPY UNIVERSE ID)
 -- ==========================================
-local function styleStatusBadge(badge: TextLabel, status: "publik" | "private" | "tidak diketahui", isError: boolean?)
+local function styleStatusBadge(badge: TextLabel, status: GameStatus, isError: boolean?)
 	if isError then
 		badge.BackgroundColor3 = Color3.fromRGB(115, 32, 45)
 		badge.Text = "gagal"
@@ -2267,7 +2285,9 @@ local function createGameCard(parent: Instance, order: number, data: GameResultC
 
 		local isRefreshing = false
 		refreshBtn.MouseButton1Click:Connect(function()
-			if isRefreshing then return end
+			if isRefreshing then
+				return
+			end
 			isRefreshing = true
 			refreshBtn.Text = "..."
 			task.spawn(function()
@@ -3325,7 +3345,9 @@ appendConsoleLineFn = function(level: string, formattedLine: string)
 	row.Parent = ConsoleScroll
 
 	task.defer(function()
-		ConsoleScroll.CanvasPosition = Vector2.new(0, math.max(0, ConsoleScroll.AbsoluteCanvasSize.Y))
+		if ConsoleScroll and ConsoleScroll.Parent then
+			ConsoleScroll.CanvasPosition = Vector2.new(0, math.max(0, ConsoleScroll.AbsoluteCanvasSize.Y))
+		end
 	end)
 end
 
@@ -3430,9 +3452,13 @@ local function validatePermUniverseAndCookie(requireCookie: boolean): (string?, 
 end
 
 PermCheckBtn.MouseButton1Click:Connect(function()
-	if isRunningPermPlace then return end
+	if isRunningPermPlace then
+		return
+	end
 	local univId, cookieVal = validatePermUniverseAndCookie(false)
-	if not univId or not cookieVal then return end
+	if not univId or not cookieVal then
+		return
+	end
 
 	isRunningPermPlace = true
 	PermCheckBtn.Text = "..."
@@ -3458,9 +3484,13 @@ PermCheckBtn.MouseButton1Click:Connect(function()
 end)
 
 PermStep1Btn.MouseButton1Click:Connect(function()
-	if isRunningPermPlace then return end
+	if isRunningPermPlace then
+		return
+	end
 	local univId, cookieVal = validatePermUniverseAndCookie(true)
-	if not univId or not cookieVal then return end
+	if not univId or not cookieVal then
+		return
+	end
 
 	GenreDropdownPanel.Visible = false
 	isRunningPermPlace = true
@@ -3500,9 +3530,13 @@ PermStep1Btn.MouseButton1Click:Connect(function()
 end)
 
 PermStep2Btn.MouseButton1Click:Connect(function()
-	if isRunningPermPlace then return end
+	if isRunningPermPlace then
+		return
+	end
 	local univId, cookieVal = validatePermUniverseAndCookie(true)
-	if not univId or not cookieVal then return end
+	if not univId or not cookieVal then
+		return
+	end
 
 	GenreDropdownPanel.Visible = false
 	isRunningPermPlace = true
@@ -3544,9 +3578,13 @@ PermStep2Btn.MouseButton1Click:Connect(function()
 end)
 
 PermApplyBtn.MouseButton1Click:Connect(function()
-	if isRunningPermPlace then return end
+	if isRunningPermPlace then
+		return
+	end
 	local univId, cookieVal = validatePermUniverseAndCookie(true)
-	if not univId or not cookieVal then return end
+	if not univId or not cookieVal then
+		return
+	end
 
 	GenreDropdownPanel.Visible = false
 	local targetPublic = PermAccessSwitch.GetState()
@@ -3613,7 +3651,9 @@ local function clearMyPlacesCards()
 end
 
 LoadMyPlacesBtn.MouseButton1Click:Connect(function()
-	if isLoadingMyPlaces then return end
+	if isLoadingMyPlaces then
+		return
+	end
 	local cookieVal = syncCookieFromInput()
 	if cookieVal == "" then
 		MyPlacesStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
@@ -3698,7 +3738,9 @@ local function refreshVoiceUniversePreview(univId: string, cookieVal: string)
 end
 
 SyncVoiceBtn.MouseButton1Click:Connect(function()
-	if isSyncingVoice or isApplyingVoice then return end
+	if isSyncingVoice or isApplyingVoice then
+		return
+	end
 	local cookieVal = syncCookieFromInput()
 	local univId = trim(VoiceUniverseBox.Text):match("%d+") or ""
 	if univId == "" then
@@ -3718,7 +3760,9 @@ SyncVoiceBtn.MouseButton1Click:Connect(function()
 end)
 
 ApplyVoiceBtn.MouseButton1Click:Connect(function()
-	if isApplyingVoice or isSyncingVoice then return end
+	if isApplyingVoice or isSyncingVoice then
+		return
+	end
 	local cookieVal = syncCookieFromInput()
 	if cookieVal == "" then
 		VoiceStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
@@ -3799,7 +3843,9 @@ local function refreshSalesUniversePreview(univId: string, cookieVal: string, ov
 end
 
 SyncSalesBtn.MouseButton1Click:Connect(function()
-	if isSyncingSales or isApplyingSales then return end
+	if isSyncingSales or isApplyingSales then
+		return
+	end
 	local cookieVal = syncCookieFromInput()
 	local univId = trim(SalesUniverseBox.Text):match("%d+") or ""
 	if univId == "" then
@@ -3819,7 +3865,9 @@ SyncSalesBtn.MouseButton1Click:Connect(function()
 end)
 
 ApplySalesBtn.MouseButton1Click:Connect(function()
-	if isApplyingSales or isSyncingSales then return end
+	if isApplyingSales or isSyncingSales then
+		return
+	end
 	local cookieVal = syncCookieFromInput()
 	if cookieVal == "" then
 		SalesStatusText.TextColor3 = Color3.fromRGB(255, 155, 165)
@@ -3870,7 +3918,9 @@ end)
 -- ==========================================
 local isCreatingPlace = false
 CreatePlaceBtn.MouseButton1Click:Connect(function()
-	if isCreatingPlace then return end
+	if isCreatingPlace then
+		return
+	end
 	local cookieVal = syncCookieFromInput()
 	if cookieVal == "" then
 		setCreateProgress("err", 0, "Cookie .ROBLOSECURITY belum diisi di tab Setting.")
