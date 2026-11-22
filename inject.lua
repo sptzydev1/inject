@@ -431,25 +431,47 @@ local function importDonorViaOpenCloud(
 
 	local sukses, gagal = 0, 0
 	for idx, item in ipairs(items) do
-		local url = string.format(
+		local bodyStr = HttpService:JSONEncode({ value = item.val })
+
+		-- Jangan set Content-Type manual karena Delta Executor otomatis menambahkannya saat ada Body
+		local baseHeaders = {
+			["x-api-key"] = apiKey,
+			["Accept"] = "application/json",
+		}
+
+		local postUrl = string.format(
 			"https://apis.roblox.com/ordered-data-stores/v1/universes/%s/orderedDataStores/%s/scopes/%s/entries?id=%s",
 			cleanUniv,
 			urlEncode(storeName),
 			urlEncode(scopeName),
 			urlEncode(item.key)
 		)
-		local bodyStr = HttpService:JSONEncode({ value = item.val })
 
 		local res, ok = apiRequest({
-			Url = url,
+			Url = postUrl,
 			Method = "POST",
-			Headers = {
-				["x-api-key"] = apiKey,
-				["Content-Type"] = "application/json",
-			},
+			Headers = baseHeaders,
 			Body = bodyStr,
 			Retries = 1,
 		})
+
+		-- Jika entry sudah ada / gagal POST, otomatis update atau buat via PATCH allow_missing=true
+		if not ok then
+			local patchUrl = string.format(
+				"https://apis.roblox.com/ordered-data-stores/v1/universes/%s/orderedDataStores/%s/scopes/%s/entries/%s?allow_missing=true",
+				cleanUniv,
+				urlEncode(storeName),
+				urlEncode(scopeName),
+				urlEncode(item.key)
+			)
+			res, ok = apiRequest({
+				Url = patchUrl,
+				Method = "PATCH",
+				Headers = baseHeaders,
+				Body = bodyStr,
+				Retries = 1,
+			})
+		end
 
 		if ok and res then
 			sukses += 1
