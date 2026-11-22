@@ -1,5 +1,7 @@
+-- DELTA MAP BUAT STUDIO LITE
+
 --!strict
--- Plugin Studio Lite (Delta Executor Edition - Create Place, My Places from Profile, Donor DS Auto Transfer, Voice Chat, 3rd Party Sales, Setting & Console) by Ikyy
+-- Plugin Studio Lite (Delta Executor Edition - Create Place, My Places from Profile, Voice Chat, 3rd Party Sales, Setting & Console) by Ikyy
 -- Alur: Input GUI -> Validasi -> Kirim Permintaan -> Output Realtime (Icon Game, Name Game, Status + Console)
 
 local Players = game:GetService("Players")
@@ -7,7 +9,6 @@ local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local StarterGui = game:GetService("StarterGui")
 local UserInputService = game:GetService("UserInputService")
-local DataStoreService = game:GetService("DataStoreService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -23,21 +24,15 @@ end
 local CONFIG = {
 	WorkspaceRoot = "IkyyStudioLite",
 	Cookie = "",
-	ApiKey = "",
 	IsMinimized = false,
 	ActiveTab = "CreatePlace",
 	DefaultUniverseId = "10516113765",
-	DefaultOldUniverseId = "10516113765",
-	DefaultNewUniverseId = "",
-	DefaultDonorStore = "DonorTotals",
-	DefaultDonorScope = "PROD",
 	UserAgent = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
 }
 
 local MEMORY_FILES: {[string]: string} = {}
 local CONSOLE_LINES: {string} = {}
 local LAST_KNOWN_THIRD_PARTY: {[string]: boolean} = {}
-local LAST_EXPORTED_DONOR_JSON = ""
 
 local WINDOW_SIZE = UDim2.fromOffset(540, 320)
 local WINDOW_POS = UDim2.new(0.5, -270, 0.5, -160)
@@ -60,19 +55,6 @@ local function normalizeCookie(rawCookie: string): string
 		c = c .. ";"
 	end
 	return c
-end
-
-local function normalizeApiKey(rawKey: string): string
-	local k = trim(rawKey)
-	if k == "" then return "" end
-	k = k:gsub("[\r\n]+", "")
-	return trim(k)
-end
-
-local function urlEncode(s: string): string
-	return (s:gsub("([^%w%-_%.~])", function(c)
-		return string.format("%%%02X", string.byte(c))
-	end))
 end
 
 local function notify(title: string, text: string)
@@ -142,8 +124,8 @@ local function setClipboardText(text: string): boolean
 	end
 	pcall(function()
 		StarterGui:SetCore("SendNotification", {
-			Title = "Clipboard",
-			Text = text:sub(1, 140),
+			Title = "Universe ID",
+			Text = text,
 			Duration = 4,
 		})
 	end)
@@ -235,11 +217,6 @@ end
 local savedCookie = loadTextFile("cookie.txt")
 if savedCookie and trim(savedCookie) ~= "" then
 	CONFIG.Cookie = normalizeCookie(savedCookie)
-end
-
-local savedApiKey = loadTextFile("apikey.txt")
-if savedApiKey and trim(savedApiKey) ~= "" then
-	CONFIG.ApiKey = normalizeApiKey(savedApiKey)
 end
 
 -- ==========================================
@@ -336,225 +313,6 @@ local function getHeaderCaseInsensitive(headers: any, targetKey: string): string
 		end
 	end
 	return nil
-end
-
--- ==========================================
--- DONOR ORDERED DATASTORE (OPEN CLOUD + LOCAL FALLBACK)
--- ==========================================
-local function exportDonorViaOpenCloud(universeId: string, storeName: string, scopeName: string, apiKey: string): (boolean, {[string]: number}, string)
-	local cleanUniv = trim(universeId):match("%d+") or ""
-	if cleanUniv == "" then
-		return false, {}, "Universe ID asal tidak valid"
-	end
-
-	local collected: {[string]: number} = {}
-	local pageToken: string? = nil
-
-	while true do
-		local baseUrl = string.format(
-			"https://apis.roblox.com/ordered-data-stores/v1/universes/%s/orderedDataStores/%s/scopes/%s/entries?max_page_size=100&order_by=desc",
-			cleanUniv,
-			urlEncode(storeName),
-			urlEncode(scopeName)
-		)
-		if pageToken and pageToken ~= "" then
-			baseUrl = baseUrl .. "&page_token=" .. urlEncode(pageToken)
-		end
-
-		local res, ok, info = apiRequest({
-			Url = baseUrl,
-			Method = "GET",
-			Headers = {
-				["x-api-key"] = apiKey,
-			},
-			Retries = 1,
-		})
-
-		if not ok or not res then
-			return false, {}, info
-		end
-
-		local okDec, decoded = pcall(function()
-			return HttpService:JSONDecode(tostring(res.Body or ""))
-		end)
-		if not okDec or type(decoded) ~= "table" then
-			return false, {}, "Gagal decode JSON Open Cloud entries"
-		end
-
-		if type(decoded.entries) == "table" then
-			for _, entry in ipairs(decoded.entries) do
-				if type(entry) == "table" and entry.id ~= nil then
-					local k = tostring(entry.id)
-					local v = tonumber(entry.value)
-					if v ~= nil then
-						collected[k] = v
-					end
-				end
-			end
-		end
-
-		local nextTok = decoded.nextPageToken or decoded.next_page_token
-		if type(nextTok) == "string" and trim(nextTok) ~= "" then
-			pageToken = trim(nextTok)
-		else
-			break
-		end
-	end
-
-	return true, collected, "OK"
-end
-
-local function importDonorViaOpenCloud(
-	universeId: string,
-	storeName: string,
-	scopeName: string,
-	apiKey: string,
-	dataMap: {[string]: number},
-	onProgress: ((done: number, total: number, key: string, val: number) -> ())?
-): (boolean, number, number, string)
-	local cleanUniv = trim(universeId):match("%d+") or ""
-	if cleanUniv == "" then
-		return false, 0, 0, "Universe ID tujuan tidak valid"
-	end
-
-	local items: {{key: string, val: number}} = {}
-	for k, v in pairs(dataMap) do
-		local numVal = tonumber(v)
-		if numVal ~= nil then
-			table.insert(items, { key = tostring(k), val = numVal })
-		end
-	end
-
-	if #items == 0 then
-		return false, 0, 0, "Tidak ada data donatur untuk diimport"
-	end
-
-	local sukses, gagal = 0, 0
-	for idx, item in ipairs(items) do
-		local bodyStr = HttpService:JSONEncode({ value = item.val })
-
-		local baseHeaders = {
-			["x-api-key"] = apiKey,
-			["Accept"] = "application/json",
-		}
-
-		local postUrl = string.format(
-			"https://apis.roblox.com/ordered-data-stores/v1/universes/%s/orderedDataStores/%s/scopes/%s/entries?id=%s",
-			cleanUniv,
-			urlEncode(storeName),
-			urlEncode(scopeName),
-			urlEncode(item.key)
-		)
-
-		local res, ok = apiRequest({
-			Url = postUrl,
-			Method = "POST",
-			Headers = baseHeaders,
-			Body = bodyStr,
-			Retries = 1,
-		})
-
-		if not ok then
-			local patchUrl = string.format(
-				"https://apis.roblox.com/ordered-data-stores/v1/universes/%s/orderedDataStores/%s/scopes/%s/entries/%s?allow_missing=true",
-				cleanUniv,
-				urlEncode(storeName),
-				urlEncode(scopeName),
-				urlEncode(item.key)
-			)
-			res, ok = apiRequest({
-				Url = patchUrl,
-				Method = "PATCH",
-				Headers = baseHeaders,
-				Body = bodyStr,
-				Retries = 1,
-			})
-		end
-
-		if ok and res then
-			sukses += 1
-			pushConsole("OK", string.format("OpenCloud Import [%s] %s = %s", cleanUniv, item.key, tostring(item.val)))
-		else
-			gagal += 1
-			pushConsole("ERR", string.format("OpenCloud Gagal [%s] %s", cleanUniv, item.key))
-		end
-
-		if onProgress then
-			onProgress(idx, #items, item.key, item.val)
-		end
-		if idx < #items then
-			task.wait(0.12)
-		end
-	end
-
-	return true, sukses, gagal, "OK"
-end
-
-local function exportDonorLocalStore(storeName: string, scopeName: string): (boolean, {[string]: number}, string)
-	local exportedMap: {[string]: number} = {}
-	local okRun, errRun = pcall(function()
-		local orderedDs = DataStoreService:GetOrderedDataStore(storeName, scopeName)
-		local pages = orderedDs:GetSortedAsync(false, 100)
-		while true do
-			local currentPage = pages:GetCurrentPage()
-			for _, entry in ipairs(currentPage) do
-				exportedMap[tostring(entry.key)] = tonumber(entry.value) or 0
-			end
-			if pages.IsFinished then
-				break
-			end
-			pages:AdvanceToNextPageAsync()
-		end
-	end)
-	if not okRun then
-		return false, {}, tostring(errRun)
-	end
-	return true, exportedMap, "OK"
-end
-
-local function importDonorLocalStore(
-	storeName: string,
-	scopeName: string,
-	dataMap: {[string]: number},
-	onProgress: ((done: number, total: number, key: string, val: number) -> ())?
-): (boolean, number, number, string)
-	local items: {{key: string, val: number}} = {}
-	for k, v in pairs(dataMap) do
-		local numVal = tonumber(v)
-		if numVal ~= nil then
-			table.insert(items, { key = tostring(k), val = numVal })
-		end
-	end
-	if #items == 0 then
-		return false, 0, 0, "Tidak ada data donatur untuk diimport"
-	end
-
-	local okDs, orderedDs = pcall(function()
-		return DataStoreService:GetOrderedDataStore(storeName, scopeName)
-	end)
-	if not okDs or not orderedDs then
-		return false, 0, #items, tostring(orderedDs)
-	end
-
-	local sukses, gagal = 0, 0
-	for idx, item in ipairs(items) do
-		local okSet, errSet = pcall(function()
-			orderedDs:SetAsync(item.key, item.val)
-		end)
-		if okSet then
-			sukses += 1
-		else
-			gagal += 1
-			pushConsole("ERR", string.format("Gagal import %s: %s", item.key, tostring(errSet)))
-		end
-		if onProgress then
-			onProgress(idx, #items, item.key, item.val)
-		end
-		if idx < #items then
-			task.wait(0.15)
-		end
-	end
-	return true, sukses, gagal, "OK"
 end
 
 -- ==========================================
@@ -800,6 +558,7 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		})
 	end
 
+	-- 1. Ambil dari Profile Creations API (www.roblox.com/users/{uid}/profile -> Creations)
 	local profileApiUrls = {
 		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=All&limit=50&sortOrder=Desc", uid),
 		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=2&limit=50&sortOrder=Desc", uid),
@@ -842,6 +601,7 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
+	-- 2. Parse langsung halaman HTML profil: https://www.roblox.com/users/{uid}/profile
 	local profilePageUrl = string.format("https://www.roblox.com/users/%d/profile", uid)
 	local htmlRes, htmlOk = apiRequest({
 		Url = profilePageUrl,
@@ -896,6 +656,7 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
+	-- 3. Lengkapi nama, rootPlaceId & status (publik / private) tiap universe
 	for _, it in ipairs(rawItems) do
 		local dRes, dOk = apiRequest({
 			Url = "https://develop.roblox.com/v1/universes/" .. it.univId,
@@ -928,6 +689,7 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
+	-- 4. Batch fetch nama & rootPlaceId lewat games.roblox.com
 	local gamesInfoMap: {[string]: {name: string?, rootPlaceId: string?}} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -960,6 +722,7 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
+	-- 5. Batch fetch icon lewat thumbnails.roblox.com
 	local iconMap: {[string]: string} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -1405,7 +1168,7 @@ local SubTitleLabel = Instance.new("TextLabel")
 SubTitleLabel.Size = UDim2.new(0, 300, 0, 11)
 SubTitleLabel.Position = UDim2.new(0, 48, 0, 5)
 SubTitleLabel.BackgroundTransparency = 1
-SubTitleLabel.Text = "IKYYSTUDIO • PLACE, DONOR DS, VOICE & 3RD PARTY"
+SubTitleLabel.Text = "IKYYSTUDIO • PLACE, PROFILE PLACES, VOICE & 3RD PARTY"
 SubTitleLabel.TextColor3 = Color3.fromRGB(130, 126, 155)
 SubTitleLabel.TextSize = 8
 SubTitleLabel.Font = Enum.Font.GothamBold
@@ -1563,7 +1326,7 @@ NavListFrame.BackgroundTransparency = 1
 NavListFrame.Parent = Sidebar
 
 local NavLayout = Instance.new("UIListLayout")
-NavLayout.Padding = UDim.new(0, 2)
+NavLayout.Padding = UDim.new(0, 3)
 NavLayout.SortOrder = Enum.SortOrder.LayoutOrder
 NavLayout.Parent = NavListFrame
 
@@ -1573,7 +1336,7 @@ local tabButtons: {[string]: TextButton} = {}
 local function createNavButton(name: string, label: string, order: number)
 	local btn = Instance.new("TextButton")
 	btn.Name = "Nav_" .. name
-	btn.Size = UDim2.new(1, 0, 0, 24)
+	btn.Size = UDim2.new(1, 0, 0, 26)
 	btn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
 	btn.Text = "  " .. label
 	btn.TextColor3 = Color3.fromRGB(185, 182, 210)
@@ -1589,7 +1352,7 @@ local function createNavButton(name: string, label: string, order: number)
 end
 
 -- ==========================================
--- AREA KONTEN KANAN (CLIPPED RAPI)
+-- AREA KONTEN KANAN
 -- ==========================================
 local ContentArea = Instance.new("Frame")
 ContentArea.Name = "ContentArea"
@@ -1597,7 +1360,6 @@ ContentArea.Size = UDim2.new(1, -152, 1, -54)
 ContentArea.Position = UDim2.new(0, 142, 0, 48)
 ContentArea.BackgroundColor3 = Color3.fromRGB(20, 19, 30)
 ContentArea.BorderSizePixel = 0
-ContentArea.ClipsDescendants = true
 ContentArea.Parent = MainWindow
 Instance.new("UICorner", ContentArea).CornerRadius = UDim.new(0, 10)
 local ContStroke = Instance.new("UIStroke", ContentArea)
@@ -1765,7 +1527,6 @@ end
 local CreatePlacePage = Instance.new("Frame")
 CreatePlacePage.Size = UDim2.fromScale(1, 1)
 CreatePlacePage.BackgroundTransparency = 1
-CreatePlacePage.ClipsDescendants = true
 CreatePlacePage.Visible = true
 CreatePlacePage.Parent = ContentArea
 tabPages["CreatePlace"] = CreatePlacePage
@@ -1967,7 +1728,6 @@ end
 local MyPlacesPage = Instance.new("Frame")
 MyPlacesPage.Size = UDim2.fromScale(1, 1)
 MyPlacesPage.BackgroundTransparency = 1
-MyPlacesPage.ClipsDescendants = true
 MyPlacesPage.Visible = false
 MyPlacesPage.Parent = ContentArea
 tabPages["MyPlaces"] = MyPlacesPage
@@ -2044,168 +1804,11 @@ MyPlacesEmptyHint.Font = Enum.Font.Gotham
 MyPlacesEmptyHint.Parent = MyPlacesScroll
 
 -- ==========================================
--- HALAMAN 3: DONOR DATASTORE (AUTO MOVE LAMA -> BARU)
--- ==========================================
-local DonorPage = Instance.new("Frame")
-DonorPage.Size = UDim2.fromScale(1, 1)
-DonorPage.BackgroundTransparency = 1
-DonorPage.ClipsDescendants = true
-DonorPage.Visible = false
-DonorPage.Parent = ContentArea
-tabPages["DonorDS"] = DonorPage
-
-local DonorTitle = Instance.new("TextLabel")
-DonorTitle.Size = UDim2.new(1, -24, 0, 14)
-DonorTitle.Position = UDim2.new(0, 12, 0, 3)
-DonorTitle.BackgroundTransparency = 1
-DonorTitle.Text = "Donor DS • Pindah Otomatis Universe Lama ke Baru"
-DonorTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-DonorTitle.TextSize = 11
-DonorTitle.Font = Enum.Font.GothamBold
-DonorTitle.TextXAlignment = Enum.TextXAlignment.Left
-DonorTitle.TextTruncate = Enum.TextTruncate.AtEnd
-DonorTitle.Parent = DonorPage
-
-local OldUniverseBox = Instance.new("TextBox")
-OldUniverseBox.Size = UDim2.new(0.5, -14, 0, 20)
-OldUniverseBox.Position = UDim2.new(0, 12, 0, 19)
-OldUniverseBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-OldUniverseBox.Text = CONFIG.DefaultOldUniverseId
-OldUniverseBox.PlaceholderText = "Universe ID Lama (Asal)"
-OldUniverseBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-OldUniverseBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-OldUniverseBox.TextSize = 9
-OldUniverseBox.Font = Enum.Font.Gotham
-OldUniverseBox.ClearTextOnFocus = false
-OldUniverseBox.Parent = DonorPage
-Instance.new("UICorner", OldUniverseBox).CornerRadius = UDim.new(0, 6)
-
-local NewUniverseBox = Instance.new("TextBox")
-NewUniverseBox.Size = UDim2.new(0.5, -14, 0, 20)
-NewUniverseBox.Position = UDim2.new(0.5, 2, 0, 19)
-NewUniverseBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-NewUniverseBox.Text = CONFIG.DefaultNewUniverseId
-NewUniverseBox.PlaceholderText = "Universe ID Baru (Tujuan)"
-NewUniverseBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-NewUniverseBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-NewUniverseBox.TextSize = 9
-NewUniverseBox.Font = Enum.Font.Gotham
-NewUniverseBox.ClearTextOnFocus = false
-NewUniverseBox.Parent = DonorPage
-Instance.new("UICorner", NewUniverseBox).CornerRadius = UDim.new(0, 6)
-
-local DonorStoreBox = Instance.new("TextBox")
-DonorStoreBox.Size = UDim2.new(0.64, -14, 0, 20)
-DonorStoreBox.Position = UDim2.new(0, 12, 0, 42)
-DonorStoreBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-DonorStoreBox.Text = CONFIG.DefaultDonorStore
-DonorStoreBox.PlaceholderText = "Store Name (DonorTotals)"
-DonorStoreBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-DonorStoreBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-DonorStoreBox.TextSize = 9
-DonorStoreBox.Font = Enum.Font.Gotham
-DonorStoreBox.ClearTextOnFocus = false
-DonorStoreBox.Parent = DonorPage
-Instance.new("UICorner", DonorStoreBox).CornerRadius = UDim.new(0, 6)
-
-local DonorScopeBox = Instance.new("TextBox")
-DonorScopeBox.Size = UDim2.new(0.36, -10, 0, 20)
-DonorScopeBox.Position = UDim2.new(0.64, 0, 0, 42)
-DonorScopeBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-DonorScopeBox.Text = CONFIG.DefaultDonorScope
-DonorScopeBox.PlaceholderText = "Scope (PROD)"
-DonorScopeBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-DonorScopeBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-DonorScopeBox.TextSize = 9
-DonorScopeBox.Font = Enum.Font.Gotham
-DonorScopeBox.ClearTextOnFocus = false
-DonorScopeBox.Parent = DonorPage
-Instance.new("UICorner", DonorScopeBox).CornerRadius = UDim.new(0, 6)
-
-local AutoMoveDonorBtn = Instance.new("TextButton")
-AutoMoveDonorBtn.Size = UDim2.new(0.40, -14, 0, 21)
-AutoMoveDonorBtn.Position = UDim2.new(0, 12, 0, 65)
-AutoMoveDonorBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-AutoMoveDonorBtn.Text = "🚀 Pindah Otomatis"
-AutoMoveDonorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-AutoMoveDonorBtn.TextSize = 9
-AutoMoveDonorBtn.Font = Enum.Font.GothamBold
-AutoMoveDonorBtn.Parent = DonorPage
-Instance.new("UICorner", AutoMoveDonorBtn).CornerRadius = UDim.new(0, 6)
-
-local ExportDonorBtn = Instance.new("TextButton")
-ExportDonorBtn.Size = UDim2.new(0.20, -4, 0, 21)
-ExportDonorBtn.Position = UDim2.new(0.40, 0, 0, 65)
-ExportDonorBtn.BackgroundColor3 = Color3.fromRGB(48, 115, 225)
-ExportDonorBtn.Text = "📤 Exp"
-ExportDonorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ExportDonorBtn.TextSize = 8
-ExportDonorBtn.Font = Enum.Font.GothamBold
-ExportDonorBtn.Parent = DonorPage
-Instance.new("UICorner", ExportDonorBtn).CornerRadius = UDim.new(0, 6)
-
-local CopyDonorJsonBtn = Instance.new("TextButton")
-CopyDonorJsonBtn.Size = UDim2.new(0.20, -4, 0, 21)
-CopyDonorJsonBtn.Position = UDim2.new(0.60, 0, 0, 65)
-CopyDonorJsonBtn.BackgroundColor3 = Color3.fromRGB(38, 36, 62)
-CopyDonorJsonBtn.Text = "📋 Copy"
-CopyDonorJsonBtn.TextColor3 = Color3.fromRGB(220, 215, 255)
-CopyDonorJsonBtn.TextSize = 8
-CopyDonorJsonBtn.Font = Enum.Font.GothamBold
-CopyDonorJsonBtn.Parent = DonorPage
-Instance.new("UICorner", CopyDonorJsonBtn).CornerRadius = UDim.new(0, 6)
-
-local ImportDonorBtn = Instance.new("TextButton")
-ImportDonorBtn.Size = UDim2.new(0.20, -10, 0, 21)
-ImportDonorBtn.Position = UDim2.new(0.80, 0, 0, 65)
-ImportDonorBtn.BackgroundColor3 = Color3.fromRGB(34, 168, 92)
-ImportDonorBtn.Text = "📥 Imp"
-ImportDonorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ImportDonorBtn.TextSize = 8
-ImportDonorBtn.Font = Enum.Font.GothamBold
-ImportDonorBtn.Parent = DonorPage
-Instance.new("UICorner", ImportDonorBtn).CornerRadius = UDim.new(0, 6)
-
-local DonorJsonBox = Instance.new("TextBox")
-DonorJsonBox.Size = UDim2.new(1, -24, 1, -110)
-DonorJsonBox.Position = UDim2.new(0, 12, 0, 90)
-DonorJsonBox.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-DonorJsonBox.Text = ""
-DonorJsonBox.PlaceholderText = "Isi Universe Lama & Baru + API Key di Setting, lalu klik 🚀 Pindah Otomatis..."
-DonorJsonBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-DonorJsonBox.TextColor3 = Color3.fromRGB(185, 245, 210)
-DonorJsonBox.TextSize = 8
-DonorJsonBox.Font = Enum.Font.Code
-DonorJsonBox.ClearTextOnFocus = false
-DonorJsonBox.MultiLine = true
-DonorJsonBox.TextWrapped = true
-DonorJsonBox.TextXAlignment = Enum.TextXAlignment.Left
-DonorJsonBox.TextYAlignment = Enum.TextYAlignment.Top
-DonorJsonBox.Parent = DonorPage
-Instance.new("UICorner", DonorJsonBox).CornerRadius = UDim.new(0, 7)
-local DonorJsonStroke = Instance.new("UIStroke", DonorJsonBox)
-DonorJsonStroke.Color = Color3.fromRGB(52, 48, 82)
-DonorJsonStroke.Thickness = 1
-
-local DonorStatusLbl = Instance.new("TextLabel")
-DonorStatusLbl.Size = UDim2.new(1, -24, 0, 15)
-DonorStatusLbl.Position = UDim2.new(0, 12, 1, -18)
-DonorStatusLbl.BackgroundTransparency = 1
-DonorStatusLbl.Text = "Siap memindahkan DataStore donatur otomatis."
-DonorStatusLbl.TextColor3 = Color3.fromRGB(165, 162, 192)
-DonorStatusLbl.TextSize = 9
-DonorStatusLbl.Font = Enum.Font.GothamMedium
-DonorStatusLbl.TextXAlignment = Enum.TextXAlignment.Left
-DonorStatusLbl.TextTruncate = Enum.TextTruncate.AtEnd
-DonorStatusLbl.Parent = DonorPage
-
--- ==========================================
--- HALAMAN 4: VOICE CHAT UNIVERSE
+-- HALAMAN 3: VOICE CHAT UNIVERSE
 -- ==========================================
 local VoicePage = Instance.new("Frame")
 VoicePage.Size = UDim2.fromScale(1, 1)
 VoicePage.BackgroundTransparency = 1
-VoicePage.ClipsDescendants = true
 VoicePage.Visible = false
 VoicePage.Parent = ContentArea
 tabPages["VoiceChat"] = VoicePage
@@ -2345,12 +1948,11 @@ VoiceStatusText.TextWrapped = true
 VoiceStatusText.Parent = VoicePreviewCard
 
 -- ==========================================
--- HALAMAN 5: ALLOW THIRD PARTY SALES
+-- HALAMAN 4: ALLOW THIRD PARTY SALES
 -- ==========================================
 local ThirdPartyPage = Instance.new("Frame")
 ThirdPartyPage.Size = UDim2.fromScale(1, 1)
 ThirdPartyPage.BackgroundTransparency = 1
-ThirdPartyPage.ClipsDescendants = true
 ThirdPartyPage.Visible = false
 ThirdPartyPage.Parent = ContentArea
 tabPages["ThirdPartySales"] = ThirdPartyPage
@@ -2490,110 +2092,75 @@ SalesStatusText.TextWrapped = true
 SalesStatusText.Parent = SalesPreviewCard
 
 -- ==========================================
--- HALAMAN 6: SETTING (COOKIE & OPEN CLOUD API KEY - RAPI & CLIPPED)
+-- HALAMAN 5: SETTING (COOKIE)
 -- ==========================================
 local SettingPage = Instance.new("Frame")
 SettingPage.Size = UDim2.fromScale(1, 1)
 SettingPage.BackgroundTransparency = 1
-SettingPage.ClipsDescendants = true
 SettingPage.Visible = false
 SettingPage.Parent = ContentArea
 tabPages["Setting"] = SettingPage
 
-local SettingScroll = Instance.new("ScrollingFrame")
-SettingScroll.Name = "SettingScroll"
-SettingScroll.Size = UDim2.fromScale(1, 1)
-SettingScroll.BackgroundTransparency = 1
-SettingScroll.BorderSizePixel = 0
-SettingScroll.ScrollBarThickness = 3
-SettingScroll.CanvasSize = UDim2.new(0, 0, 0, 248)
-SettingScroll.Parent = SettingPage
-
 local SettingTitle = Instance.new("TextLabel")
-SettingTitle.Size = UDim2.new(1, -24, 0, 16)
-SettingTitle.Position = UDim2.new(0, 12, 0, 6)
+SettingTitle.Size = UDim2.new(1, -24, 0, 18)
+SettingTitle.Position = UDim2.new(0, 12, 0, 8)
 SettingTitle.BackgroundTransparency = 1
-SettingTitle.Text = "Pengaturan Cookie & API Key"
+SettingTitle.Text = "Pengaturan Cookie"
 SettingTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-SettingTitle.TextSize = 12
+SettingTitle.TextSize = 13
 SettingTitle.Font = Enum.Font.GothamBold
 SettingTitle.TextXAlignment = Enum.TextXAlignment.Left
-SettingTitle.Parent = SettingScroll
+SettingTitle.Parent = SettingPage
 
 local CookieBox = Instance.new("TextBox")
-CookieBox.Size = UDim2.new(1, -24, 0, 56)
-CookieBox.Position = UDim2.new(0, 12, 0, 25)
+CookieBox.Size = UDim2.new(1, -24, 0, 96)
+CookieBox.Position = UDim2.new(0, 12, 0, 32)
 CookieBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
 CookieBox.Text = CONFIG.Cookie
 CookieBox.PlaceholderText = "Tempel .ROBLOSECURITY Cookie di sini..."
 CookieBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 CookieBox.TextColor3 = Color3.fromRGB(235, 235, 250)
-CookieBox.TextSize = 9
+CookieBox.TextSize = 10
 CookieBox.Font = Enum.Font.Gotham
 CookieBox.ClearTextOnFocus = false
 CookieBox.MultiLine = true
 CookieBox.TextWrapped = true
-CookieBox.ClipsDescendants = true
 CookieBox.TextXAlignment = Enum.TextXAlignment.Left
 CookieBox.TextYAlignment = Enum.TextYAlignment.Top
-CookieBox.Parent = SettingScroll
-Instance.new("UICorner", CookieBox).CornerRadius = UDim.new(0, 6)
-
-local ApiKeyBox = Instance.new("TextBox")
-ApiKeyBox.Size = UDim2.new(1, -24, 0, 48)
-ApiKeyBox.Position = UDim2.new(0, 12, 0, 86)
-ApiKeyBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-ApiKeyBox.Text = CONFIG.ApiKey
-ApiKeyBox.PlaceholderText = "Tempel Roblox Open Cloud API Key di sini (untuk Donor DS)..."
-ApiKeyBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
-ApiKeyBox.TextColor3 = Color3.fromRGB(185, 245, 210)
-ApiKeyBox.TextSize = 9
-ApiKeyBox.Font = Enum.Font.Code
-ApiKeyBox.ClearTextOnFocus = false
-ApiKeyBox.MultiLine = true
-ApiKeyBox.TextWrapped = true
-ApiKeyBox.ClipsDescendants = true
-ApiKeyBox.TextXAlignment = Enum.TextXAlignment.Left
-ApiKeyBox.TextYAlignment = Enum.TextYAlignment.Top
-ApiKeyBox.Parent = SettingScroll
-Instance.new("UICorner", ApiKeyBox).CornerRadius = UDim.new(0, 6)
+CookieBox.Parent = SettingPage
+Instance.new("UICorner", CookieBox).CornerRadius = UDim.new(0, 7)
 
 local SaveSettingBtn = Instance.new("TextButton")
-SaveSettingBtn.Size = UDim2.new(1, -24, 0, 28)
-SaveSettingBtn.Position = UDim2.new(0, 12, 0, 140)
+SaveSettingBtn.Size = UDim2.new(1, -24, 0, 32)
+SaveSettingBtn.Position = UDim2.new(0, 12, 0, 136)
 SaveSettingBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-SaveSettingBtn.Text = "💾  SIMPAN COOKIE & API KEY"
+SaveSettingBtn.Text = "💾  SIMPAN COOKIE"
 SaveSettingBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-SaveSettingBtn.TextSize = 10
+SaveSettingBtn.TextSize = 11
 SaveSettingBtn.Font = Enum.Font.GothamBold
-SaveSettingBtn.Parent = SettingScroll
-Instance.new("UICorner", SaveSettingBtn).CornerRadius = UDim.new(0, 7)
+SaveSettingBtn.Parent = SettingPage
+Instance.new("UICorner", SaveSettingBtn).CornerRadius = UDim.new(0, 8)
 
 local SettingStatusLabel = Instance.new("TextLabel")
 SettingStatusLabel.Size = UDim2.new(1, -24, 0, 56)
-SettingStatusLabel.Position = UDim2.new(0, 12, 0, 174)
+SettingStatusLabel.Position = UDim2.new(0, 12, 0, 176)
 SettingStatusLabel.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-SettingStatusLabel.ClipsDescendants = true
-SettingStatusLabel.Text = string.format(
-	"Cookie: %s | API Key: %s\nFile: %s/cookie.txt & apikey.txt",
-	CONFIG.Cookie ~= "" and (#CONFIG.Cookie .. " chars") or "Kosong",
-	CONFIG.ApiKey ~= "" and (#CONFIG.ApiKey .. " chars") or "Kosong",
-	CONFIG.WorkspaceRoot
-)
+SettingStatusLabel.Text = CONFIG.Cookie ~= ""
+	and ("Status Cookie: Terisi (" .. tostring(#CONFIG.Cookie) .. " karakter)")
+	or ("Status Cookie: Kosong • Simpan ke " .. CONFIG.WorkspaceRoot .. "/cookie.txt")
 SettingStatusLabel.TextColor3 = Color3.fromRGB(185, 205, 255)
-SettingStatusLabel.TextSize = 8
+SettingStatusLabel.TextSize = 9
 SettingStatusLabel.Font = Enum.Font.Code
 SettingStatusLabel.TextWrapped = true
-SettingStatusLabel.Parent = SettingScroll
+SettingStatusLabel.Parent = SettingPage
 Instance.new("UICorner", SettingStatusLabel).CornerRadius = UDim.new(0, 7)
 
 -- ==========================================
--- HALAMAN 7: CONSOLE OUTPUT SERVER / PERMINTAAN
+-- HALAMAN 6: CONSOLE OUTPUT SERVER / PERMINTAAN
 -- ==========================================
 local ConsolePage = Instance.new("Frame")
 ConsolePage.Size = UDim2.fromScale(1, 1)
 ConsolePage.BackgroundTransparency = 1
-ConsolePage.ClipsDescendants = true
 ConsolePage.Visible = false
 ConsolePage.Parent = ContentArea
 tabPages["Console"] = ConsolePage
@@ -2716,7 +2283,7 @@ CopyConsoleBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- LOGIKA COOKIE, API KEY & NAVIGASI
+-- LOGIKA COOKIE & NAVIGASI
 -- ==========================================
 local function syncCookieFromInput(): string
 	local boxCookie = normalizeCookie(CookieBox.Text)
@@ -2726,45 +2293,22 @@ local function syncCookieFromInput(): string
 	return CONFIG.Cookie
 end
 
-local function syncApiKeyFromInput(): string
-	local boxKey = normalizeApiKey(ApiKeyBox.Text)
-	if boxKey ~= "" then
-		CONFIG.ApiKey = boxKey
-	end
-	return CONFIG.ApiKey
-end
-
 CookieBox:GetPropertyChangedSignal("Text"):Connect(function()
 	CONFIG.Cookie = normalizeCookie(CookieBox.Text)
 end)
 
-ApiKeyBox:GetPropertyChangedSignal("Text"):Connect(function()
-	CONFIG.ApiKey = normalizeApiKey(ApiKeyBox.Text)
-end)
-
 SaveSettingBtn.MouseButton1Click:Connect(function()
 	local c = normalizeCookie(CookieBox.Text)
-	local k = normalizeApiKey(ApiKeyBox.Text)
 	CONFIG.Cookie = c
-	CONFIG.ApiKey = k
 	CookieBox.Text = c
-	ApiKeyBox.Text = k
 
 	local okC = saveTextFile("cookie.txt", c)
-	local okK = saveTextFile("apikey.txt", k)
-	local allOk = okC and okK
-
-	SettingStatusLabel.Text = string.format(
-		"Cookie: %s (%d) | API Key: %s (%d)\nStatus simpan: %s",
-		c ~= "" and "OK" or "Kosong",
-		#c,
-		k ~= "" and "OK" or "Kosong",
-		#k,
-		allOk and "Tersimpan ke workspace" or "Sebagian gagal disimpan"
-	)
-	SettingStatusLabel.TextColor3 = allOk and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
-	pushConsole(allOk and "OK" or "WARN", string.format("Setting disimpan -> Cookie=%d chars, ApiKey=%d chars", #c, #k))
-	notify("Setting", allOk and "Cookie & API Key tersimpan." or "Gagal menyimpan sebagian data.")
+	SettingStatusLabel.Text = c ~= ""
+		and ("Status Cookie: Tersimpan (" .. tostring(#c) .. " karakter)")
+		or "Status Cookie: Kosong"
+	SettingStatusLabel.TextColor3 = okC and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 155, 165)
+	pushConsole(okC and "OK" or "ERR", okC and ("Cookie disimpan (" .. tostring(#c) .. " chars)") or "Gagal menyimpan cookie.txt")
+	notify("Setting", okC and "Cookie tersimpan." or "Gagal menyimpan cookie.")
 end)
 
 createNavButton("CreatePlace", "🏗  Create Place", 1).MouseButton1Click:Connect(function()
@@ -2773,231 +2317,21 @@ end)
 createNavButton("MyPlaces", "🎮  Place Saya", 2).MouseButton1Click:Connect(function()
 	switchTab("MyPlaces")
 end)
-createNavButton("DonorDS", "💾  Donor DS", 3).MouseButton1Click:Connect(function()
-	switchTab("DonorDS")
-end)
-createNavButton("VoiceChat", "🎙  Voice Chat", 4).MouseButton1Click:Connect(function()
+createNavButton("VoiceChat", "🎙  Voice Chat", 3).MouseButton1Click:Connect(function()
 	switchTab("VoiceChat")
 end)
-createNavButton("ThirdPartySales", "🛒  3rd Party", 5).MouseButton1Click:Connect(function()
+createNavButton("ThirdPartySales", "🛒  3rd Party", 4).MouseButton1Click:Connect(function()
 	switchTab("ThirdPartySales")
 end)
-createNavButton("Setting", "⚙  Setting", 6).MouseButton1Click:Connect(function()
+createNavButton("Setting", "⚙  Setting", 5).MouseButton1Click:Connect(function()
 	switchTab("Setting")
 end)
-createNavButton("Console", "🖥  Console", 7).MouseButton1Click:Connect(function()
+createNavButton("Console", "🖥  Console", 6).MouseButton1Click:Connect(function()
 	switchTab("Console")
 end)
 switchTab("CreatePlace")
 
-pushConsole("INFO", "Plugin Studio Lite siap (Donor DS Auto Transfer Lama->Baru, API Key di Setting, Voice & 3rd Party aktif).")
-
--- ==========================================
--- LOGIKA DONOR DATASTORE (PINDAH OTOMATIS LAMA -> BARU)
--- ==========================================
-local isDonorBusy = false
-
-local function getDonorParams()
-	local oldUniv = trim(OldUniverseBox.Text):match("%d+") or ""
-	local newUniv = trim(NewUniverseBox.Text):match("%d+") or ""
-	local storeName = trim(DonorStoreBox.Text) ~= "" and trim(DonorStoreBox.Text) or CONFIG.DefaultDonorStore
-	local scopeName = trim(DonorScopeBox.Text) ~= "" and trim(DonorScopeBox.Text) or CONFIG.DefaultDonorScope
-	local apiKey = syncApiKeyFromInput()
-	return oldUniv, newUniv, storeName, scopeName, apiKey
-end
-
-AutoMoveDonorBtn.MouseButton1Click:Connect(function()
-	if isDonorBusy then return end
-	local oldUniv, newUniv, storeName, scopeName, apiKey = getDonorParams()
-
-	if oldUniv == "" or newUniv == "" then
-		DonorStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
-		DonorStatusLbl.Text = "Isi Universe ID Lama dan Universe ID Baru terlebih dahulu."
-		pushConsole("WARN", "Pindah Otomatis Donor DS dibatalkan: Universe Lama/Baru kosong.")
-		notify("Donor DS", "Isi Universe Lama & Baru.")
-		return
-	end
-
-	if apiKey == "" then
-		DonorStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
-		DonorStatusLbl.Text = "API Key kosong! Isi di tab Setting untuk pindah antar Universe."
-		pushConsole("ERR", "Pindah Otomatis Donor DS gagal: API Key kosong.")
-		notify("Donor DS", "API Key belum diisi di Setting.")
-		return
-	end
-
-	isDonorBusy = true
-	AutoMoveDonorBtn.Text = "⏳..."
-	DonorStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
-	DonorStatusLbl.Text = string.format("Export dari Universe #%s...", oldUniv)
-	pushConsole("INFO", string.format("Auto Move Donor DS: #%s -> #%s [%s/%s]", oldUniv, newUniv, storeName, scopeName))
-
-	task.spawn(function()
-		local okExp, dataMap, errExp = exportDonorViaOpenCloud(oldUniv, storeName, scopeName, apiKey)
-		if not okExp then
-			DonorStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
-			DonorStatusLbl.Text = "Gagal export lama: " .. errExp
-			pushConsole("ERR", "Export Universe #" .. oldUniv .. " gagal: " .. errExp)
-			notify("Donor DS", "Gagal export dari Universe lama.")
-			AutoMoveDonorBtn.Text = "🚀 Pindah Otomatis"
-			isDonorBusy = false
-			return
-		end
-
-		local totalCount = 0
-		for _ in pairs(dataMap) do
-			totalCount += 1
-		end
-
-		local okEnc, jsonStr = pcall(function()
-			return HttpService:JSONEncode(dataMap)
-		end)
-		if okEnc and type(jsonStr) == "string" then
-			LAST_EXPORTED_DONOR_JSON = jsonStr
-			DonorJsonBox.Text = jsonStr
-			saveTextFile("Logs/donor_move_" .. oldUniv .. "_to_" .. newUniv .. ".json", jsonStr)
-		end
-
-		if totalCount == 0 then
-			DonorStatusLbl.TextColor3 = Color3.fromRGB(255, 215, 130)
-			DonorStatusLbl.Text = "Universe #" .. oldUniv .. " tidak punya data donatur."
-			pushConsole("WARN", "Tidak ada data donatur di Universe #" .. oldUniv)
-			notify("Donor DS", "Data donatur kosong.")
-			AutoMoveDonorBtn.Text = "🚀 Pindah Otomatis"
-			isDonorBusy = false
-			return
-		end
-
-		DonorStatusLbl.Text = string.format("Mengimport %d data ke Universe #%s...", totalCount, newUniv)
-		local okImp, sukses, gagal, errImp = importDonorViaOpenCloud(newUniv, storeName, scopeName, apiKey, dataMap, function(done, total, k, v)
-			DonorStatusLbl.Text = string.format("Pindah %d/%d (%s = %s)...", done, total, k, tostring(v))
-		end)
-
-		if okImp then
-			DonorStatusLbl.TextColor3 = (gagal == 0) and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 215, 130)
-			DonorStatusLbl.Text = string.format("Selesai #%s -> #%s: %d OK, %d gagal.", oldUniv, newUniv, sukses, gagal)
-			pushConsole("OK", string.format("Pindah Donor DS selesai (#%s -> #%s): %d OK, %d gagal.", oldUniv, newUniv, sukses, gagal))
-			notify("Donor DS", string.format("Pindah selesai: %d OK, %d gagal.", sukses, gagal))
-		else
-			DonorStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
-			DonorStatusLbl.Text = "Gagal import baru: " .. errImp
-			pushConsole("ERR", "Import Universe #" .. newUniv .. " gagal: " .. errImp)
-			notify("Donor DS", "Gagal import ke Universe baru.")
-		end
-
-		AutoMoveDonorBtn.Text = "🚀 Pindah Otomatis"
-		isDonorBusy = false
-	end)
-end)
-
-ExportDonorBtn.MouseButton1Click:Connect(function()
-	if isDonorBusy then return end
-	local oldUniv, _, storeName, scopeName, apiKey = getDonorParams()
-
-	isDonorBusy = true
-	ExportDonorBtn.Text = "⏳..."
-	DonorStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
-	DonorStatusLbl.Text = "Mengambil data donatur..."
-
-	task.spawn(function()
-		local okExp, dataMap, errExp
-		if apiKey ~= "" and oldUniv ~= "" then
-			okExp, dataMap, errExp = exportDonorViaOpenCloud(oldUniv, storeName, scopeName, apiKey)
-		else
-			okExp, dataMap, errExp = exportDonorLocalStore(storeName, scopeName)
-		end
-
-		if okExp then
-			local count = 0
-			for _ in pairs(dataMap) do count += 1 end
-			local jsonStr = HttpService:JSONEncode(dataMap)
-			LAST_EXPORTED_DONOR_JSON = jsonStr
-			DonorJsonBox.Text = jsonStr
-			saveTextFile("Logs/donor_" .. storeName .. "_" .. scopeName .. ".json", jsonStr)
-			DonorStatusLbl.TextColor3 = Color3.fromRGB(145, 255, 190)
-			DonorStatusLbl.Text = string.format("Export sukses: %d donatur.", count)
-			pushConsole("OK", string.format("Export %s [%s] berhasil (%d entry).", storeName, scopeName, count))
-			notify("Donor DS", string.format("Export %d data sukses.", count))
-		else
-			DonorStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
-			DonorStatusLbl.Text = "Gagal export: " .. errExp
-			pushConsole("ERR", "Export Donor DS gagal: " .. errExp)
-			notify("Donor DS", "Gagal export data.")
-		end
-
-		ExportDonorBtn.Text = "📤 Exp"
-		isDonorBusy = false
-	end)
-end)
-
-CopyDonorJsonBtn.MouseButton1Click:Connect(function()
-	local payload = trim(DonorJsonBox.Text) ~= "" and trim(DonorJsonBox.Text) or LAST_EXPORTED_DONOR_JSON
-	if payload == "" then
-		notify("Donor DS", "Belum ada JSON untuk disalin.")
-		return
-	end
-	local okCopy = setClipboardText(payload)
-	DonorStatusLbl.TextColor3 = Color3.fromRGB(185, 205, 255)
-	DonorStatusLbl.Text = okCopy and "JSON disalin ke clipboard." or "Clipboard tidak didukung di executor ini."
-	pushConsole("INFO", okCopy and "JSON DonorTotals disalin ke clipboard." or "Gagal menyalin JSON.")
-	notify("Donor DS", okCopy and "JSON disalin!" or "Gagal copy clipboard.")
-end)
-
-ImportDonorBtn.MouseButton1Click:Connect(function()
-	if isDonorBusy then return end
-	local _, newUniv, storeName, scopeName, apiKey = getDonorParams()
-	local rawJson = trim(DonorJsonBox.Text) ~= "" and trim(DonorJsonBox.Text) or LAST_EXPORTED_DONOR_JSON
-
-	if rawJson == "" then
-		DonorStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
-		DonorStatusLbl.Text = "JSON donatur kosong."
-		notify("Donor DS", "JSON kosong.")
-		return
-	end
-
-	local okDec, decoded = pcall(function()
-		return HttpService:JSONDecode(rawJson)
-	end)
-	if not okDec or type(decoded) ~= "table" then
-		DonorStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
-		DonorStatusLbl.Text = "Format JSON tidak valid."
-		notify("Donor DS", "JSON tidak valid.")
-		return
-	end
-
-	isDonorBusy = true
-	ImportDonorBtn.Text = "⏳..."
-	DonorStatusLbl.TextColor3 = Color3.fromRGB(175, 205, 255)
-	DonorStatusLbl.Text = "Mengimport data donatur..."
-
-	task.spawn(function()
-		local okImp, sukses, gagal, errImp
-		if apiKey ~= "" and newUniv ~= "" then
-			okImp, sukses, gagal, errImp = importDonorViaOpenCloud(newUniv, storeName, scopeName, apiKey, decoded, function(done, total, k, v)
-				DonorStatusLbl.Text = string.format("Import %d/%d (%s = %s)...", done, total, k, tostring(v))
-			end)
-		else
-			okImp, sukses, gagal, errImp = importDonorLocalStore(storeName, scopeName, decoded, function(done, total, k, v)
-				DonorStatusLbl.Text = string.format("Import %d/%d (%s = %s)...", done, total, k, tostring(v))
-			end)
-		end
-
-		if okImp then
-			DonorStatusLbl.TextColor3 = (gagal == 0) and Color3.fromRGB(145, 255, 190) or Color3.fromRGB(255, 215, 130)
-			DonorStatusLbl.Text = string.format("Import selesai: %d OK, %d gagal.", sukses, gagal)
-			pushConsole("INFO", string.format("Import Donor DS selesai: %d OK, %d gagal.", sukses, gagal))
-			notify("Donor DS", string.format("Import selesai: %d OK, %d gagal.", sukses, gagal))
-		else
-			DonorStatusLbl.TextColor3 = Color3.fromRGB(255, 155, 165)
-			DonorStatusLbl.Text = "Gagal import: " .. errImp
-			pushConsole("ERR", "Import Donor DS gagal: " .. errImp)
-			notify("Donor DS", "Gagal import data.")
-		end
-
-		ImportDonorBtn.Text = "📥 Imp"
-		isDonorBusy = false
-	end)
-end)
+pushConsole("INFO", "Plugin Studio Lite siap (Create Place, Place Saya dari halaman profile, Voice & 3rd Party Sales aktif).")
 
 -- ==========================================
 -- LOGIKA CEK PLACE SAYA (DARI HALAMAN PROFILE)
