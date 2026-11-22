@@ -279,9 +279,6 @@ local function apiRequest(options: {
 	local baseHeaders: {[string]: string} = {
 		["User-Agent"] = CONFIG.UserAgent,
 	}
-	if options.Body ~= nil and options.Body ~= "" then
-		baseHeaders["Content-Type"] = "application/json"
-	end
 	if options.Headers then
 		for k, v in pairs(options.Headers) do
 			baseHeaders[k] = v
@@ -438,7 +435,6 @@ local function importDonorViaOpenCloud(
 
 		local baseHeaders = {
 			["x-api-key"] = apiKey,
-			["Content-Type"] = "application/json",
 			["Accept"] = "application/json",
 		}
 
