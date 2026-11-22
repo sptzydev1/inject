@@ -279,6 +279,9 @@ local function apiRequest(options: {
 	local baseHeaders: {[string]: string} = {
 		["User-Agent"] = CONFIG.UserAgent,
 	}
+	if options.Body ~= nil and options.Body ~= "" then
+		baseHeaders["Content-Type"] = "application/json"
+	end
 	if options.Headers then
 		for k, v in pairs(options.Headers) do
 			baseHeaders[k] = v
@@ -433,9 +436,9 @@ local function importDonorViaOpenCloud(
 	for idx, item in ipairs(items) do
 		local bodyStr = HttpService:JSONEncode({ value = item.val })
 
-		-- Jangan set Content-Type manual karena Delta Executor otomatis menambahkannya saat ada Body
 		local baseHeaders = {
 			["x-api-key"] = apiKey,
+			["Content-Type"] = "application/json",
 			["Accept"] = "application/json",
 		}
 
@@ -455,7 +458,6 @@ local function importDonorViaOpenCloud(
 			Retries = 1,
 		})
 
-		-- Jika entry sudah ada / gagal POST, otomatis update atau buat via PATCH allow_missing=true
 		if not ok then
 			local patchUrl = string.format(
 				"https://apis.roblox.com/ordered-data-stores/v1/universes/%s/orderedDataStores/%s/scopes/%s/entries/%s?allow_missing=true",
@@ -2068,7 +2070,6 @@ DonorTitle.TextXAlignment = Enum.TextXAlignment.Left
 DonorTitle.TextTruncate = Enum.TextTruncate.AtEnd
 DonorTitle.Parent = DonorPage
 
--- Baris 1: Universe Lama & Universe Baru
 local OldUniverseBox = Instance.new("TextBox")
 OldUniverseBox.Size = UDim2.new(0.5, -14, 0, 20)
 OldUniverseBox.Position = UDim2.new(0, 12, 0, 19)
@@ -2097,7 +2098,6 @@ NewUniverseBox.ClearTextOnFocus = false
 NewUniverseBox.Parent = DonorPage
 Instance.new("UICorner", NewUniverseBox).CornerRadius = UDim.new(0, 6)
 
--- Baris 2: Nama Store & Scope
 local DonorStoreBox = Instance.new("TextBox")
 DonorStoreBox.Size = UDim2.new(0.64, -14, 0, 20)
 DonorStoreBox.Position = UDim2.new(0, 12, 0, 42)
@@ -2126,7 +2126,6 @@ DonorScopeBox.ClearTextOnFocus = false
 DonorScopeBox.Parent = DonorPage
 Instance.new("UICorner", DonorScopeBox).CornerRadius = UDim.new(0, 6)
 
--- Baris 3: Tombol Pindah Otomatis + Export/Copy/Import
 local AutoMoveDonorBtn = Instance.new("TextButton")
 AutoMoveDonorBtn.Size = UDim2.new(0.40, -14, 0, 21)
 AutoMoveDonorBtn.Position = UDim2.new(0, 12, 0, 65)
