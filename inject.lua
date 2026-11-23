@@ -248,7 +248,7 @@ local MetaLabel = Instance.new("TextLabel")
 MetaLabel.Size = UDim2.new(0, 240, 0, 11)
 MetaLabel.Position = UDim2.new(0, 48, 0, 31)
 MetaLabel.BackgroundTransparency = 1
-MetaLabel.Text = "by Ikyy • v1.6.0 • @" .. LocalPlayer.Name
+MetaLabel.Text = "by Ikyy • v1.7.0 • @" .. LocalPlayer.Name
 MetaLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
 MetaLabel.TextSize = 8
 MetaLabel.Font = Enum.Font.GothamMedium
@@ -852,7 +852,7 @@ do
 end
 
 -- ==========================================
--- HALAMAN 2: MAP TOOL (FULL CLIENT COPY + IMPORT + AUTO ANCHOR)
+-- HALAMAN 2: MAP TOOL (NO SCRIPT/LOCAL SCRIPT IN MAP + STARTERPACK DECOMPILE + NO SHADOW)
 -- ==========================================
 local MapPage = Instance.new("Frame")
 MapPage.Size = UDim2.fromScale(1, 1)
@@ -865,18 +865,19 @@ local MapTitleLabel = Instance.new("TextLabel")
 MapTitleLabel.Size = UDim2.new(1, -24, 0, 16)
 MapTitleLabel.Position = UDim2.new(0, 12, 0, 5)
 MapTitleLabel.BackgroundTransparency = 1
-MapTitleLabel.Text = "🗺 Copy Map & Import (Full Client Props)"
+MapTitleLabel.Text = "🗺 Copy Map & Import (+StarterPack Decompile)"
 MapTitleLabel.TextColor3 = Color3.fromRGB(245, 245, 255)
-MapTitleLabel.TextSize = 11
+MapTitleLabel.TextSize = 10
 MapTitleLabel.Font = Enum.Font.GothamBold
 MapTitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+MapTitleLabel.TextTruncate = Enum.TextTruncate.AtEnd
 MapTitleLabel.Parent = MapPage
 
 local MapStatusLabel = Instance.new("TextLabel")
 MapStatusLabel.Size = UDim2.new(1, -24, 0, 12)
 MapStatusLabel.Position = UDim2.new(0, 12, 0, 21)
 MapStatusLabel.BackgroundTransparency = 1
-MapStatusLabel.Text = "Folder: " .. CONFIG.WorkspaceRoot .. " • Full Props + Decal/Mesh/Light"
+MapStatusLabel.Text = "Map skips Script/LocalScript • StarterPack decompile ON • NoShadow"
 MapStatusLabel.TextColor3 = Color3.fromRGB(150, 146, 182)
 MapStatusLabel.TextSize = 8
 MapStatusLabel.Font = Enum.Font.GothamMedium
@@ -884,23 +885,22 @@ MapStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
 MapStatusLabel.TextTruncate = Enum.TextTruncate.AtEnd
 MapStatusLabel.Parent = MapPage
 
--- Pilih Target Service untuk Import
 local ServiceSelectRow = Instance.new("Frame")
 ServiceSelectRow.Size = UDim2.new(1, -24, 0, 21)
 ServiceSelectRow.Position = UDim2.new(0, 12, 0, 36)
 ServiceSelectRow.BackgroundTransparency = 1
 ServiceSelectRow.Parent = MapPage
 
-local TARGET_SERVICES: {string} = { "Workspace", "ReplicatedStorage", "Lighting" }
+local TARGET_SERVICES: {string} = { "Workspace", "StarterPack", "ReplicatedStorage", "Lighting" }
 local serviceButtons: {[string]: TextButton} = {}
 
 for idx, sName in ipairs(TARGET_SERVICES) do
 	local sBtn = Instance.new("TextButton")
 	local wScale = 1 / #TARGET_SERVICES
-	sBtn.Size = UDim2.new(wScale, -4, 1, 0)
-	sBtn.Position = UDim2.new((idx - 1) * wScale, (idx > 1 and 3 or 0), 0, 0)
+	sBtn.Size = UDim2.new(wScale, -3, 1, 0)
+	sBtn.Position = UDim2.new((idx - 1) * wScale, (idx > 1 and 2 or 0), 0, 0)
 	sBtn.BackgroundColor3 = Color3.fromRGB(24, 23, 36)
-	sBtn.Text = sName
+	sBtn.Text = (sName == "ReplicatedStorage") and "RepStorage" or sName
 	sBtn.TextColor3 = Color3.fromRGB(220, 218, 245)
 	sBtn.TextSize = 8
 	sBtn.Font = Enum.Font.GothamBold
@@ -914,7 +914,6 @@ for idx, sName in ipairs(TARGET_SERVICES) do
 	end)
 end
 
--- Baris File Name + Mode Posisi + Auto Anchor
 local FileNameBox = Instance.new("TextBox")
 FileNameBox.Size = UDim2.new(0.46, -4, 0, 23)
 FileNameBox.Position = UDim2.new(0, 12, 0, 61)
@@ -969,7 +968,6 @@ AutoAnchorBtn.MouseButton1Click:Connect(function()
 	applyThemeAndFont()
 end)
 
--- Tombol COPY ALL MAP & IMPORT FILE
 local ActionRow = Instance.new("Frame")
 ActionRow.Size = UDim2.new(1, -24, 0, 26)
 ActionRow.Position = UDim2.new(0, 12, 0, 89)
@@ -998,7 +996,6 @@ ImportMapBtn.Font = Enum.Font.GothamBold
 ImportMapBtn.Parent = ActionRow
 Instance.new("UICorner", ImportMapBtn).CornerRadius = UDim.new(0, 7)
 
--- Log Output Area
 local MapLogScroll = Instance.new("ScrollingFrame")
 MapLogScroll.Size = UDim2.new(1, -24, 0, 136)
 MapLogScroll.Position = UDim2.new(0, 12, 0, 120)
@@ -1019,8 +1016,8 @@ MapLogLabel.AutomaticSize = Enum.AutomaticSize.Y
 MapLogLabel.Position = UDim2.new(0, 6, 0, 4)
 MapLogLabel.BackgroundTransparency = 1
 MapLogLabel.Text = table.concat({
-	"[Ready] Copy Map menyalin 75+ properti (Part, MeshPart, Decal, Texture, SpecialMesh, SurfaceAppearance, Light, Particle, Sound, Attributes).",
-	"[Ready] Auto-Anchor ON mencegah part jatuh saat di-import ke Workspace.",
+	"[Ready] Script & LocalScript di luar StarterPack tidak disalin.",
+	"[Ready] StarterPack menyalin Script & LocalScript dengan decompile Delta Executor + fallback memori sesi.",
 }, "\n")
 MapLogLabel.TextColor3 = Color3.fromRGB(195, 192, 222)
 MapLogLabel.TextSize = 8
@@ -1029,6 +1026,8 @@ MapLogLabel.TextXAlignment = Enum.TextXAlignment.Left
 MapLogLabel.TextYAlignment = Enum.TextYAlignment.Top
 MapLogLabel.TextWrapped = true
 MapLogLabel.Parent = MapLogScroll
+
+local SessionMapCache: {[string]: string} = {}
 
 local function appendMapLog(msg: string)
 	local current = MapLogLabel.Text
@@ -1051,20 +1050,43 @@ end
 
 local function getExecutorEnv(): {[string]: any}
 	local env: {[string]: any} = {}
-	local okShared = (type(shared) == "table")
-	if okShared then
-		for k, v in pairs(shared :: any) do
+
+	local okFenv, fenvTbl = pcall(function()
+		return getfenv(1)
+	end)
+	if okFenv and type(fenvTbl) == "table" then
+		for k, v in pairs(fenvTbl) do
 			env[tostring(k)] = v
 		end
 	end
-	local okG = (type(_G) == "table")
-	if okG then
+
+	local okRootFenv, rootFenv = pcall(function()
+		return getfenv(0)
+	end)
+	if okRootFenv and type(rootFenv) == "table" then
+		for k, v in pairs(rootFenv) do
+			if env[tostring(k)] == nil then
+				env[tostring(k)] = v
+			end
+		end
+	end
+
+	if type(shared) == "table" then
+		for k, v in pairs(shared :: any) do
+			if env[tostring(k)] == nil then
+				env[tostring(k)] = v
+			end
+		end
+	end
+
+	if type(_G) == "table" then
 		for k, v in pairs(_G :: any) do
 			if env[tostring(k)] == nil then
 				env[tostring(k)] = v
 			end
 		end
 	end
+
 	return env
 end
 
@@ -1084,39 +1106,76 @@ local function readExecutorFile(relPath: string): (boolean, string)
 	local env = getExecutorEnv()
 	local isfileFn = env["isfile"]
 	local readfileFn = env["readfile"]
-	if type(isfileFn) ~= "function" or type(readfileFn) ~= "function" then
-		return false, "Executor tidak mendukung isfile/readfile"
+
+	if type(isfileFn) == "function" and type(readfileFn) == "function" then
+		local fullPath = CONFIG.WorkspaceRoot .. "/" .. relPath
+		local okEx, exists = pcall(isfileFn, fullPath)
+		if okEx and exists then
+			local okRead, content = pcall(readfileFn, fullPath)
+			if okRead and type(content) == "string" then
+				return true, content
+			end
+		end
 	end
-	local fullPath = CONFIG.WorkspaceRoot .. "/" .. relPath
-	local okEx, exists = pcall(isfileFn, fullPath)
-	if not okEx or not exists then
-		return false, "File tidak ditemukan: " .. fullPath
+
+	local cached = SessionMapCache[relPath]
+	if type(cached) == "string" and cached ~= "" then
+		return true, cached
 	end
-	local okRead, content = pcall(readfileFn, fullPath)
-	if not okRead or type(content) ~= "string" then
-		return false, "Gagal membaca isi file: " .. fullPath
-	end
-	return true, content
+
+	return false, "File tidak ditemukan (lokal/sesi): " .. CONFIG.WorkspaceRoot .. "/" .. relPath
 end
 
 local function writeExecutorFile(relPath: string, content: string): (boolean, string)
+	SessionMapCache[relPath] = content
 	local env = getExecutorEnv()
 	local writefileFn = env["writefile"]
 	if type(writefileFn) ~= "function" then
-		return false, "Executor tidak mendukung writefile"
+		return true, "MEMORI_SESI://" .. CONFIG.WorkspaceRoot .. "/" .. relPath
 	end
 	ensureWorkspaceFolder()
 	local fullPath = CONFIG.WorkspaceRoot .. "/" .. relPath
 	local okW, errW = pcall(writefileFn, fullPath, content)
 	if not okW then
-		return false, tostring(errW)
+		return true, "MEMORI_SESI://" .. fullPath .. " (" .. tostring(errW) .. ")"
 	end
 	return true, fullPath
 end
 
--- Daftar properti lengkap (BasePart, MeshPart, Model, Decal, Texture, SpecialMesh, SurfaceAppearance, Light, Particle, Sound, Lighting)
+local function decompileDeltaScript(scr: LuaSourceContainer): string?
+	local env = getExecutorEnv()
+	local decompileFn = env["decompile"]
+	if type(decompileFn) == "function" then
+		local okD, resD = pcall(decompileFn, scr)
+		if okD and type(resD) == "string" and resD ~= "" then
+			return resD
+		end
+	end
+
+	local getBytecodeFn = env["getscriptbytecode"]
+	if type(getBytecodeFn) == "function" then
+		local okB, bc = pcall(getBytecodeFn, scr)
+		if okB and type(bc) == "string" and bc ~= "" then
+			if type(decompileFn) == "function" then
+				local okD2, resD2 = pcall(decompileFn, bc)
+				if okD2 and type(resD2) == "string" and resD2 ~= "" then
+					return resD2
+				end
+			end
+		end
+	end
+
+	local okSrc, directSrc = pcall(function()
+		return (scr :: any).Source
+	end)
+	if okSrc and type(directSrc) == "string" and directSrc ~= "" then
+		return directSrc
+	end
+
+	return nil
+end
+
 local PROP_WHITELIST: {string} = {
-	-- BasePart & Fisika
 	"Anchored",
 	"CanCollide",
 	"CanTouch",
@@ -1126,7 +1185,6 @@ local PROP_WHITELIST: {string} = {
 	"CollisionGroup",
 	"CustomPhysicalProperties",
 	"RootPriority",
-	-- Transform & Visual Dasar
 	"CFrame",
 	"Size",
 	"Color",
@@ -1135,8 +1193,6 @@ local PROP_WHITELIST: {string} = {
 	"MaterialVariant",
 	"Transparency",
 	"Reflectance",
-	"CastShadow",
-	-- Part & MeshPart & Union
 	"Shape",
 	"TopSurface",
 	"BottomSurface",
@@ -1150,12 +1206,10 @@ local PROP_WHITELIST: {string} = {
 	"CollisionFidelity",
 	"DoubleSided",
 	"UsePartColor",
-	-- SpecialMesh
 	"MeshType",
 	"Scale",
 	"Offset",
 	"VertexColor",
-	-- Decal & Texture
 	"Texture",
 	"Face",
 	"Color3",
@@ -1164,19 +1218,15 @@ local PROP_WHITELIST: {string} = {
 	"OffsetStudsU",
 	"OffsetStudsV",
 	"ZIndex",
-	-- SurfaceAppearance
 	"ColorMap",
 	"MetalnessMap",
 	"NormalMap",
 	"RoughnessMap",
 	"AlphaMode",
-	-- Light (PointLight, SpotLight, SurfaceLight)
 	"Enabled",
 	"Brightness",
 	"Range",
 	"Angle",
-	"Shadows",
-	-- ParticleEmitter / Beam / Trail
 	"Rate",
 	"Lifetime",
 	"Speed",
@@ -1200,7 +1250,6 @@ local PROP_WHITELIST: {string} = {
 	"TextureSpeed",
 	"MinLength",
 	"MaxLength",
-	-- Sound
 	"SoundId",
 	"Volume",
 	"PlaybackSpeed",
@@ -1209,7 +1258,6 @@ local PROP_WHITELIST: {string} = {
 	"RollOffMinDistance",
 	"RollOffMode",
 	"TimePosition",
-	-- ValueBase / UI / Misc
 	"Value",
 	"Text",
 	"Image",
@@ -1221,9 +1269,18 @@ local PROP_WHITELIST: {string} = {
 	"AlwaysOnTop",
 	"MaxDistance",
 	"Adornee",
-	-- Model
 	"WorldPivot",
 	"LevelOfDetail",
+	-- Tool / StarterPack props
+	"ToolTip",
+	"Grip",
+	"GripPos",
+	"GripForward",
+	"GripRight",
+	"GripUp",
+	"RequiresHandle",
+	"CanBeDropped",
+	"ManualActivationOnly",
 }
 
 local function serializePropertyValue(val: any): any
@@ -1339,11 +1396,16 @@ local function isPlayerCharacterDescendant(inst: Instance): boolean
 	return false
 end
 
-local function serializeInstanceTree(inst: Instance, countRef: {n: number}): any?
+local function serializeInstanceTree(inst: Instance, countRef: {n: number}, allowScripts: boolean): any?
 	if isPlayerCharacterDescendant(inst) then
 		return nil
 	end
 	if inst == ScreenGui or inst == MusicGroup then
+		return nil
+	end
+
+	local isScriptInst = inst:IsA("Script") or inst:IsA("LocalScript")
+	if isScriptInst and not allowScripts then
 		return nil
 	end
 
@@ -1358,6 +1420,11 @@ local function serializeInstanceTree(inst: Instance, countRef: {n: number}): any
 				props[propName] = encoded
 			end
 		end
+	end
+
+	local decompiledCode: string? = nil
+	if isScriptInst and allowScripts then
+		decompiledCode = decompileDeltaScript(inst :: LuaSourceContainer)
 	end
 
 	local primaryPartName: string? = nil
@@ -1381,7 +1448,7 @@ local function serializeInstanceTree(inst: Instance, countRef: {n: number}): any
 	countRef.n += 1
 	local childrenSerialized: {any} = {}
 	for _, ch in ipairs(inst:GetChildren()) do
-		local childNode = serializeInstanceTree(ch, countRef)
+		local childNode = serializeInstanceTree(ch, countRef, allowScripts)
 		if childNode ~= nil then
 			table.insert(childrenSerialized, childNode)
 		end
@@ -1391,6 +1458,7 @@ local function serializeInstanceTree(inst: Instance, countRef: {n: number}): any
 		Name = inst.Name,
 		ClassName = inst.ClassName,
 		PrimaryPartName = primaryPartName,
+		DecompiledSource = decompiledCode,
 		Properties = props,
 		Attributes = attrs,
 		Children = childrenSerialized,
@@ -1406,10 +1474,9 @@ local function getFrontAnchorCFrame(): CFrame?
 	return nil
 end
 
-local function applyImportedProps(inst: Instance, propsTable: any, refOrigin: CFrame?, frontAnchor: CFrame?)
+local function applyImportedProps(inst: Instance, propsTable: any, refOrigin: CFrame?, frontAnchor: CFrame?, isStarterPackTarget: boolean)
 	if type(propsTable) ~= "table" then return end
 
-	-- Terapkan Size sebelum CFrame agar konsisten
 	if propsTable.Size ~= nil then
 		local sz = deserializePropertyValue(propsTable.Size)
 		if sz ~= nil then
@@ -1420,10 +1487,10 @@ local function applyImportedProps(inst: Instance, propsTable: any, refOrigin: CF
 	end
 
 	for propName, rawVal in pairs(propsTable) do
-		if propName ~= "Size" then
+		if propName ~= "Size" and propName ~= "CastShadow" and propName ~= "Shadows" then
 			local decoded = deserializePropertyValue(rawVal)
 			if decoded ~= nil then
-				if propName == "CFrame" and typeof(decoded) == "CFrame" and CONFIG.MapPosMode == "InFrontOfChar" and refOrigin and frontAnchor then
+				if propName == "CFrame" and typeof(decoded) == "CFrame" and CONFIG.MapPosMode == "InFrontOfChar" and refOrigin and frontAnchor and not isStarterPackTarget then
 					local rel = refOrigin:ToObjectSpace(decoded)
 					decoded = frontAnchor * rel
 				end
@@ -1434,14 +1501,36 @@ local function applyImportedProps(inst: Instance, propsTable: any, refOrigin: CF
 		end
 	end
 
-	if CONFIG.MapAutoAnchor and inst:IsA("BasePart") then
+	if inst:IsA("BasePart") then
 		pcall(function()
-			inst.Anchored = true
+			inst.CastShadow = false
+			if CONFIG.MapAutoAnchor and not isStarterPackTarget then
+				inst.Anchored = true
+			end
+		end)
+	elseif inst:IsA("Light") then
+		pcall(function()
+			inst.Shadows = false
 		end)
 	end
 end
 
-local function buildNodesIntoParent(nodes: any, parentTarget: Instance, importedCounter: {n: number}, refOrigin: CFrame?, frontAnchor: CFrame?)
+local function injectDecompiledSource(inst: Instance, sourceCode: any)
+	if type(sourceCode) ~= "string" or sourceCode == "" then
+		return
+	end
+	local okSet = pcall(function()
+		(inst :: any).Source = sourceCode
+	end)
+	if not okSet then
+		-- Simpan juga di Attribute sebagai cadangan dekompilasi jika property Source read-only di runtime
+		pcall(function()
+			inst:SetAttribute("DecompiledSource", sourceCode)
+		end)
+	end
+end
+
+local function buildNodesIntoParent(nodes: any, parentTarget: Instance, importedCounter: {n: number}, refOrigin: CFrame?, frontAnchor: CFrame?, isStarterPackTarget: boolean)
 	if type(nodes) ~= "table" then return end
 	for i, node in ipairs(nodes) do
 		if type(node) == "table" and type(node.ClassName) == "string" then
@@ -1462,12 +1551,17 @@ local function buildNodesIntoParent(nodes: any, parentTarget: Instance, imported
 					end
 				end
 
-				applyImportedProps(newInst, node.Properties, refOrigin, frontAnchor)
+				applyImportedProps(newInst, node.Properties, refOrigin, frontAnchor, isStarterPackTarget)
+
+				if (newInst:IsA("Script") or newInst:IsA("LocalScript")) and isStarterPackTarget then
+					injectDecompiledSource(newInst, node.DecompiledSource)
+				end
+
 				newInst.Parent = parentTarget
 				importedCounter.n += 1
 
 				if type(node.Children) == "table" and #node.Children > 0 then
-					buildNodesIntoParent(node.Children, newInst, importedCounter, refOrigin, frontAnchor)
+					buildNodesIntoParent(node.Children, newInst, importedCounter, refOrigin, frontAnchor, isStarterPackTarget)
 				end
 
 				if newInst:IsA("Model") and type(node.PrimaryPartName) == "string" then
@@ -1549,12 +1643,13 @@ local function performCopyAllMap()
 	CONFIG.MapFileName = sanitizeFileName(FileNameBox.Text)
 	FileNameBox.Text = CONFIG.MapFileName
 
-	MapStatusLabel.Text = "Scanning seluruh Workspace & Service (75+ props)..."
-	appendMapLog("[Copy] Memulai scan semua model, decal, mesh, light & attributes...")
+	MapStatusLabel.Text = "Scanning Map (skip Script/LocalScript) + StarterPack..."
+	appendMapLog("[Copy] Map skip Script/LocalScript | StarterPack include Script/LocalScript (decompile)...")
 
 	task.spawn(function()
 		local servicesToDump = {
 			"Workspace",
+			"StarterPack",
 			"Lighting",
 			"ReplicatedFirst",
 			"ReplicatedStorage",
@@ -1566,7 +1661,9 @@ local function performCopyAllMap()
 				exportedBy = LocalPlayer.Name,
 				placeId = game.PlaceId,
 				universeId = game.GameId,
-				propCount = #PROP_WHITELIST,
+				skipMapScripts = true,
+				starterPackDecompile = true,
+				noShadow = true,
 				exportedAt = os.date("%Y-%m-%d %H:%M:%S"),
 			},
 		}
@@ -1575,9 +1672,10 @@ local function performCopyAllMap()
 		for _, sName in ipairs(servicesToDump) do
 			local okS, srv = pcall(game.GetService, game, sName)
 			if okS and srv then
+				local allowScriptsHere = (sName == "StarterPack")
 				local listNodes: {any} = {}
 				for _, child in ipairs(srv:GetChildren()) do
-					local node = serializeInstanceTree(child, totalCount)
+					local node = serializeInstanceTree(child, totalCount, allowScriptsHere)
 					if node ~= nil then
 						table.insert(listNodes, node)
 					end
@@ -1606,7 +1704,7 @@ local function performCopyAllMap()
 
 		if okSave then
 			MapStatusLabel.Text = string.format("Selesai Copy: %d instance -> %s", totalCount.n, targetFile)
-			appendMapLog(string.format("[Success] Tersimpan (%d instance, %d props) di %s", totalCount.n, #PROP_WHITELIST, savedPathOrErr))
+			appendMapLog(string.format("[Success] Tersimpan (%d instance) di %s", totalCount.n, savedPathOrErr))
 		else
 			MapStatusLabel.Text = "Gagal simpan file: " .. savedPathOrErr
 			appendMapLog("[Error] " .. savedPathOrErr)
@@ -1639,6 +1737,7 @@ local function performImportMap()
 			return
 		end
 
+		local isStarterPackTarget = (CONFIG.MapTargetService == "StarterPack")
 		local nodesToBuild: {any} = {}
 		local refOrigin: CFrame? = nil
 
@@ -1668,16 +1767,15 @@ local function performImportMap()
 
 		local frontAnchor = getFrontAnchorCFrame()
 		local importedCounter = { n = 0 }
-		buildNodesIntoParent(nodesToBuild, targetService, importedCounter, refOrigin, frontAnchor)
+		buildNodesIntoParent(nodesToBuild, targetService, importedCounter, refOrigin, frontAnchor, isStarterPackTarget)
 
 		CONFIG.MapBusy = false
 		MapStatusLabel.Text = string.format("Import selesai: %d instance -> %s", importedCounter.n, CONFIG.MapTargetService)
 		appendMapLog(string.format(
-			"[Success] %d instance di-import ke %s (%s | Anchor:%s)",
+			"[Success] %d instance di-import ke %s (%s)",
 			importedCounter.n,
 			CONFIG.MapTargetService,
-			CONFIG.MapPosMode,
-			CONFIG.MapAutoAnchor and "ON" or "OFF"
+			isStarterPackTarget and "StarterPack+Decompile" or (CONFIG.MapPosMode .. " | NoShadow")
 		))
 	end)
 end
@@ -1733,11 +1831,11 @@ AboutText.BackgroundTransparency = 1
 AboutText.Text = table.concat({
 	"Creator       : Ikyy (@" .. LocalPlayer.Name .. " | ID: " .. tostring(LocalPlayer.UserId) .. ")",
 	"Tools         : Plugin Studio Lite (Delta Executor Edition)",
-	"Versi         : v1.6.0",
+	"Versi         : v1.7.0",
 	"",
 	"Fitur Aktif:",
 	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
-	"• Map Tool    : Copy 75+ properti client (Part, MeshPart, Decal, Texture, Light, Particle, Sound) & Import Auto-Anchor.",
+	"• Map Tool    : Copy map tanpa Script/LocalScript (NoShadow), + StarterPack Script/LocalScript decompile Delta.",
 	"• Settings    : Pengaturan warna tema GUI dan pilihan font secara langsung.",
 	"• About       : Informasi kreator dan versi tools.",
 }, "\n")
@@ -1954,7 +2052,7 @@ end
 
 -- Navigasi Sidebar
 createNavButton("Music", "Music", 1).MouseButton1Click:Connect(function() switchTab("Music") end)
-createNavButton("MapTool", "COPY MAP", 2).MouseButton1Click:Connect(function() switchTab("MapTool") end)
+createNavButton("MapTool", "Map Tool", 2).MouseButton1Click:Connect(function() switchTab("MapTool") end)
 createNavButton("Settings", "Settings", 3).MouseButton1Click:Connect(function() switchTab("Settings") end)
 createNavButton("About", "About", 4).MouseButton1Click:Connect(function() switchTab("About") end)
 
