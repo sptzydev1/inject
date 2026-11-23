@@ -7,6 +7,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 local HttpService = game:GetService("HttpService")
+local MarketplaceService = game:GetService("MarketplaceService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -42,47 +43,48 @@ export type FontPreset = {
 }
 
 export type ImportPosMode = "OriginalCF" | "InFrontOfChar"
+export type ToolModeTab = "CopyMap" | "ImportMap" | "Music" | "Settings"
 
 local GUI_THEMES: {GuiTheme} = {
 	{
+		name = "Amber Studio",
+		accent = Color3.fromRGB(245, 178, 36),
+		accentSoft = Color3.fromRGB(255, 244, 214),
+		stroke = Color3.fromRGB(226, 186, 96),
+		gradStart = Color3.fromRGB(255, 252, 245),
+		gradEnd = Color3.fromRGB(248, 243, 230),
+		eqEven = Color3.fromRGB(245, 178, 36),
+		eqOdd = Color3.fromRGB(217, 119, 6),
+	},
+	{
 		name = "Violet Neon",
 		accent = Color3.fromRGB(108, 86, 245),
-		accentSoft = Color3.fromRGB(52, 46, 86),
-		stroke = Color3.fromRGB(92, 72, 168),
-		gradStart = Color3.fromRGB(22, 20, 34),
-		gradEnd = Color3.fromRGB(13, 12, 20),
-		eqEven = Color3.fromRGB(122, 98, 255),
-		eqOdd = Color3.fromRGB(80, 210, 255),
+		accentSoft = Color3.fromRGB(236, 233, 255),
+		stroke = Color3.fromRGB(138, 122, 224),
+		gradStart = Color3.fromRGB(250, 249, 255),
+		gradEnd = Color3.fromRGB(242, 240, 252),
+		eqEven = Color3.fromRGB(108, 86, 245),
+		eqOdd = Color3.fromRGB(56, 189, 248),
 	},
 	{
 		name = "Cyan Cyber",
 		accent = Color3.fromRGB(14, 165, 233),
-		accentSoft = Color3.fromRGB(22, 62, 86),
-		stroke = Color3.fromRGB(34, 150, 210),
-		gradStart = Color3.fromRGB(14, 24, 34),
-		gradEnd = Color3.fromRGB(10, 15, 22),
-		eqEven = Color3.fromRGB(34, 211, 238),
-		eqOdd = Color3.fromRGB(59, 130, 246),
+		accentSoft = Color3.fromRGB(224, 246, 255),
+		stroke = Color3.fromRGB(92, 186, 226),
+		gradStart = Color3.fromRGB(246, 252, 255),
+		gradEnd = Color3.fromRGB(236, 247, 253),
+		eqEven = Color3.fromRGB(14, 165, 233),
+		eqOdd = Color3.fromRGB(37, 99, 235),
 	},
 	{
-		name = "Magenta Glow",
-		accent = Color3.fromRGB(217, 70, 239),
-		accentSoft = Color3.fromRGB(82, 34, 92),
-		stroke = Color3.fromRGB(185, 68, 205),
-		gradStart = Color3.fromRGB(28, 16, 34),
-		gradEnd = Color3.fromRGB(16, 10, 22),
-		eqEven = Color3.fromRGB(232, 121, 249),
-		eqOdd = Color3.fromRGB(251, 113, 133),
-	},
-	{
-		name = "Crimson Dark",
+		name = "Rose Clean",
 		accent = Color3.fromRGB(225, 29, 72),
-		accentSoft = Color3.fromRGB(84, 26, 40),
-		stroke = Color3.fromRGB(180, 48, 76),
-		gradStart = Color3.fromRGB(30, 15, 20),
-		gradEnd = Color3.fromRGB(16, 10, 14),
-		eqEven = Color3.fromRGB(244, 63, 94),
-		eqOdd = Color3.fromRGB(251, 146, 60),
+		accentSoft = Color3.fromRGB(255, 228, 234),
+		stroke = Color3.fromRGB(224, 128, 150),
+		gradStart = Color3.fromRGB(255, 250, 252),
+		gradEnd = Color3.fromRGB(252, 242, 245),
+		eqEven = Color3.fromRGB(225, 29, 72),
+		eqOdd = Color3.fromRGB(249, 115, 22),
 	},
 }
 
@@ -93,17 +95,36 @@ local FONT_PRESETS: {FontPreset} = {
 	{ name = "Arcade", font = Enum.Font.Arcade, boldFont = Enum.Font.Arcade },
 }
 
+local SERVICE_LIST: {string} = {
+	"Workspace",
+	"StarterPack",
+	"Lighting",
+	"MaterialService",
+	"ReplicatedFirst",
+	"ReplicatedStorage",
+	"SoundService",
+}
+
 local CONFIG = {
 	WorkspaceRoot = "IkyyStudioLite",
 	IsMinimized = false,
-	ActiveTab = "Music",
+	ActiveTab = "CopyMap" :: ToolModeTab,
 	ThemeIndex = 1,
 	FontIndex = 1,
-	MapTargetService = "Workspace",
-	MapFileName = "map_export.json",
+	MapFileName = "auto_game_map.json",
 	MapPosMode = "OriginalCF" :: ImportPosMode,
 	MapAutoAnchor = true,
 	MapBusy = false,
+	CopyProgress = 0,
+	SelectedServices = {
+		Workspace = true,
+		StarterPack = true,
+		Lighting = true,
+		MaterialService = true,
+		ReplicatedFirst = true,
+		ReplicatedStorage = true,
+		SoundService = true,
+	} :: {[string]: boolean},
 }
 
 export type MusicTrack = {
@@ -123,10 +144,10 @@ local DEFAULT_MUSIC_PLAYLIST: {MusicTrack} = {
 	{ name = "BLOODLINE MENGKANE", songId = "87291197916136", playbackSpeed = 1.0 },
 }
 
-local WINDOW_SIZE = UDim2.fromOffset(540, 320)
-local WINDOW_POS = UDim2.new(0.5, -270, 0.5, -160)
-local ICON_SIZE = UDim2.fromOffset(42, 42)
-local ICON_DEFAULT_POS = UDim2.new(0.5, -21, 0.08, 0)
+local WINDOW_SIZE = UDim2.fromOffset(620, 340)
+local WINDOW_POS = UDim2.new(0.5, -310, 0.5, -170)
+local ICON_SIZE = UDim2.fromOffset(44, 44)
+local ICON_DEFAULT_POS = UDim2.new(0.5, -22, 0.08, 0)
 local currentIconPos = ICON_DEFAULT_POS
 
 local function getUserAvatarAsync(userId: number): string
@@ -149,126 +170,161 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.Parent = PlayerGui
 
--- 1. IKON LINGKARAN PROFILE USER (42x42, DRAGGABLE)
+-- 1. IKON LINGKARAN PROFILE USER (DRAGGABLE)
 local FloatingProfileBtn = Instance.new("ImageButton")
 FloatingProfileBtn.Name = "FloatingProfileToggle"
 FloatingProfileBtn.Size = ICON_SIZE
 FloatingProfileBtn.Position = ICON_DEFAULT_POS
-FloatingProfileBtn.BackgroundColor3 = Color3.fromRGB(20, 18, 32)
+FloatingProfileBtn.BackgroundColor3 = Color3.fromRGB(255, 250, 235)
 FloatingProfileBtn.BorderSizePixel = 0
 FloatingProfileBtn.Visible = false
 FloatingProfileBtn.AutoButtonColor = false
-FloatingProfileBtn.ZIndex = 50
+FloatingProfileBtn.ZIndex = 60
 FloatingProfileBtn.Image = getUserAvatarAsync(LocalPlayer.UserId)
 FloatingProfileBtn.Parent = ScreenGui
 
 Instance.new("UICorner", FloatingProfileBtn).CornerRadius = UDim.new(1, 0)
 local FloatStroke = Instance.new("UIStroke", FloatingProfileBtn)
-FloatStroke.Color = Color3.fromRGB(130, 92, 255)
-FloatStroke.Thickness = 2
+FloatStroke.Color = Color3.fromRGB(245, 178, 36)
+FloatStroke.Thickness = 2.4
 
--- 2. WINDOW UTAMA (540x320)
+-- 2. WINDOW UTAMA (620x340)
 local MainWindow = Instance.new("Frame")
 MainWindow.Name = "MainWindow"
 MainWindow.Size = WINDOW_SIZE
 MainWindow.Position = WINDOW_POS
-MainWindow.BackgroundColor3 = Color3.fromRGB(16, 15, 24)
+MainWindow.BackgroundColor3 = Color3.fromRGB(255, 252, 245)
 MainWindow.BorderSizePixel = 0
 MainWindow.ClipsDescendants = true
 MainWindow.Parent = ScreenGui
 
-Instance.new("UICorner", MainWindow).CornerRadius = UDim.new(0, 14)
+Instance.new("UICorner", MainWindow).CornerRadius = UDim.new(0, 12)
 local MainStroke = Instance.new("UIStroke", MainWindow)
-MainStroke.Color = Color3.fromRGB(92, 72, 168)
-MainStroke.Thickness = 1.4
-MainStroke.Transparency = 0.25
+MainStroke.Color = Color3.fromRGB(226, 186, 96)
+MainStroke.Thickness = 1.6
 
 local MainGradient = Instance.new("UIGradient")
 MainGradient.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, Color3.fromRGB(22, 20, 34)),
-	ColorSequenceKeypoint.new(1, Color3.fromRGB(13, 12, 20)),
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 252, 245)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(248, 243, 230)),
 })
-MainGradient.Rotation = 135
+MainGradient.Rotation = 90
 MainGradient.Parent = MainWindow
 
 -- ==========================================
--- HEADER BAR
+-- TOP BAR (BRANDING + TAB ATAS + KONTROL KANAN)
 -- ==========================================
-local HeaderBar = Instance.new("Frame")
-HeaderBar.Name = "HeaderBar"
-HeaderBar.Size = UDim2.new(1, 0, 0, 44)
-HeaderBar.BackgroundColor3 = Color3.fromRGB(20, 19, 30)
-HeaderBar.BackgroundTransparency = 0.25
-HeaderBar.BorderSizePixel = 0
-HeaderBar.Parent = MainWindow
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Size = UDim2.new(1, 0, 0, 38)
+TopBar.BackgroundColor3 = Color3.fromRGB(255, 250, 238)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = MainWindow
 
-local HeaderLogoBox = Instance.new("Frame")
-HeaderLogoBox.Size = UDim2.fromOffset(28, 28)
-HeaderLogoBox.Position = UDim2.new(0, 12, 0.5, -14)
-HeaderLogoBox.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
-HeaderLogoBox.BorderSizePixel = 0
-HeaderLogoBox.Parent = HeaderBar
-Instance.new("UICorner", HeaderLogoBox).CornerRadius = UDim.new(0, 8)
-local LogoStroke = Instance.new("UIStroke", HeaderLogoBox)
-LogoStroke.Color = Color3.fromRGB(95, 85, 145)
-LogoStroke.Thickness = 1
+local BrandTitleLabel = Instance.new("TextLabel")
+BrandTitleLabel.Size = UDim2.new(0, 175, 1, 0)
+BrandTitleLabel.Position = UDim2.new(0, 12, 0, 0)
+BrandTitleLabel.BackgroundTransparency = 1
+BrandTitleLabel.Text = "COPY MAP BY IKYY X STUDIO"
+BrandTitleLabel.TextColor3 = Color3.fromRGB(35, 32, 26)
+BrandTitleLabel.TextSize = 10
+BrandTitleLabel.Font = Enum.Font.GothamBold
+BrandTitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+BrandTitleLabel.TextTruncate = Enum.TextTruncate.AtEnd
+BrandTitleLabel.Parent = TopBar
 
-local LogoIcon = Instance.new("TextLabel")
-LogoIcon.Size = UDim2.fromScale(1, 1)
-LogoIcon.BackgroundTransparency = 1
-LogoIcon.Text = "🎵"
-LogoIcon.TextColor3 = Color3.fromRGB(215, 210, 255)
-LogoIcon.TextSize = 14
-LogoIcon.Font = Enum.Font.GothamBold
-LogoIcon.Parent = HeaderLogoBox
+local TopTabContainer = Instance.new("Frame")
+TopTabContainer.Size = UDim2.new(0, 336, 0, 24)
+TopTabContainer.Position = UDim2.new(0.5, -152, 0.5, -12)
+TopTabContainer.BackgroundTransparency = 1
+TopTabContainer.Parent = TopBar
 
-local SubTitleLabel = Instance.new("TextLabel")
-SubTitleLabel.Size = UDim2.new(0, 230, 0, 11)
-SubTitleLabel.Position = UDim2.new(0, 48, 0, 5)
-SubTitleLabel.BackgroundTransparency = 1
-SubTitleLabel.Text = "IKYYSTUDIO • DELTA EDITION"
-SubTitleLabel.TextColor3 = Color3.fromRGB(130, 126, 155)
-SubTitleLabel.TextSize = 8
-SubTitleLabel.Font = Enum.Font.GothamBold
-SubTitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-SubTitleLabel.Parent = HeaderBar
+local TopTabLayout = Instance.new("UIListLayout")
+TopTabLayout.FillDirection = Enum.FillDirection.Horizontal
+TopTabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+TopTabLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+TopTabLayout.Padding = UDim.new(0, 6)
+TopTabLayout.Parent = TopTabContainer
 
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(0, 240, 0, 16)
-TitleLabel.Position = UDim2.new(0, 48, 0, 15)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "Plugin Studio Lite"
-TitleLabel.TextColor3 = Color3.fromRGB(245, 245, 255)
-TitleLabel.TextSize = 13
-TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-TitleLabel.Parent = HeaderBar
+local tabButtons: {[string]: TextButton} = {}
+local pageFrames: {[string]: Frame} = {}
+local applyThemeAndFont: () -> () = function() end
 
-local MetaLabel = Instance.new("TextLabel")
-MetaLabel.Size = UDim2.new(0, 240, 0, 11)
-MetaLabel.Position = UDim2.new(0, 48, 0, 31)
-MetaLabel.BackgroundTransparency = 1
-MetaLabel.Text = "by Ikyy • v1.7.0 • @" .. LocalPlayer.Name
-MetaLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
-MetaLabel.TextSize = 8
-MetaLabel.Font = Enum.Font.GothamMedium
-MetaLabel.TextXAlignment = Enum.TextXAlignment.Left
-MetaLabel.Parent = HeaderBar
+local function makeTopTab(tabKey: ToolModeTab, labelText: string)
+	local btn = Instance.new("TextButton")
+	btn.Name = "Tab_" .. tabKey
+	btn.Size = UDim2.fromOffset(78, 22)
+	btn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	btn.Text = labelText
+	btn.TextColor3 = Color3.fromRGB(45, 42, 35)
+	btn.TextSize = 8
+	btn.Font = Enum.Font.GothamBold
+	btn.AutoButtonColor = false
+	btn.Parent = TopTabContainer
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
+	local st = Instance.new("UIStroke", btn)
+	st.Color = Color3.fromRGB(228, 200, 132)
+	st.Thickness = 1
+	tabButtons[tabKey] = btn
+	return btn
+end
 
-local CloseCircleBtn = Instance.new("TextButton")
-CloseCircleBtn.Name = "CloseToCircleBtn"
-CloseCircleBtn.Size = UDim2.fromOffset(28, 28)
-CloseCircleBtn.Position = UDim2.new(1, -40, 0.5, -14)
-CloseCircleBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 50)
-CloseCircleBtn.Text = "❌"
-CloseCircleBtn.TextColor3 = Color3.fromRGB(255, 110, 125)
-CloseCircleBtn.TextSize = 12
-CloseCircleBtn.Font = Enum.Font.GothamBold
-CloseCircleBtn.Parent = HeaderBar
-Instance.new("UICorner", CloseCircleBtn).CornerRadius = UDim.new(1, 0)
-local CloseStroke = Instance.new("UIStroke", CloseCircleBtn)
-CloseStroke.Color = Color3.fromRGB(115, 65, 95)
-CloseStroke.Thickness = 1
+local function switchTab(tabKey: ToolModeTab)
+	CONFIG.ActiveTab = tabKey
+	for k, frame in pairs(pageFrames) do
+		frame.Visible = (k == tabKey)
+	end
+	applyThemeAndFont()
+end
+
+makeTopTab("CopyMap", "COPY MAP")
+makeTopTab("ImportMap", "IMPORT MAP")
+makeTopTab("Music", "MUSIC")
+makeTopTab("Settings", "SETTINGS")
+
+for k, btn in pairs(tabButtons) do
+	btn.MouseButton1Click:Connect(function()
+		switchTab(k :: ToolModeTab)
+	end)
+end
+
+-- Tombol kontrol kanan atas: Settings, Drag Window, Close ke Circle
+local QuickSettingsBtn = Instance.new("TextButton")
+QuickSettingsBtn.Size = UDim2.fromOffset(22, 22)
+QuickSettingsBtn.Position = UDim2.new(1, -80, 0.5, -11)
+QuickSettingsBtn.BackgroundColor3 = Color3.fromRGB(252, 246, 228)
+QuickSettingsBtn.Text = "⚙"
+QuickSettingsBtn.TextColor3 = Color3.fromRGB(40, 36, 28)
+QuickSettingsBtn.TextSize = 11
+QuickSettingsBtn.Font = Enum.Font.GothamBold
+QuickSettingsBtn.Parent = TopBar
+Instance.new("UICorner", QuickSettingsBtn).CornerRadius = UDim.new(0, 5)
+
+local DragHandleBtn = Instance.new("TextButton")
+DragHandleBtn.Size = UDim2.fromOffset(22, 22)
+DragHandleBtn.Position = UDim2.new(1, -54, 0.5, -11)
+DragHandleBtn.BackgroundColor3 = Color3.fromRGB(252, 246, 228)
+DragHandleBtn.Text = "✥"
+DragHandleBtn.TextColor3 = Color3.fromRGB(40, 36, 28)
+DragHandleBtn.TextSize = 11
+DragHandleBtn.Font = Enum.Font.GothamBold
+DragHandleBtn.Parent = TopBar
+Instance.new("UICorner", DragHandleBtn).CornerRadius = UDim.new(0, 5)
+
+local CloseToCircleBtn = Instance.new("TextButton")
+CloseToCircleBtn.Size = UDim2.fromOffset(22, 22)
+CloseToCircleBtn.Position = UDim2.new(1, -28, 0.5, -11)
+CloseToCircleBtn.BackgroundColor3 = Color3.fromRGB(255, 236, 236)
+CloseToCircleBtn.Text = "✕"
+CloseToCircleBtn.TextColor3 = Color3.fromRGB(185, 38, 52)
+CloseToCircleBtn.TextSize = 10
+CloseToCircleBtn.Font = Enum.Font.GothamBold
+CloseToCircleBtn.Parent = TopBar
+Instance.new("UICorner", CloseToCircleBtn).CornerRadius = UDim.new(0, 5)
+
+QuickSettingsBtn.MouseButton1Click:Connect(function()
+	switchTab("Settings")
+end)
 
 local function setMinimized(minimized: boolean)
 	CONFIG.IsMinimized = minimized
@@ -296,6 +352,50 @@ local function setMinimized(minimized: boolean)
 			Position = WINDOW_POS,
 		}):Play()
 	end
+end
+
+CloseToCircleBtn.MouseButton1Click:Connect(function()
+	setMinimized(true)
+end)
+
+-- Drag MainWindow dari TopBar / DragHandleBtn
+do
+	local draggingWin = false
+	local dragStart = Vector3.zero
+	local startPos = UDim2.new()
+	local activeInput: InputObject? = nil
+
+	local function beginDrag(input: InputObject)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			draggingWin = true
+			activeInput = input
+			dragStart = input.Position
+			startPos = MainWindow.Position
+		end
+	end
+
+	TopBar.InputBegan:Connect(beginDrag)
+	DragHandleBtn.InputBegan:Connect(beginDrag)
+
+	UserInputService.InputChanged:Connect(function(input: InputObject)
+		if not draggingWin or input ~= activeInput then return end
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			local delta = input.Position - dragStart
+			MainWindow.Position = UDim2.new(
+				startPos.X.Scale,
+				startPos.X.Offset + delta.X,
+				startPos.Y.Scale,
+				startPos.Y.Offset + delta.Y
+			)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input: InputObject)
+		if input == activeInput then
+			draggingWin = false
+			activeInput = nil
+		end
+	end)
 end
 
 -- Geser luas ikon profil
@@ -359,269 +459,653 @@ do
 	end)
 end
 
-CloseCircleBtn.MouseButton1Click:Connect(function()
-	setMinimized(true)
+-- ==========================================
+-- BODY AREA (DUA KOLOM RAPI SEPERTI REFERENSI)
+-- ==========================================
+local BodyArea = Instance.new("Frame")
+BodyArea.Name = "BodyArea"
+BodyArea.Size = UDim2.new(1, -20, 1, -46)
+BodyArea.Position = UDim2.new(0, 10, 0, 40)
+BodyArea.BackgroundTransparency = 1
+BodyArea.Parent = MainWindow
+
+-- PAGE 1: COPY MAP (KOLOM KIRI: SERVICE STUDIO | KOLOM KANAN: PANEL KONTROL & LOG)
+local CopyPage = Instance.new("Frame")
+CopyPage.Size = UDim2.fromScale(1, 1)
+CopyPage.BackgroundTransparency = 1
+CopyPage.Visible = true
+CopyPage.Parent = BodyArea
+pageFrames["CopyMap"] = CopyPage
+
+-- Kolom Kiri (Service Studio)
+local LeftServiceCard = Instance.new("Frame")
+LeftServiceCard.Size = UDim2.new(0.42, -5, 1, 0)
+LeftServiceCard.Position = UDim2.new(0, 0, 0, 0)
+LeftServiceCard.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+LeftServiceCard.BorderSizePixel = 0
+LeftServiceCard.Parent = CopyPage
+Instance.new("UICorner", LeftServiceCard).CornerRadius = UDim.new(0, 8)
+local LeftStroke = Instance.new("UIStroke", LeftServiceCard)
+LeftStroke.Color = Color3.fromRGB(235, 212, 152)
+LeftStroke.Thickness = 1
+
+local ServiceHeaderLbl = Instance.new("TextLabel")
+ServiceHeaderLbl.Size = UDim2.new(1, -16, 0, 16)
+ServiceHeaderLbl.Position = UDim2.new(0, 8, 0, 5)
+ServiceHeaderLbl.BackgroundTransparency = 1
+ServiceHeaderLbl.Text = "SERVICE STUDIO"
+ServiceHeaderLbl.TextColor3 = Color3.fromRGB(45, 42, 35)
+ServiceHeaderLbl.TextSize = 8
+ServiceHeaderLbl.Font = Enum.Font.GothamBold
+ServiceHeaderLbl.TextXAlignment = Enum.TextXAlignment.Left
+ServiceHeaderLbl.Parent = LeftServiceCard
+
+local FilterChipRow = Instance.new("Frame")
+FilterChipRow.Size = UDim2.new(1, -16, 0, 18)
+FilterChipRow.Position = UDim2.new(0, 8, 0, 21)
+FilterChipRow.BackgroundTransparency = 1
+FilterChipRow.Parent = LeftServiceCard
+
+local FilterAllBtn = Instance.new("TextButton")
+FilterAllBtn.Size = UDim2.new(0.33, -2, 1, 0)
+FilterAllBtn.Position = UDim2.new(0, 0, 0, 0)
+FilterAllBtn.BackgroundColor3 = Color3.fromRGB(255, 245, 214)
+FilterAllBtn.Text = "Semua"
+FilterAllBtn.TextColor3 = Color3.fromRGB(50, 44, 30)
+FilterAllBtn.TextSize = 7
+FilterAllBtn.Font = Enum.Font.GothamBold
+FilterAllBtn.Parent = FilterChipRow
+Instance.new("UICorner", FilterAllBtn).CornerRadius = UDim.new(0, 4)
+
+local FilterMapBtn = Instance.new("TextButton")
+FilterMapBtn.Size = UDim2.new(0.33, -2, 1, 0)
+FilterMapBtn.Position = UDim2.new(0.33, 1, 0, 0)
+FilterMapBtn.BackgroundColor3 = Color3.fromRGB(250, 248, 242)
+FilterMapBtn.Text = "Map"
+FilterMapBtn.TextColor3 = Color3.fromRGB(70, 66, 56)
+FilterMapBtn.TextSize = 7
+FilterMapBtn.Font = Enum.Font.GothamBold
+FilterMapBtn.Parent = FilterChipRow
+Instance.new("UICorner", FilterMapBtn).CornerRadius = UDim.new(0, 4)
+
+local FilterPackBtn = Instance.new("TextButton")
+FilterPackBtn.Size = UDim2.new(0.34, -2, 1, 0)
+FilterPackBtn.Position = UDim2.new(0.66, 2, 0, 0)
+FilterPackBtn.BackgroundColor3 = Color3.fromRGB(250, 248, 242)
+FilterPackBtn.Text = "Pack"
+FilterPackBtn.TextColor3 = Color3.fromRGB(70, 66, 56)
+FilterPackBtn.TextSize = 7
+FilterPackBtn.Font = Enum.Font.GothamBold
+FilterPackBtn.Parent = FilterChipRow
+Instance.new("UICorner", FilterPackBtn).CornerRadius = UDim.new(0, 4)
+
+local ServiceListScroll = Instance.new("ScrollingFrame")
+ServiceListScroll.Size = UDim2.new(1, -12, 1, -46)
+ServiceListScroll.Position = UDim2.new(0, 6, 0, 42)
+ServiceListScroll.BackgroundTransparency = 1
+ServiceListScroll.BorderSizePixel = 0
+ServiceListScroll.ScrollBarThickness = 2
+ServiceListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+ServiceListScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ServiceListScroll.Parent = LeftServiceCard
+
+local ServiceListLayout = Instance.new("UIListLayout")
+ServiceListLayout.Padding = UDim.new(0, 5)
+ServiceListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ServiceListLayout.Parent = ServiceListScroll
+
+local serviceRowToggles: {[string]: {row: Frame, radioBtn: TextButton, subLbl: TextLabel, titleLbl: TextLabel}} = {}
+
+local function updateServiceCardVisuals()
+	for _, sName in ipairs(SERVICE_LIST) do
+		local item = serviceRowToggles[sName]
+		if item then
+			local enabled = CONFIG.SelectedServices[sName] == true
+			local okS, srv = pcall(game.GetService, game, sName)
+			local childCount = (okS and srv) and #srv:GetChildren() or 0
+			item.subLbl.Text = tostring(childCount) .. " item" .. (sName == "StarterPack" and " • Decompile" or " • NoScript")
+			item.radioBtn.BackgroundColor3 = enabled and Color3.fromRGB(245, 178, 36) or Color3.fromRGB(235, 232, 224)
+			item.radioBtn.Text = enabled and "●" or ""
+		end
+	end
+end
+
+for idx, sName in ipairs(SERVICE_LIST) do
+	local row = Instance.new("Frame")
+	row.Size = UDim2.new(1, -4, 0, 36)
+	row.BackgroundColor3 = Color3.fromRGB(255, 253, 248)
+	row.BorderSizePixel = 0
+	row.LayoutOrder = idx
+	row.Parent = ServiceListScroll
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+	local rStroke = Instance.new("UIStroke", row)
+	rStroke.Color = Color3.fromRGB(236, 216, 166)
+	rStroke.Thickness = 1
+
+	local titleLbl = Instance.new("TextLabel")
+	titleLbl.Size = UDim2.new(1, -36, 0, 14)
+	titleLbl.Position = UDim2.new(0, 8, 0, 4)
+	titleLbl.BackgroundTransparency = 1
+	titleLbl.Text = sName
+	titleLbl.TextColor3 = Color3.fromRGB(35, 32, 26)
+	titleLbl.TextSize = 9
+	titleLbl.Font = Enum.Font.GothamBold
+	titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+	titleLbl.Parent = row
+
+	local subLbl = Instance.new("TextLabel")
+	subLbl.Size = UDim2.new(1, -36, 0, 11)
+	subLbl.Position = UDim2.new(0, 8, 0, 19)
+	subLbl.BackgroundTransparency = 1
+	subLbl.Text = "0 item"
+	subLbl.TextColor3 = Color3.fromRGB(130, 122, 102)
+	subLbl.TextSize = 7
+	subLbl.Font = Enum.Font.GothamMedium
+	subLbl.TextXAlignment = Enum.TextXAlignment.Left
+	subLbl.Parent = row
+
+	local radioBtn = Instance.new("TextButton")
+	radioBtn.Size = UDim2.fromOffset(16, 16)
+	radioBtn.Position = UDim2.new(1, -24, 0.5, -8)
+	radioBtn.BackgroundColor3 = Color3.fromRGB(245, 178, 36)
+	radioBtn.Text = "●"
+	radioBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	radioBtn.TextSize = 9
+	radioBtn.Font = Enum.Font.GothamBold
+	radioBtn.Parent = row
+	Instance.new("UICorner", radioBtn).CornerRadius = UDim.new(1, 0)
+
+	local function toggleService()
+		CONFIG.SelectedServices[sName] = not (CONFIG.SelectedServices[sName] == true)
+		updateServiceCardVisuals()
+	end
+
+	radioBtn.MouseButton1Click:Connect(toggleService)
+	serviceRowToggles[sName] = { row = row, radioBtn = radioBtn, subLbl = subLbl, titleLbl = titleLbl }
+end
+
+FilterAllBtn.MouseButton1Click:Connect(function()
+	for _, sName in ipairs(SERVICE_LIST) do
+		CONFIG.SelectedServices[sName] = true
+	end
+	updateServiceCardVisuals()
 end)
 
--- ==========================================
--- SIDEBAR KIRI
--- ==========================================
-local Sidebar = Instance.new("Frame")
-Sidebar.Name = "Sidebar"
-Sidebar.Size = UDim2.new(0, 126, 1, -54)
-Sidebar.Position = UDim2.new(0, 10, 0, 48)
-Sidebar.BackgroundColor3 = Color3.fromRGB(21, 20, 32)
-Sidebar.BorderSizePixel = 0
-Sidebar.Parent = MainWindow
-Instance.new("UICorner", Sidebar).CornerRadius = UDim.new(0, 10)
-local SideStroke = Instance.new("UIStroke", Sidebar)
-SideStroke.Color = Color3.fromRGB(52, 48, 82)
-SideStroke.Thickness = 1
-
-local NavScroll = Instance.new("ScrollingFrame")
-NavScroll.Size = UDim2.new(1, -10, 1, -10)
-NavScroll.Position = UDim2.new(0, 5, 0, 5)
-NavScroll.BackgroundTransparency = 1
-NavScroll.BorderSizePixel = 0
-NavScroll.ScrollBarThickness = 2
-NavScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-NavScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-NavScroll.Parent = Sidebar
-
-local NavLayout = Instance.new("UIListLayout")
-NavLayout.Padding = UDim.new(0, 4)
-NavLayout.SortOrder = Enum.SortOrder.LayoutOrder
-NavLayout.Parent = NavScroll
-
-local tabPages: {[string]: Frame} = {}
-local tabButtons: {[string]: TextButton} = {}
-local applyThemeAndFont: () -> () = function() end
-
-local function createNavButton(name: string, label: string, order: number)
-	local btn = Instance.new("TextButton")
-	btn.Name = "Nav_" .. name
-	btn.Size = UDim2.new(1, 0, 0, 32)
-	btn.BackgroundColor3 = Color3.fromRGB(28, 27, 42)
-	btn.Text = "  " .. label
-	btn.TextColor3 = Color3.fromRGB(185, 182, 210)
-	btn.TextSize = 10
-	btn.Font = Enum.Font.GothamMedium
-	btn.TextXAlignment = Enum.TextXAlignment.Left
-	btn.LayoutOrder = order
-	btn.AutoButtonColor = false
-	btn.Parent = NavScroll
-	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 7)
-	tabButtons[name] = btn
-	return btn
-end
-
--- ==========================================
--- AREA KONTEN KANAN
--- ==========================================
-local ContentArea = Instance.new("Frame")
-ContentArea.Name = "ContentArea"
-ContentArea.Size = UDim2.new(1, -152, 1, -54)
-ContentArea.Position = UDim2.new(0, 142, 0, 48)
-ContentArea.BackgroundColor3 = Color3.fromRGB(20, 19, 30)
-ContentArea.BorderSizePixel = 0
-ContentArea.Parent = MainWindow
-Instance.new("UICorner", ContentArea).CornerRadius = UDim.new(0, 10)
-local ContStroke = Instance.new("UIStroke", ContentArea)
-ContStroke.Color = Color3.fromRGB(52, 48, 82)
-ContStroke.Thickness = 1
-
-local function switchTab(tabName: string)
-	CONFIG.ActiveTab = tabName
-	for name, page in pairs(tabPages) do
-		page.Visible = (name == tabName)
+FilterMapBtn.MouseButton1Click:Connect(function()
+	for _, sName in ipairs(SERVICE_LIST) do
+		CONFIG.SelectedServices[sName] = (sName == "Workspace" or sName == "Lighting" or sName == "MaterialService")
 	end
-	applyThemeAndFont()
+	updateServiceCardVisuals()
+end)
+
+FilterPackBtn.MouseButton1Click:Connect(function()
+	for _, sName in ipairs(SERVICE_LIST) do
+		CONFIG.SelectedServices[sName] = (sName == "StarterPack")
+	end
+	updateServiceCardVisuals()
+end)
+
+-- Kolom Kanan (Panel Info Grid + File Otomatis + Progress/Log + Tombol Aksi)
+local RightControlCard = Instance.new("Frame")
+RightControlCard.Size = UDim2.new(0.58, -5, 1, 0)
+RightControlCard.Position = UDim2.new(0.42, 5, 0, 0)
+RightControlCard.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+RightControlCard.BorderSizePixel = 0
+RightControlCard.Parent = CopyPage
+Instance.new("UICorner", RightControlCard).CornerRadius = UDim.new(0, 8)
+local RightStroke = Instance.new("UIStroke", RightControlCard)
+RightStroke.Color = Color3.fromRGB(235, 212, 152)
+RightStroke.Thickness = 1
+
+local RightHeaderLbl = Instance.new("TextLabel")
+RightHeaderLbl.Size = UDim2.new(1, -16, 0, 15)
+RightHeaderLbl.Position = UDim2.new(0, 8, 0, 4)
+RightHeaderLbl.BackgroundTransparency = 1
+RightHeaderLbl.Text = "COPY MAP • AUTO FILE NAMA GAME"
+RightHeaderLbl.TextColor3 = Color3.fromRGB(45, 42, 35)
+RightHeaderLbl.TextSize = 8
+RightHeaderLbl.Font = Enum.Font.GothamBold
+RightHeaderLbl.TextXAlignment = Enum.TextXAlignment.Left
+RightHeaderLbl.Parent = RightControlCard
+
+-- Grid 2x2 Info Mode (Shadow OFF, Map NoScript, StarterPack Decompile, Cross-Game)
+local InfoGrid = Instance.new("Frame")
+InfoGrid.Size = UDim2.new(1, -16, 0, 62)
+InfoGrid.Position = UDim2.new(0, 8, 0, 20)
+InfoGrid.BackgroundTransparency = 1
+InfoGrid.Parent = RightControlCard
+
+local function makeInfoTile(col: number, rowIdx: number, tagTxt: string, valTxt: string): TextLabel
+	local tile = Instance.new("Frame")
+	tile.Size = UDim2.new(0.5, -3, 0.5, -2)
+	tile.Position = UDim2.new(col * 0.5, (col == 1 and 3 or 0), rowIdx * 0.5, (rowIdx == 1 and 2 or 0))
+	tile.BackgroundColor3 = Color3.fromRGB(255, 251, 240)
+	tile.BorderSizePixel = 0
+	tile.Parent = InfoGrid
+	Instance.new("UICorner", tile).CornerRadius = UDim.new(0, 5)
+	local st = Instance.new("UIStroke", tile)
+	st.Color = Color3.fromRGB(238, 220, 174)
+	st.Thickness = 1
+
+	local tLbl = Instance.new("TextLabel")
+	tLbl.Size = UDim2.new(1, -8, 0, 10)
+	tLbl.Position = UDim2.new(0, 4, 0, 2)
+	tLbl.BackgroundTransparency = 1
+	tLbl.Text = tagTxt
+	tLbl.TextColor3 = Color3.fromRGB(130, 122, 102)
+	tLbl.TextSize = 6
+	tLbl.Font = Enum.Font.GothamBold
+	tLbl.TextXAlignment = Enum.TextXAlignment.Left
+	tLbl.Parent = tile
+
+	local vLbl = Instance.new("TextLabel")
+	vLbl.Size = UDim2.new(1, -8, 0, 13)
+	vLbl.Position = UDim2.new(0, 4, 0, 12)
+	vLbl.BackgroundTransparency = 1
+	vLbl.Text = valTxt
+	vLbl.TextColor3 = Color3.fromRGB(35, 32, 26)
+	vLbl.TextSize = 8
+	vLbl.Font = Enum.Font.GothamBold
+	vLbl.TextXAlignment = Enum.TextXAlignment.Left
+	vLbl.TextTruncate = Enum.TextTruncate.AtEnd
+	vLbl.Parent = tile
+	return vLbl
 end
 
+makeInfoTile(0, 0, "BAYANGAN", "OFF (Ringan)")
+makeInfoTile(1, 0, "MAP SCRIPT", "Skip Script/Local")
+makeInfoTile(0, 1, "STARTERPACK", "Script + Decompile")
+makeInfoTile(1, 1, "LINTAS GAME", "Support Import")
+
+-- Baris Input File Otomatis + Tombol Reset Nama Game
+local FileRowBox = Instance.new("Frame")
+FileRowBox.Size = UDim2.new(1, -16, 0, 24)
+FileRowBox.Position = UDim2.new(0, 8, 0, 87)
+FileRowBox.BackgroundColor3 = Color3.fromRGB(252, 249, 242)
+FileRowBox.BorderSizePixel = 0
+FileRowBox.Parent = RightControlCard
+Instance.new("UICorner", FileRowBox).CornerRadius = UDim.new(0, 6)
+local FileRowStroke = Instance.new("UIStroke", FileRowBox)
+FileRowStroke.Color = Color3.fromRGB(232, 208, 148)
+FileRowStroke.Thickness = 1
+
+local FileNameInput = Instance.new("TextBox")
+FileNameInput.Size = UDim2.new(1, -72, 1, 0)
+FileNameInput.Position = UDim2.new(0, 6, 0, 0)
+FileNameInput.BackgroundTransparency = 1
+FileNameInput.Text = CONFIG.MapFileName
+FileNameInput.PlaceholderText = "nama_game_otomatis.json"
+FileNameInput.TextColor3 = Color3.fromRGB(35, 32, 26)
+FileNameInput.TextSize = 8
+FileNameInput.Font = Enum.Font.Code
+FileNameInput.TextXAlignment = Enum.TextXAlignment.Left
+FileNameInput.ClearTextOnFocus = false
+FileNameInput.Parent = FileRowBox
+
+local AutoNameBtn = Instance.new("TextButton")
+AutoNameBtn.Size = UDim2.new(0, 62, 0, 18)
+AutoNameBtn.Position = UDim2.new(1, -66, 0.5, -9)
+AutoNameBtn.BackgroundColor3 = Color3.fromRGB(245, 240, 225)
+AutoNameBtn.Text = "Auto Game"
+AutoNameBtn.TextColor3 = Color3.fromRGB(50, 44, 30)
+AutoNameBtn.TextSize = 7
+AutoNameBtn.Font = Enum.Font.GothamBold
+AutoNameBtn.Parent = FileRowBox
+Instance.new("UICorner", AutoNameBtn).CornerRadius = UDim.new(0, 4)
+
+-- Panel Status & Log Ringkas
+local StatusLogBox = Instance.new("Frame")
+StatusLogBox.Size = UDim2.new(1, -16, 1, -154)
+StatusLogBox.Position = UDim2.new(0, 8, 0, 115)
+StatusLogBox.BackgroundColor3 = Color3.fromRGB(255, 253, 248)
+StatusLogBox.BorderSizePixel = 0
+StatusLogBox.Parent = RightControlCard
+Instance.new("UICorner", StatusLogBox).CornerRadius = UDim.new(0, 6)
+local LogStroke = Instance.new("UIStroke", StatusLogBox)
+LogStroke.Color = Color3.fromRGB(238, 222, 178)
+LogStroke.Thickness = 1
+
+local StatusHeadlineLbl = Instance.new("TextLabel")
+StatusHeadlineLbl.Size = UDim2.new(1, -12, 0, 13)
+StatusHeadlineLbl.Position = UDim2.new(0, 6, 0, 3)
+StatusHeadlineLbl.BackgroundTransparency = 1
+StatusHeadlineLbl.Text = "Siap scan map & StarterPack"
+StatusHeadlineLbl.TextColor3 = Color3.fromRGB(35, 32, 26)
+StatusHeadlineLbl.TextSize = 8
+StatusHeadlineLbl.Font = Enum.Font.GothamBold
+StatusHeadlineLbl.TextXAlignment = Enum.TextXAlignment.Left
+StatusHeadlineLbl.Parent = StatusLogBox
+
+local ProgTrack = Instance.new("Frame")
+ProgTrack.Size = UDim2.new(1, -12, 0, 5)
+ProgTrack.Position = UDim2.new(0, 6, 0, 19)
+ProgTrack.BackgroundColor3 = Color3.fromRGB(240, 232, 210)
+ProgTrack.BorderSizePixel = 0
+ProgTrack.Parent = StatusLogBox
+Instance.new("UICorner", ProgTrack).CornerRadius = UDim.new(1, 0)
+
+local ProgFill = Instance.new("Frame")
+ProgFill.Size = UDim2.new(0, 0, 1, 0)
+ProgFill.BackgroundColor3 = Color3.fromRGB(245, 178, 36)
+ProgFill.BorderSizePixel = 0
+ProgFill.Parent = ProgTrack
+Instance.new("UICorner", ProgFill).CornerRadius = UDim.new(1, 0)
+
+local LogScroll = Instance.new("ScrollingFrame")
+LogScroll.Size = UDim2.new(1, -12, 1, -28)
+LogScroll.Position = UDim2.new(0, 6, 0, 26)
+LogScroll.BackgroundTransparency = 1
+LogScroll.BorderSizePixel = 0
+LogScroll.ScrollBarThickness = 2
+LogScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+LogScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+LogScroll.Parent = StatusLogBox
+
+local LogTextLbl = Instance.new("TextLabel")
+LogTextLbl.Size = UDim2.new(1, -4, 0, 16)
+LogTextLbl.AutomaticSize = Enum.AutomaticSize.Y
+LogTextLbl.BackgroundTransparency = 1
+LogTextLbl.Text = "[Ready] Save otomatis pakai nama game ke " .. CONFIG.WorkspaceRoot .. "/\n[Ready] CastShadow=OFF & Shadows=OFF agar tetap ringan."
+LogTextLbl.TextColor3 = Color3.fromRGB(95, 88, 72)
+LogTextLbl.TextSize = 7
+LogTextLbl.Font = Enum.Font.Code
+LogTextLbl.TextXAlignment = Enum.TextXAlignment.Left
+LogTextLbl.TextYAlignment = Enum.TextYAlignment.Top
+LogTextLbl.TextWrapped = true
+LogTextLbl.Parent = LogScroll
+
+-- Tombol Utama Bawah Kanan (COPY MAP)
+local PrimaryCopyBtn = Instance.new("TextButton")
+PrimaryCopyBtn.Size = UDim2.new(1, -16, 0, 28)
+PrimaryCopyBtn.Position = UDim2.new(0, 8, 1, -34)
+PrimaryCopyBtn.BackgroundColor3 = Color3.fromRGB(245, 178, 36)
+PrimaryCopyBtn.Text = "COPY MAP"
+PrimaryCopyBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+PrimaryCopyBtn.TextSize = 9
+PrimaryCopyBtn.Font = Enum.Font.GothamBold
+PrimaryCopyBtn.Parent = RightControlCard
+Instance.new("UICorner", PrimaryCopyBtn).CornerRadius = UDim.new(0, 6)
+
 -- ==========================================
--- HALAMAN 1: MUSIC PLAYER
+-- PAGE 2: IMPORT MAP (LINTAS GAME + STARTERPACK)
+-- ==========================================
+local ImportPage = Instance.new("Frame")
+ImportPage.Size = UDim2.fromScale(1, 1)
+ImportPage.BackgroundTransparency = 1
+ImportPage.Visible = false
+ImportPage.Parent = BodyArea
+pageFrames["ImportMap"] = ImportPage
+
+local ImportLeftCard = Instance.new("Frame")
+ImportLeftCard.Size = UDim2.new(0.42, -5, 1, 0)
+ImportLeftCard.Position = UDim2.new(0, 0, 0, 0)
+ImportLeftCard.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+ImportLeftCard.BorderSizePixel = 0
+ImportLeftCard.Parent = ImportPage
+Instance.new("UICorner", ImportLeftCard).CornerRadius = UDim.new(0, 8)
+local ImpLeftStroke = Instance.new("UIStroke", ImportLeftCard)
+ImpLeftStroke.Color = Color3.fromRGB(235, 212, 152)
+ImpLeftStroke.Thickness = 1
+
+local ImpTargetLbl = Instance.new("TextLabel")
+ImpTargetLbl.Size = UDim2.new(1, -16, 0, 16)
+ImpTargetLbl.Position = UDim2.new(0, 8, 0, 6)
+ImpTargetLbl.BackgroundTransparency = 1
+ImpTargetLbl.Text = "TARGET SERVICE IMPORT"
+ImpTargetLbl.TextColor3 = Color3.fromRGB(45, 42, 35)
+ImpTargetLbl.TextSize = 8
+ImpTargetLbl.Font = Enum.Font.GothamBold
+ImpTargetLbl.TextXAlignment = Enum.TextXAlignment.Left
+ImpTargetLbl.Parent = ImportLeftCard
+
+local selectedImportTarget = "Workspace"
+local importTargetBtns: {[string]: TextButton} = {}
+
+local function refreshImportTargetBtns()
+	for sName, btn in pairs(importTargetBtns) do
+		local active = (sName == selectedImportTarget)
+		btn.BackgroundColor3 = active and Color3.fromRGB(255, 245, 214) or Color3.fromRGB(255, 253, 248)
+		btn.Text = (active and "● " or "○ ") .. sName
+	end
+end
+
+for i, sName in ipairs({ "Workspace", "StarterPack", "Lighting", "ReplicatedStorage" }) do
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(1, -16, 0, 28)
+	b.Position = UDim2.new(0, 8, 0, 26 + (i - 1) * 33)
+	b.BackgroundColor3 = Color3.fromRGB(255, 253, 248)
+	b.Text = "○ " .. sName
+	b.TextColor3 = Color3.fromRGB(35, 32, 26)
+	b.TextSize = 8
+	b.Font = Enum.Font.GothamBold
+	b.TextXAlignment = Enum.TextXAlignment.Left
+	b.Parent = ImportLeftCard
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+	local st = Instance.new("UIStroke", b)
+	st.Color = Color3.fromRGB(236, 216, 166)
+	st.Thickness = 1
+	importTargetBtns[sName] = b
+	b.MouseButton1Click:Connect(function()
+		selectedImportTarget = sName
+		refreshImportTargetBtns()
+	end)
+end
+refreshImportTargetBtns()
+
+local ImportRightCard = Instance.new("Frame")
+ImportRightCard.Size = UDim2.new(0.58, -5, 1, 0)
+ImportRightCard.Position = UDim2.new(0.42, 5, 0, 0)
+ImportRightCard.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+ImportRightCard.BorderSizePixel = 0
+ImportRightCard.Parent = ImportPage
+Instance.new("UICorner", ImportRightCard).CornerRadius = UDim.new(0, 8)
+local ImpRightStroke = Instance.new("UIStroke", ImportRightCard)
+ImpRightStroke.Color = Color3.fromRGB(235, 212, 152)
+ImpRightStroke.Thickness = 1
+
+local ImpRightTitle = Instance.new("TextLabel")
+ImpRightTitle.Size = UDim2.new(1, -16, 0, 16)
+ImpRightTitle.Position = UDim2.new(0, 8, 0, 6)
+ImpRightTitle.BackgroundTransparency = 1
+ImpRightTitle.Text = "IMPORT KE GAME INI (CROSS-GAME)"
+ImpRightTitle.TextColor3 = Color3.fromRGB(45, 42, 35)
+ImpRightTitle.TextSize = 8
+ImpRightTitle.Font = Enum.Font.GothamBold
+ImpRightTitle.TextXAlignment = Enum.TextXAlignment.Left
+ImpRightTitle.Parent = ImportRightCard
+
+local PosToggleBtn = Instance.new("TextButton")
+PosToggleBtn.Size = UDim2.new(0.5, -11, 0, 24)
+PosToggleBtn.Position = UDim2.new(0, 8, 0, 28)
+PosToggleBtn.BackgroundColor3 = Color3.fromRGB(255, 251, 240)
+PosToggleBtn.Text = "Posisi: Original CF"
+PosToggleBtn.TextColor3 = Color3.fromRGB(35, 32, 26)
+PosToggleBtn.TextSize = 8
+PosToggleBtn.Font = Enum.Font.GothamBold
+PosToggleBtn.Parent = ImportRightCard
+Instance.new("UICorner", PosToggleBtn).CornerRadius = UDim.new(0, 6)
+
+local AnchorToggleBtn = Instance.new("TextButton")
+AnchorToggleBtn.Size = UDim2.new(0.5, -11, 0, 24)
+AnchorToggleBtn.Position = UDim2.new(0.5, 3, 0, 28)
+AnchorToggleBtn.BackgroundColor3 = Color3.fromRGB(255, 245, 214)
+AnchorToggleBtn.Text = "Anchor: ON"
+AnchorToggleBtn.TextColor3 = Color3.fromRGB(35, 32, 26)
+AnchorToggleBtn.TextSize = 8
+AnchorToggleBtn.Font = Enum.Font.GothamBold
+AnchorToggleBtn.Parent = ImportRightCard
+Instance.new("UICorner", AnchorToggleBtn).CornerRadius = UDim.new(0, 6)
+
+PosToggleBtn.MouseButton1Click:Connect(function()
+	if CONFIG.MapPosMode == "OriginalCF" then
+		CONFIG.MapPosMode = "InFrontOfChar"
+		PosToggleBtn.Text = "Posisi: Depan Char"
+	else
+		CONFIG.MapPosMode = "OriginalCF"
+		PosToggleBtn.Text = "Posisi: Original CF"
+	end
+end)
+
+AnchorToggleBtn.MouseButton1Click:Connect(function()
+	CONFIG.MapAutoAnchor = not CONFIG.MapAutoAnchor
+	AnchorToggleBtn.Text = CONFIG.MapAutoAnchor and "Anchor: ON" or "Anchor: OFF"
+end)
+
+local ImportFileBox = Instance.new("TextBox")
+ImportFileBox.Size = UDim2.new(1, -16, 0, 24)
+ImportFileBox.Position = UDim2.new(0, 8, 0, 58)
+ImportFileBox.BackgroundColor3 = Color3.fromRGB(252, 249, 242)
+ImportFileBox.Text = CONFIG.MapFileName
+ImportFileBox.PlaceholderText = "nama_file_game_asal.json"
+ImportFileBox.TextColor3 = Color3.fromRGB(35, 32, 26)
+ImportFileBox.TextSize = 8
+ImportFileBox.Font = Enum.Font.Code
+ImportFileBox.ClearTextOnFocus = false
+ImportFileBox.Parent = ImportRightCard
+Instance.new("UICorner", ImportFileBox).CornerRadius = UDim.new(0, 6)
+
+local ImportInfoLbl = Instance.new("TextLabel")
+ImportInfoLbl.Size = UDim2.new(1, -16, 1, -124)
+ImportInfoLbl.Position = UDim2.new(0, 8, 0, 88)
+ImportInfoLbl.BackgroundColor3 = Color3.fromRGB(255, 253, 248)
+ImportInfoLbl.Text = "• Mendukung file JSON hasil Copy dari game manapun.\n• Map di-import tanpa bayangan (CastShadow=OFF & Shadows=OFF).\n• Target StarterPack memulihkan item + decompiled Script/LocalScript."
+ImportInfoLbl.TextColor3 = Color3.fromRGB(80, 74, 60)
+ImportInfoLbl.TextSize = 8
+ImportInfoLbl.Font = Enum.Font.GothamMedium
+ImportInfoLbl.TextXAlignment = Enum.TextXAlignment.Left
+ImportInfoLbl.TextYAlignment = Enum.TextYAlignment.Top
+ImportInfoLbl.TextWrapped = true
+ImportInfoLbl.Parent = ImportRightCard
+Instance.new("UICorner", ImportInfoLbl).CornerRadius = UDim.new(0, 6)
+
+local PrimaryImportBtn = Instance.new("TextButton")
+PrimaryImportBtn.Size = UDim2.new(1, -16, 0, 28)
+PrimaryImportBtn.Position = UDim2.new(0, 8, 1, -34)
+PrimaryImportBtn.BackgroundColor3 = Color3.fromRGB(245, 178, 36)
+PrimaryImportBtn.Text = "IMPORT MAP"
+PrimaryImportBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+PrimaryImportBtn.TextSize = 9
+PrimaryImportBtn.Font = Enum.Font.GothamBold
+PrimaryImportBtn.Parent = ImportRightCard
+Instance.new("UICorner", PrimaryImportBtn).CornerRadius = UDim.new(0, 6)
+
+-- ==========================================
+-- PAGE 3: MUSIC PLAYER
 -- ==========================================
 local MusicPage = Instance.new("Frame")
 MusicPage.Size = UDim2.fromScale(1, 1)
 MusicPage.BackgroundTransparency = 1
-MusicPage.Visible = true
-MusicPage.Parent = ContentArea
-tabPages["Music"] = MusicPage
+MusicPage.Visible = false
+MusicPage.Parent = BodyArea
+pageFrames["Music"] = MusicPage
 
-local MusicTrackLabel = Instance.new("TextLabel")
-MusicTrackLabel.Size = UDim2.new(1, -24, 0, 15)
-MusicTrackLabel.Position = UDim2.new(0, 12, 0, 4)
-MusicTrackLabel.BackgroundTransparency = 1
-MusicTrackLabel.Text = "♪ " .. DEFAULT_MUSIC_PLAYLIST[1].name .. " (" .. DEFAULT_MUSIC_PLAYLIST[1].songId .. ")"
-MusicTrackLabel.TextColor3 = Color3.fromRGB(245, 245, 255)
-MusicTrackLabel.TextSize = 11
-MusicTrackLabel.Font = Enum.Font.GothamBold
-MusicTrackLabel.TextTruncate = Enum.TextTruncate.AtEnd
-MusicTrackLabel.Parent = MusicPage
-
-local MusicStatusLabel = Instance.new("TextLabel")
-MusicStatusLabel.Size = UDim2.new(1, -24, 0, 12)
-MusicStatusLabel.Position = UDim2.new(0, 12, 0, 19)
-MusicStatusLabel.BackgroundTransparency = 1
-MusicStatusLabel.Text = "Siap diputar • Vol: 50%"
-MusicStatusLabel.TextColor3 = Color3.fromRGB(150, 146, 182)
-MusicStatusLabel.TextSize = 8
-MusicStatusLabel.Font = Enum.Font.GothamMedium
-MusicStatusLabel.Parent = MusicPage
-
-local EqFrame = Instance.new("Frame")
-EqFrame.Name = "EqualizerFrame"
-EqFrame.Size = UDim2.new(1, -24, 0, 44)
-EqFrame.Position = UDim2.new(0, 12, 0, 34)
-EqFrame.BackgroundColor3 = Color3.fromRGB(13, 12, 21)
-EqFrame.BorderSizePixel = 0
-EqFrame.Parent = MusicPage
-Instance.new("UICorner", EqFrame).CornerRadius = UDim.new(0, 8)
-local EqStroke = Instance.new("UIStroke", EqFrame)
-EqStroke.Color = Color3.fromRGB(64, 56, 108)
-EqStroke.Thickness = 1
-
-local EqBarsContainer = Instance.new("Frame")
-EqBarsContainer.Size = UDim2.new(0, 220, 0, 32)
-EqBarsContainer.Position = UDim2.new(0.5, -110, 0.5, -16)
-EqBarsContainer.BackgroundTransparency = 1
-EqBarsContainer.Parent = EqFrame
-
-local eqBars: {Frame} = {}
-local eqBarCount = 14
-local eqGap = 4
-local eqBarW = math.floor((220 - (eqGap * (eqBarCount - 1))) / eqBarCount)
-
-for i = 1, eqBarCount do
-	local bar = Instance.new("Frame")
-	bar.Size = UDim2.fromOffset(eqBarW, 6)
-	bar.Position = UDim2.fromOffset((i - 1) * (eqBarW + eqGap), 26)
-	bar.BackgroundColor3 = (i % 2 == 0) and Color3.fromRGB(122, 98, 255) or Color3.fromRGB(80, 210, 255)
-	bar.BorderSizePixel = 0
-	bar.Parent = EqBarsContainer
-	Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
-	table.insert(eqBars, bar)
-end
-
-local MusicLoadTrack = Instance.new("Frame")
-MusicLoadTrack.Size = UDim2.new(1, -24, 0, 5)
-MusicLoadTrack.Position = UDim2.new(0, 12, 0, 82)
-MusicLoadTrack.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
-MusicLoadTrack.BorderSizePixel = 0
-MusicLoadTrack.Parent = MusicPage
-Instance.new("UICorner", MusicLoadTrack).CornerRadius = UDim.new(1, 0)
-
-local MusicLoadFill = Instance.new("Frame")
-MusicLoadFill.Size = UDim2.new(0.25, 0, 1, 0)
-MusicLoadFill.BackgroundColor3 = Color3.fromRGB(96, 165, 250)
-MusicLoadFill.BorderSizePixel = 0
-MusicLoadFill.Parent = MusicLoadTrack
-Instance.new("UICorner", MusicLoadFill).CornerRadius = UDim.new(1, 0)
-
-local VolumeRow = Instance.new("Frame")
-VolumeRow.Size = UDim2.new(1, -24, 0, 20)
-VolumeRow.Position = UDim2.new(0, 12, 0, 91)
-VolumeRow.BackgroundTransparency = 1
-VolumeRow.Parent = MusicPage
-
-local VolLabel = Instance.new("TextLabel")
-VolLabel.Size = UDim2.new(0, 74, 1, 0)
-VolLabel.BackgroundTransparency = 1
-VolLabel.Text = "🔊 Vol: 50%"
-VolLabel.TextColor3 = Color3.fromRGB(205, 202, 230)
-VolLabel.TextSize = 9
-VolLabel.Font = Enum.Font.GothamBold
-VolLabel.TextXAlignment = Enum.TextXAlignment.Left
-VolLabel.Parent = VolumeRow
-
-local VolSliderBg = Instance.new("Frame")
-VolSliderBg.Size = UDim2.new(1, -80, 0, 8)
-VolSliderBg.Position = UDim2.new(0, 78, 0.5, -4)
-VolSliderBg.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
-VolSliderBg.BorderSizePixel = 0
-VolSliderBg.Parent = VolumeRow
-Instance.new("UICorner", VolSliderBg).CornerRadius = UDim.new(1, 0)
-
-local VolSliderFill = Instance.new("Frame")
-VolSliderFill.Size = UDim2.new(0.5, 0, 1, 0)
-VolSliderFill.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-VolSliderFill.BorderSizePixel = 0
-VolSliderFill.Parent = VolSliderBg
-Instance.new("UICorner", VolSliderFill).CornerRadius = UDim.new(1, 0)
-
-local VolKnob = Instance.new("TextButton")
-VolKnob.Size = UDim2.fromOffset(14, 14)
-VolKnob.Position = UDim2.new(0.5, -7, 0.5, -7)
-VolKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-VolKnob.Text = ""
-VolKnob.AutoButtonColor = false
-VolKnob.Parent = VolSliderBg
-Instance.new("UICorner", VolKnob).CornerRadius = UDim.new(1, 0)
-
-local ControlsRow = Instance.new("Frame")
-ControlsRow.Size = UDim2.new(1, -24, 0, 26)
-ControlsRow.Position = UDim2.new(0, 12, 0, 114)
-ControlsRow.BackgroundTransparency = 1
-ControlsRow.Parent = MusicPage
-
-local PrevTrackBtn = Instance.new("TextButton")
-PrevTrackBtn.Size = UDim2.new(0.28, -4, 1, 0)
-PrevTrackBtn.Position = UDim2.new(0, 0, 0, 0)
-PrevTrackBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
-PrevTrackBtn.Text = "<<"
-PrevTrackBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-PrevTrackBtn.TextSize = 11
-PrevTrackBtn.Font = Enum.Font.GothamBold
-PrevTrackBtn.Parent = ControlsRow
-Instance.new("UICorner", PrevTrackBtn).CornerRadius = UDim.new(0, 7)
-
-local PlayPauseBtn = Instance.new("TextButton")
-PlayPauseBtn.Size = UDim2.new(0.44, -4, 1, 0)
-PlayPauseBtn.Position = UDim2.new(0.28, 2, 0, 0)
-PlayPauseBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-PlayPauseBtn.Text = "▶ PLAY"
-PlayPauseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-PlayPauseBtn.TextSize = 10
-PlayPauseBtn.Font = Enum.Font.GothamBold
-PlayPauseBtn.Parent = ControlsRow
-Instance.new("UICorner", PlayPauseBtn).CornerRadius = UDim.new(0, 7)
-
-local NextTrackBtn = Instance.new("TextButton")
-NextTrackBtn.Size = UDim2.new(0.28, -4, 1, 0)
-NextTrackBtn.Position = UDim2.new(0.72, 2, 0, 0)
-NextTrackBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
-NextTrackBtn.Text = ">>"
-NextTrackBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-NextTrackBtn.TextSize = 11
-NextTrackBtn.Font = Enum.Font.GothamBold
-NextTrackBtn.Parent = ControlsRow
-Instance.new("UICorner", NextTrackBtn).CornerRadius = UDim.new(0, 7)
+local MusicLeftCard = Instance.new("Frame")
+MusicLeftCard.Size = UDim2.new(0.46, -5, 1, 0)
+MusicLeftCard.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+MusicLeftCard.Parent = MusicPage
+Instance.new("UICorner", MusicLeftCard).CornerRadius = UDim.new(0, 8)
+local MusLeftStroke = Instance.new("UIStroke", MusicLeftCard)
+MusLeftStroke.Color = Color3.fromRGB(235, 212, 152)
+MusLeftStroke.Thickness = 1
 
 local PlaylistScroll = Instance.new("ScrollingFrame")
-PlaylistScroll.Size = UDim2.new(1, -24, 0, 108)
-PlaylistScroll.Position = UDim2.new(0, 12, 0, 144)
-PlaylistScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+PlaylistScroll.Size = UDim2.new(1, -12, 1, -12)
+PlaylistScroll.Position = UDim2.new(0, 6, 0, 6)
+PlaylistScroll.BackgroundTransparency = 1
 PlaylistScroll.BorderSizePixel = 0
-PlaylistScroll.ScrollBarThickness = 3
+PlaylistScroll.ScrollBarThickness = 2
 PlaylistScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
 PlaylistScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-PlaylistScroll.Parent = MusicPage
-Instance.new("UICorner", PlaylistScroll).CornerRadius = UDim.new(0, 7)
-local PlStroke = Instance.new("UIStroke", PlaylistScroll)
-PlStroke.Color = Color3.fromRGB(48, 44, 74)
-PlStroke.Thickness = 1
+PlaylistScroll.Parent = MusicLeftCard
 
 local PlLayout = Instance.new("UIListLayout")
-PlLayout.Padding = UDim.new(0, 3)
+PlLayout.Padding = UDim.new(0, 4)
 PlLayout.SortOrder = Enum.SortOrder.LayoutOrder
 PlLayout.Parent = PlaylistScroll
 
-local PlPad = Instance.new("UIPadding")
-PlPad.PaddingTop = UDim.new(0, 4)
-PlPad.PaddingBottom = UDim.new(0, 4)
-PlPad.PaddingLeft = UDim.new(0, 4)
-PlPad.PaddingRight = UDim.new(0, 4)
-PlPad.Parent = PlaylistScroll
+local MusicRightCard = Instance.new("Frame")
+MusicRightCard.Size = UDim2.new(0.54, -5, 1, 0)
+MusicRightCard.Position = UDim2.new(0.46, 5, 0, 0)
+MusicRightCard.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+MusicRightCard.Parent = MusicPage
+Instance.new("UICorner", MusicRightCard).CornerRadius = UDim.new(0, 8)
+local MusRightStroke = Instance.new("UIStroke", MusicRightCard)
+MusRightStroke.Color = Color3.fromRGB(235, 212, 152)
+MusRightStroke.Thickness = 1
+
+local TrackTitleLbl = Instance.new("TextLabel")
+TrackTitleLbl.Size = UDim2.new(1, -16, 0, 16)
+TrackTitleLbl.Position = UDim2.new(0, 8, 0, 8)
+TrackTitleLbl.BackgroundTransparency = 1
+TrackTitleLbl.Text = "♪ " .. DEFAULT_MUSIC_PLAYLIST[1].name
+TrackTitleLbl.TextColor3 = Color3.fromRGB(35, 32, 26)
+TrackTitleLbl.TextSize = 10
+TrackTitleLbl.Font = Enum.Font.GothamBold
+TrackTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+TrackTitleLbl.Parent = MusicRightCard
+
+local TrackSubLbl = Instance.new("TextLabel")
+TrackSubLbl.Size = UDim2.new(1, -16, 0, 12)
+TrackSubLbl.Position = UDim2.new(0, 8, 0, 24)
+TrackSubLbl.BackgroundTransparency = 1
+TrackSubLbl.Text = "ID: " .. DEFAULT_MUSIC_PLAYLIST[1].songId .. " • Vol 50%"
+TrackSubLbl.TextColor3 = Color3.fromRGB(120, 112, 95)
+TrackSubLbl.TextSize = 8
+TrackSubLbl.Font = Enum.Font.GothamMedium
+TrackSubLbl.TextXAlignment = Enum.TextXAlignment.Left
+TrackSubLbl.Parent = MusicRightCard
+
+local EqBox = Instance.new("Frame")
+EqBox.Size = UDim2.new(1, -16, 0, 56)
+EqBox.Position = UDim2.new(0, 8, 0, 42)
+EqBox.BackgroundColor3 = Color3.fromRGB(255, 250, 236)
+EqBox.Parent = MusicRightCard
+Instance.new("UICorner", EqBox).CornerRadius = UDim.new(0, 6)
+
+local eqBars: {Frame} = {}
+for i = 1, 14 do
+	local b = Instance.new("Frame")
+	b.Size = UDim2.fromOffset(10, 8)
+	b.Position = UDim2.fromOffset(12 + (i - 1) * 16, 42)
+	b.BackgroundColor3 = Color3.fromRGB(245, 178, 36)
+	b.BorderSizePixel = 0
+	b.Parent = EqBox
+	Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+	table.insert(eqBars, b)
+end
+
+local PrevBtn = Instance.new("TextButton")
+PrevBtn.Size = UDim2.new(0.26, -6, 0, 26)
+PrevBtn.Position = UDim2.new(0, 8, 0, 108)
+PrevBtn.BackgroundColor3 = Color3.fromRGB(252, 246, 228)
+PrevBtn.Text = "<<"
+PrevBtn.TextColor3 = Color3.fromRGB(35, 32, 26)
+PrevBtn.TextSize = 10
+PrevBtn.Font = Enum.Font.GothamBold
+PrevBtn.Parent = MusicRightCard
+Instance.new("UICorner", PrevBtn).CornerRadius = UDim.new(0, 6)
+
+local PlayBtn = Instance.new("TextButton")
+PlayBtn.Size = UDim2.new(0.48, -4, 0, 26)
+PlayBtn.Position = UDim2.new(0.26, 2, 0, 108)
+PlayBtn.BackgroundColor3 = Color3.fromRGB(245, 178, 36)
+PlayBtn.Text = "▶ PLAY"
+PlayBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+PlayBtn.TextSize = 9
+PlayBtn.Font = Enum.Font.GothamBold
+PlayBtn.Parent = MusicRightCard
+Instance.new("UICorner", PlayBtn).CornerRadius = UDim.new(0, 6)
+
+local NextBtn = Instance.new("TextButton")
+NextBtn.Size = UDim2.new(0.26, -6, 0, 26)
+NextBtn.Position = UDim2.new(0.74, 0, 0, 108)
+NextBtn.BackgroundColor3 = Color3.fromRGB(252, 246, 228)
+NextBtn.Text = ">>"
+NextBtn.TextColor3 = Color3.fromRGB(35, 32, 26)
+NextBtn.TextSize = 10
+NextBtn.Font = Enum.Font.GothamBold
+NextBtn.Parent = MusicRightCard
+Instance.new("UICorner", NextBtn).CornerRadius = UDim.new(0, 6)
 
 local MusicGroup = Instance.new("SoundGroup")
 MusicGroup.Name = "IkyyStudioLite_MusicGroup"
@@ -634,408 +1118,161 @@ MusicSound.SoundGroup = MusicGroup
 MusicSound.Looped = true
 MusicSound.Parent = MusicGroup
 
-local currentTrackIndex = 1
+local currentTrackIdx = 1
 local isPlayingMusic = false
-local isLoadingTrack = false
-local currentVolumeRatio = 0.5
 
-local function applyVolume(ratio: number)
-	currentVolumeRatio = math.clamp(ratio, 0, 1)
-	MusicGroup.Volume = currentVolumeRatio
-	MusicSound.Volume = currentVolumeRatio
-	VolSliderFill.Size = UDim2.new(currentVolumeRatio, 0, 1, 0)
-	VolKnob.Position = UDim2.new(currentVolumeRatio, -7, 0.5, -7)
-	local pct = math.floor(currentVolumeRatio * 100 + 0.5)
-	VolLabel.Text = "🔊 Vol: " .. tostring(pct) .. "%"
-	if not isLoadingTrack then
-		MusicStatusLabel.Text = (isPlayingMusic and "Memutar" or "Dijeda") .. " • Vol: " .. tostring(pct) .. "%"
-	end
-end
-
-local function renderMusicPlaylist()
-	local theme = GUI_THEMES[CONFIG.ThemeIndex]
-	local fontPreset = FONT_PRESETS[CONFIG.FontIndex]
-
-	for _, child in ipairs(PlaylistScroll:GetChildren()) do
-		if child:IsA("TextButton") then
-			child:Destroy()
-		end
-	end
-
-	for idx, tr in ipairs(DEFAULT_MUSIC_PLAYLIST) do
-		local active = (idx == currentTrackIndex)
-		local itemBtn = Instance.new("TextButton")
-		itemBtn.Size = UDim2.new(1, -4, 0, 22)
-		itemBtn.BackgroundColor3 = active and theme.accentSoft or Color3.fromRGB(22, 21, 34)
-		itemBtn.Text = string.format("  %d. %s  [%s]", idx, tr.name, tr.songId)
-		itemBtn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 188, 215)
-		itemBtn.TextSize = 9
-		itemBtn.Font = active and fontPreset.boldFont or fontPreset.font
-		itemBtn.TextXAlignment = Enum.TextXAlignment.Left
-		itemBtn.TextTruncate = Enum.TextTruncate.AtEnd
-		itemBtn.LayoutOrder = idx
-		itemBtn.Parent = PlaylistScroll
-		Instance.new("UICorner", itemBtn).CornerRadius = UDim.new(0, 5)
-
-		itemBtn.MouseButton1Click:Connect(function()
-			currentTrackIndex = idx
-			isPlayingMusic = true
-			PlayPauseBtn.Text = "⏸ JEDA"
-			renderMusicPlaylist()
-			local chosen = DEFAULT_MUSIC_PLAYLIST[currentTrackIndex]
-			MusicTrackLabel.Text = "♪ " .. chosen.name .. " (" .. chosen.songId .. ")"
-			isLoadingTrack = true
-			MusicStatusLabel.Text = "Memuat audio " .. chosen.songId .. "..."
-			MusicSound.SoundId = "rbxassetid://" .. chosen.songId
-			MusicSound.PlaybackSpeed = chosen.playbackSpeed
-			MusicSound.Volume = currentVolumeRatio
-			pcall(function()
-				MusicSound:Play()
-			end)
-			task.delay(0.8, function()
-				if currentTrackIndex == idx then
-					isLoadingTrack = false
-					local pct = math.floor(currentVolumeRatio * 100 + 0.5)
-					MusicStatusLabel.Text = (isPlayingMusic and "Memutar" or "Dijeda") .. " • Vol: " .. tostring(pct) .. "%"
-				end
-			end)
-		end)
-	end
-end
-
-local function loadAndPlayTrack(index: number, shouldPlay: boolean)
-	if index < 1 then
-		index = #DEFAULT_MUSIC_PLAYLIST
-	elseif index > #DEFAULT_MUSIC_PLAYLIST then
-		index = 1
-	end
-	currentTrackIndex = index
-	local tr = DEFAULT_MUSIC_PLAYLIST[currentTrackIndex]
-	MusicTrackLabel.Text = "♪ " .. tr.name .. " (" .. tr.songId .. ")"
-	isPlayingMusic = shouldPlay
-	PlayPauseBtn.Text = shouldPlay and "⏸ JEDA" or "▶ PLAY"
-	renderMusicPlaylist()
-
-	isLoadingTrack = true
-	MusicStatusLabel.Text = "Memuat lagu: " .. tr.name .. "..."
+local function selectTrack(idx: number, autoPlay: boolean)
+	if idx < 1 then idx = #DEFAULT_MUSIC_PLAYLIST elseif idx > #DEFAULT_MUSIC_PLAYLIST then idx = 1 end
+	currentTrackIdx = idx
+	local tr = DEFAULT_MUSIC_PLAYLIST[currentTrackIdx]
+	TrackTitleLbl.Text = "♪ " .. tr.name
+	TrackSubLbl.Text = "ID: " .. tr.songId .. (autoPlay and " • Memutar" or " • Siap")
 	MusicSound.SoundId = "rbxassetid://" .. tr.songId
 	MusicSound.PlaybackSpeed = tr.playbackSpeed
-	MusicSound.Volume = currentVolumeRatio
-
-	if shouldPlay then
-		pcall(function()
-			MusicSound:Play()
-		end)
+	isPlayingMusic = autoPlay
+	PlayBtn.Text = autoPlay and "⏸ JEDA" or "▶ PLAY"
+	if autoPlay then
+		pcall(function() MusicSound:Play() end)
 	else
-		pcall(function()
-			MusicSound:Pause()
-		end)
+		pcall(function() MusicSound:Pause() end)
 	end
+end
 
-	task.delay(0.8, function()
-		if currentTrackIndex == index then
-			isLoadingTrack = false
-			local pct = math.floor(currentVolumeRatio * 100 + 0.5)
-			MusicStatusLabel.Text = (isPlayingMusic and "Memutar" or "Dijeda") .. " • Vol: " .. tostring(pct) .. "%"
-		end
+for idx, tr in ipairs(DEFAULT_MUSIC_PLAYLIST) do
+	local rowBtn = Instance.new("TextButton")
+	rowBtn.Size = UDim2.new(1, -4, 0, 24)
+	rowBtn.BackgroundColor3 = Color3.fromRGB(255, 251, 240)
+	rowBtn.Text = string.format("  %d. %s", idx, tr.name)
+	rowBtn.TextColor3 = Color3.fromRGB(35, 32, 26)
+	rowBtn.TextSize = 8
+	rowBtn.Font = Enum.Font.GothamBold
+	rowBtn.TextXAlignment = Enum.TextXAlignment.Left
+	rowBtn.LayoutOrder = idx
+	rowBtn.Parent = PlaylistScroll
+	Instance.new("UICorner", rowBtn).CornerRadius = UDim.new(0, 5)
+	rowBtn.MouseButton1Click:Connect(function()
+		selectTrack(idx, true)
 	end)
 end
 
-PlayPauseBtn.MouseButton1Click:Connect(function()
-	if not isPlayingMusic then
-		if MusicSound.SoundId == "" then
-			loadAndPlayTrack(currentTrackIndex, true)
-		else
-			isPlayingMusic = true
-			PlayPauseBtn.Text = "⏸ JEDA"
-			MusicSound.Volume = currentVolumeRatio
-			pcall(function()
-				MusicSound:Play()
-			end)
-			local pct = math.floor(currentVolumeRatio * 100 + 0.5)
-			MusicStatusLabel.Text = "Memutar • Vol: " .. tostring(pct) .. "%"
-		end
-	else
-		isPlayingMusic = false
-		PlayPauseBtn.Text = "▶ PLAY"
-		pcall(function()
-			MusicSound:Pause()
-		end)
-		local pct = math.floor(currentVolumeRatio * 100 + 0.5)
-		MusicStatusLabel.Text = "Dijeda • Vol: " .. tostring(pct) .. "%"
-	end
+PlayBtn.MouseButton1Click:Connect(function()
+	selectTrack(currentTrackIdx, not isPlayingMusic)
 end)
-
-PrevTrackBtn.MouseButton1Click:Connect(function()
-	loadAndPlayTrack(currentTrackIndex - 1, true)
+PrevBtn.MouseButton1Click:Connect(function()
+	selectTrack(currentTrackIdx - 1, true)
 end)
-
-NextTrackBtn.MouseButton1Click:Connect(function()
-	loadAndPlayTrack(currentTrackIndex + 1, true)
+NextBtn.MouseButton1Click:Connect(function()
+	selectTrack(currentTrackIdx + 1, true)
 end)
 
 do
-	local draggingVol = false
-	local function updateVolFromInput(inputPos: Vector2)
-		local absPos = VolSliderBg.AbsolutePosition.X
-		local absW = math.max(1, VolSliderBg.AbsoluteSize.X)
-		local ratio = math.clamp((inputPos.X - absPos) / absW, 0, 1)
-		applyVolume(ratio)
-	end
-
-	VolSliderBg.InputBegan:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			draggingVol = true
-			updateVolFromInput(input.Position)
-		end
-	end)
-
-	VolKnob.InputBegan:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			draggingVol = true
-		end
-	end)
-
-	UserInputService.InputChanged:Connect(function(input: InputObject)
-		if not draggingVol then return end
-		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-			updateVolFromInput(input.Position)
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			draggingVol = false
-		end
-	end)
-end
-
-renderMusicPlaylist()
-applyVolume(0.5)
-
-do
-	local elapsed = 0
+	local tElapsed = 0
 	RunService.RenderStepped:Connect(function(dt: number)
-		elapsed += dt
+		tElapsed += dt
 		local theme = GUI_THEMES[CONFIG.ThemeIndex]
-		if isLoadingTrack then
-			local pos = (elapsed * 0.65) % 1
-			MusicLoadFill.Size = UDim2.new(0.28, 0, 1, 0)
-			MusicLoadFill.Position = UDim2.new(pos * 0.72, 0, 0, 0)
-			MusicLoadFill.BackgroundColor3 = Color3.fromRGB(96, 165, 250)
-		elseif isPlayingMusic then
-			MusicLoadFill.Size = UDim2.new(1, 0, 1, 0)
-			MusicLoadFill.Position = UDim2.new(0, 0, 0, 0)
-			MusicLoadFill.BackgroundColor3 = Color3.fromRGB(56, 239, 125)
-		else
-			MusicLoadFill.Size = UDim2.new(0, 0, 1, 0)
-			MusicLoadFill.Position = UDim2.new(0, 0, 0, 0)
-		end
-
-		local activeBeat = isPlayingMusic and (not isLoadingTrack)
-		local volBoost = math.max(0.25, currentVolumeRatio * 1.4)
-		for i, bar in ipairs(eqBars) do
-			bar.BackgroundColor3 = (i % 2 == 0) and theme.eqEven or theme.eqOdd
-			local targetH = 5
-			if activeBeat then
-				local waveA = math.abs(math.sin(elapsed * 9.5 + i * 0.65))
-				local waveB = math.abs(math.cos(elapsed * 5.2 - i * 0.4))
-				local amp = math.clamp((waveA * 0.7 + waveB * 0.3) * volBoost, 0.18, 1.0)
-				targetH = math.floor(5 + amp * 25)
-			else
-				targetH = 5
-			end
-			bar.Size = UDim2.fromOffset(eqBarW, targetH)
-			bar.Position = UDim2.fromOffset((i - 1) * (eqBarW + eqGap), 32 - targetH)
+		for i, b in ipairs(eqBars) do
+			b.BackgroundColor3 = (i % 2 == 0) and theme.eqEven or theme.eqOdd
+			local h = isPlayingMusic and math.floor(8 + math.abs(math.sin(tElapsed * 9 + i * 0.6)) * 36) or 7
+			b.Size = UDim2.fromOffset(10, h)
+			b.Position = UDim2.fromOffset(12 + (i - 1) * 16, 50 - h)
 		end
 	end)
 end
 
--- ==========================================
--- HALAMAN 2: MAP TOOL (NO SCRIPT/LOCAL SCRIPT IN MAP + STARTERPACK DECOMPILE + NO SHADOW)
--- ==========================================
-local MapPage = Instance.new("Frame")
-MapPage.Size = UDim2.fromScale(1, 1)
-MapPage.BackgroundTransparency = 1
-MapPage.Visible = false
-MapPage.Parent = ContentArea
-tabPages["MapTool"] = MapPage
+-- PAGE 4: SETTINGS & ABOUT
+local SettingsPage = Instance.new("Frame")
+SettingsPage.Size = UDim2.fromScale(1, 1)
+SettingsPage.BackgroundTransparency = 1
+SettingsPage.Visible = false
+SettingsPage.Parent = BodyArea
+pageFrames["Settings"] = SettingsPage
 
-local MapTitleLabel = Instance.new("TextLabel")
-MapTitleLabel.Size = UDim2.new(1, -24, 0, 16)
-MapTitleLabel.Position = UDim2.new(0, 12, 0, 5)
-MapTitleLabel.BackgroundTransparency = 1
-MapTitleLabel.Text = "🗺 Copy Map & Import (+StarterPack Decompile)"
-MapTitleLabel.TextColor3 = Color3.fromRGB(245, 245, 255)
-MapTitleLabel.TextSize = 10
-MapTitleLabel.Font = Enum.Font.GothamBold
-MapTitleLabel.TextXAlignment = Enum.TextXAlignment.Left
-MapTitleLabel.TextTruncate = Enum.TextTruncate.AtEnd
-MapTitleLabel.Parent = MapPage
+local SettingsCard = Instance.new("Frame")
+SettingsCard.Size = UDim2.fromScale(1, 1)
+SettingsCard.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+SettingsCard.Parent = SettingsPage
+Instance.new("UICorner", SettingsCard).CornerRadius = UDim.new(0, 8)
+local SetStroke = Instance.new("UIStroke", SettingsCard)
+SetStroke.Color = Color3.fromRGB(235, 212, 152)
+SetStroke.Thickness = 1
 
-local MapStatusLabel = Instance.new("TextLabel")
-MapStatusLabel.Size = UDim2.new(1, -24, 0, 12)
-MapStatusLabel.Position = UDim2.new(0, 12, 0, 21)
-MapStatusLabel.BackgroundTransparency = 1
-MapStatusLabel.Text = "Map skips Script/LocalScript • StarterPack decompile ON • NoShadow"
-MapStatusLabel.TextColor3 = Color3.fromRGB(150, 146, 182)
-MapStatusLabel.TextSize = 8
-MapStatusLabel.Font = Enum.Font.GothamMedium
-MapStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-MapStatusLabel.TextTruncate = Enum.TextTruncate.AtEnd
-MapStatusLabel.Parent = MapPage
+local SetTitleLbl = Instance.new("TextLabel")
+SetTitleLbl.Size = UDim2.new(1, -16, 0, 18)
+SetTitleLbl.Position = UDim2.new(0, 8, 0, 8)
+SetTitleLbl.BackgroundTransparency = 1
+SetTitleLbl.Text = "TEMA WARNA & FONT • BY IKYY (@" .. LocalPlayer.Name .. ")"
+SetTitleLbl.TextColor3 = Color3.fromRGB(35, 32, 26)
+SetTitleLbl.TextSize = 9
+SetTitleLbl.Font = Enum.Font.GothamBold
+SetTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+SetTitleLbl.Parent = SettingsCard
 
-local ServiceSelectRow = Instance.new("Frame")
-ServiceSelectRow.Size = UDim2.new(1, -24, 0, 21)
-ServiceSelectRow.Position = UDim2.new(0, 12, 0, 36)
-ServiceSelectRow.BackgroundTransparency = 1
-ServiceSelectRow.Parent = MapPage
-
-local TARGET_SERVICES: {string} = { "Workspace", "StarterPack", "ReplicatedStorage", "Lighting" }
-local serviceButtons: {[string]: TextButton} = {}
-
-for idx, sName in ipairs(TARGET_SERVICES) do
-	local sBtn = Instance.new("TextButton")
-	local wScale = 1 / #TARGET_SERVICES
-	sBtn.Size = UDim2.new(wScale, -3, 1, 0)
-	sBtn.Position = UDim2.new((idx - 1) * wScale, (idx > 1 and 2 or 0), 0, 0)
-	sBtn.BackgroundColor3 = Color3.fromRGB(24, 23, 36)
-	sBtn.Text = (sName == "ReplicatedStorage") and "RepStorage" or sName
-	sBtn.TextColor3 = Color3.fromRGB(220, 218, 245)
-	sBtn.TextSize = 8
-	sBtn.Font = Enum.Font.GothamBold
-	sBtn.Parent = ServiceSelectRow
-	Instance.new("UICorner", sBtn).CornerRadius = UDim.new(0, 6)
-	serviceButtons[sName] = sBtn
-
-	sBtn.MouseButton1Click:Connect(function()
-		CONFIG.MapTargetService = sName
+for idx, th in ipairs(GUI_THEMES) do
+	local tBtn = Instance.new("TextButton")
+	tBtn.Size = UDim2.new(0.25, -8, 0, 26)
+	tBtn.Position = UDim2.new((idx - 1) * 0.25, 8, 0, 34)
+	tBtn.BackgroundColor3 = th.accentSoft
+	tBtn.Text = th.name
+	tBtn.TextColor3 = Color3.fromRGB(35, 32, 26)
+	tBtn.TextSize = 8
+	tBtn.Font = Enum.Font.GothamBold
+	tBtn.Parent = SettingsCard
+	Instance.new("UICorner", tBtn).CornerRadius = UDim.new(0, 6)
+	tBtn.MouseButton1Click:Connect(function()
+		CONFIG.ThemeIndex = idx
 		applyThemeAndFont()
 	end)
 end
 
-local FileNameBox = Instance.new("TextBox")
-FileNameBox.Size = UDim2.new(0.46, -4, 0, 23)
-FileNameBox.Position = UDim2.new(0, 12, 0, 61)
-FileNameBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-FileNameBox.Text = CONFIG.MapFileName
-FileNameBox.PlaceholderText = "map_export.json"
-FileNameBox.TextColor3 = Color3.fromRGB(240, 238, 255)
-FileNameBox.PlaceholderColor3 = Color3.fromRGB(120, 116, 148)
-FileNameBox.TextSize = 8
-FileNameBox.Font = Enum.Font.Code
-FileNameBox.ClearTextOnFocus = false
-FileNameBox.Parent = MapPage
-Instance.new("UICorner", FileNameBox).CornerRadius = UDim.new(0, 6)
-local FileBoxStroke = Instance.new("UIStroke", FileNameBox)
-FileBoxStroke.Color = Color3.fromRGB(58, 52, 92)
-FileBoxStroke.Thickness = 1
+for idx, fp in ipairs(FONT_PRESETS) do
+	local fBtn = Instance.new("TextButton")
+	fBtn.Size = UDim2.new(0.25, -8, 0, 26)
+	fBtn.Position = UDim2.new((idx - 1) * 0.25, 8, 0, 68)
+	fBtn.BackgroundColor3 = Color3.fromRGB(252, 249, 242)
+	fBtn.Text = fp.name
+	fBtn.TextColor3 = Color3.fromRGB(35, 32, 26)
+	fBtn.TextSize = 9
+	fBtn.Font = fp.font
+	fBtn.Parent = SettingsCard
+	Instance.new("UICorner", fBtn).CornerRadius = UDim.new(0, 6)
+	fBtn.MouseButton1Click:Connect(function()
+		CONFIG.FontIndex = idx
+		applyThemeAndFont()
+	end)
+end
 
-local PosModeBtn = Instance.new("TextButton")
-PosModeBtn.Size = UDim2.new(0.27, -4, 0, 23)
-PosModeBtn.Position = UDim2.new(0.46, 2, 0, 61)
-PosModeBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
-PosModeBtn.Text = "📍 Ori CF"
-PosModeBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-PosModeBtn.TextSize = 8
-PosModeBtn.Font = Enum.Font.GothamBold
-PosModeBtn.Parent = MapPage
-Instance.new("UICorner", PosModeBtn).CornerRadius = UDim.new(0, 6)
+local AboutSummaryLbl = Instance.new("TextLabel")
+AboutSummaryLbl.Size = UDim2.new(1, -16, 1, -110)
+AboutSummaryLbl.Position = UDim2.new(0, 8, 0, 102)
+AboutSummaryLbl.BackgroundColor3 = Color3.fromRGB(255, 251, 240)
+AboutSummaryLbl.Text = "Plugin Studio Lite (Delta Executor Edition) v1.9.0\n• Auto save nama game ke folder: " .. CONFIG.WorkspaceRoot .. "/\n• Import lintas game didukung penuh + mode ringan (CastShadow/Shadows OFF)\n• Map mengabaikan Script/LocalScript; StarterPack menyalin Script/LocalScript + decompile Delta"
+AboutSummaryLbl.TextColor3 = Color3.fromRGB(70, 64, 52)
+AboutSummaryLbl.TextSize = 8
+AboutSummaryLbl.Font = Enum.Font.Code
+AboutSummaryLbl.TextXAlignment = Enum.TextXAlignment.Left
+AboutSummaryLbl.TextYAlignment = Enum.TextYAlignment.Top
+AboutSummaryLbl.TextWrapped = true
+AboutSummaryLbl.Parent = SettingsCard
+Instance.new("UICorner", AboutSummaryLbl).CornerRadius = UDim.new(0, 6)
 
-local AutoAnchorBtn = Instance.new("TextButton")
-AutoAnchorBtn.Size = UDim2.new(0.27, -12, 0, 23)
-AutoAnchorBtn.Position = UDim2.new(0.73, 2, 0, 61)
-AutoAnchorBtn.BackgroundColor3 = Color3.fromRGB(52, 46, 86)
-AutoAnchorBtn.Text = "🔒 Anchor: ON"
-AutoAnchorBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-AutoAnchorBtn.TextSize = 8
-AutoAnchorBtn.Font = Enum.Font.GothamBold
-AutoAnchorBtn.Parent = MapPage
-Instance.new("UICorner", AutoAnchorBtn).CornerRadius = UDim.new(0, 6)
-
-PosModeBtn.MouseButton1Click:Connect(function()
-	if CONFIG.MapPosMode == "OriginalCF" then
-		CONFIG.MapPosMode = "InFrontOfChar"
-		PosModeBtn.Text = "🧍 Depan"
-	else
-		CONFIG.MapPosMode = "OriginalCF"
-		PosModeBtn.Text = "📍 Ori CF"
-	end
-end)
-
-AutoAnchorBtn.MouseButton1Click:Connect(function()
-	CONFIG.MapAutoAnchor = not CONFIG.MapAutoAnchor
-	applyThemeAndFont()
-end)
-
-local ActionRow = Instance.new("Frame")
-ActionRow.Size = UDim2.new(1, -24, 0, 26)
-ActionRow.Position = UDim2.new(0, 12, 0, 89)
-ActionRow.BackgroundTransparency = 1
-ActionRow.Parent = MapPage
-
-local CopyMapBtn = Instance.new("TextButton")
-CopyMapBtn.Size = UDim2.new(0.5, -4, 1, 0)
-CopyMapBtn.Position = UDim2.new(0, 0, 0, 0)
-CopyMapBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-CopyMapBtn.Text = "📦 COPY ALL MAP"
-CopyMapBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-CopyMapBtn.TextSize = 9
-CopyMapBtn.Font = Enum.Font.GothamBold
-CopyMapBtn.Parent = ActionRow
-Instance.new("UICorner", CopyMapBtn).CornerRadius = UDim.new(0, 7)
-
-local ImportMapBtn = Instance.new("TextButton")
-ImportMapBtn.Size = UDim2.new(0.5, -4, 1, 0)
-ImportMapBtn.Position = UDim2.new(0.5, 4, 0, 0)
-ImportMapBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
-ImportMapBtn.Text = "📥 IMPORT FILE"
-ImportMapBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-ImportMapBtn.TextSize = 9
-ImportMapBtn.Font = Enum.Font.GothamBold
-ImportMapBtn.Parent = ActionRow
-Instance.new("UICorner", ImportMapBtn).CornerRadius = UDim.new(0, 7)
-
-local MapLogScroll = Instance.new("ScrollingFrame")
-MapLogScroll.Size = UDim2.new(1, -24, 0, 136)
-MapLogScroll.Position = UDim2.new(0, 12, 0, 120)
-MapLogScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-MapLogScroll.BorderSizePixel = 0
-MapLogScroll.ScrollBarThickness = 3
-MapLogScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-MapLogScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-MapLogScroll.Parent = MapPage
-Instance.new("UICorner", MapLogScroll).CornerRadius = UDim.new(0, 7)
-local MapLogStroke = Instance.new("UIStroke", MapLogScroll)
-MapLogStroke.Color = Color3.fromRGB(48, 44, 74)
-MapLogStroke.Thickness = 1
-
-local MapLogLabel = Instance.new("TextLabel")
-MapLogLabel.Size = UDim2.new(1, -12, 0, 20)
-MapLogLabel.AutomaticSize = Enum.AutomaticSize.Y
-MapLogLabel.Position = UDim2.new(0, 6, 0, 4)
-MapLogLabel.BackgroundTransparency = 1
-MapLogLabel.Text = table.concat({
-	"[Ready] Script & LocalScript di luar StarterPack tidak disalin.",
-	"[Ready] StarterPack menyalin Script & LocalScript dengan decompile Delta Executor + fallback memori sesi.",
-}, "\n")
-MapLogLabel.TextColor3 = Color3.fromRGB(195, 192, 222)
-MapLogLabel.TextSize = 8
-MapLogLabel.Font = Enum.Font.Code
-MapLogLabel.TextXAlignment = Enum.TextXAlignment.Left
-MapLogLabel.TextYAlignment = Enum.TextYAlignment.Top
-MapLogLabel.TextWrapped = true
-MapLogLabel.Parent = MapLogScroll
-
+-- ==========================================
+-- LOGIKA FILE, DECOMPILE, NO SHADOW & COPY/IMPORT
+-- ==========================================
 local SessionMapCache: {[string]: string} = {}
+local LatestSavedFileName: string? = nil
 
 local function appendMapLog(msg: string)
-	local current = MapLogLabel.Text
-	if current == "" then
-		MapLogLabel.Text = msg
+	if LogTextLbl.Text == "" then
+		LogTextLbl.Text = msg
 	else
-		MapLogLabel.Text = current .. "\n" .. msg
+		LogTextLbl.Text = LogTextLbl.Text .. "\n" .. msg
 	end
+end
+
+local function setProgress(ratio: number)
+	local c = math.clamp(ratio, 0, 1)
+	CONFIG.CopyProgress = c
+	ProgFill.Size = UDim2.new(c, 0, 1, 0)
 end
 
 local function sanitizeFileName(rawName: string): string
@@ -1048,45 +1285,56 @@ local function sanitizeFileName(rawName: string): string
 	return trimmed
 end
 
+local function getCurrentGameTitle(): string
+	local title = tostring(game.Name or "RobloxGame")
+	local okInfo, info = pcall(function()
+		return MarketplaceService:GetProductInfoAsync(game.PlaceId)
+	end)
+	if okInfo and type(info) == "table" and type(info.Name) == "string" and info.Name ~= "" then
+		title = info.Name
+	end
+	local clean = string.gsub(title, "[^%w%s%-_]", "")
+	clean = string.gsub(clean, "%s+", "_")
+	clean = string.gsub(clean, "_+", "_")
+	clean = string.gsub(clean, "^_+", "")
+	clean = string.gsub(clean, "_+$", "")
+	if clean == "" then
+		clean = "RobloxGame"
+	end
+	if #clean > 48 then
+		clean = string.sub(clean, 1, 48)
+	end
+	return clean
+end
+
+local function buildAutoGameFileName(): string
+	local gameSlug = getCurrentGameTitle()
+	local placePart = tostring(game.PlaceId > 0 and game.PlaceId or game.GameId)
+	return sanitizeFileName(gameSlug .. "_" .. placePart .. ".json")
+end
+
 local function getExecutorEnv(): {[string]: any}
 	local env: {[string]: any} = {}
-
-	local okFenv, fenvTbl = pcall(function()
-		return getfenv(1)
-	end)
+	local okFenv, fenvTbl = pcall(function() return getfenv(1) end)
 	if okFenv and type(fenvTbl) == "table" then
-		for k, v in pairs(fenvTbl) do
-			env[tostring(k)] = v
-		end
+		for k, v in pairs(fenvTbl) do env[tostring(k)] = v end
 	end
-
-	local okRootFenv, rootFenv = pcall(function()
-		return getfenv(0)
-	end)
+	local okRootFenv, rootFenv = pcall(function() return getfenv(0) end)
 	if okRootFenv and type(rootFenv) == "table" then
 		for k, v in pairs(rootFenv) do
-			if env[tostring(k)] == nil then
-				env[tostring(k)] = v
-			end
+			if env[tostring(k)] == nil then env[tostring(k)] = v end
 		end
 	end
-
 	if type(shared) == "table" then
 		for k, v in pairs(shared :: any) do
-			if env[tostring(k)] == nil then
-				env[tostring(k)] = v
-			end
+			if env[tostring(k)] == nil then env[tostring(k)] = v end
 		end
 	end
-
 	if type(_G) == "table" then
 		for k, v in pairs(_G :: any) do
-			if env[tostring(k)] == nil then
-				env[tostring(k)] = v
-			end
+			if env[tostring(k)] == nil then env[tostring(k)] = v end
 		end
 	end
-
 	return env
 end
 
@@ -1095,8 +1343,8 @@ local function ensureWorkspaceFolder()
 	local isfolderFn = env["isfolder"]
 	local makefolderFn = env["makefolder"]
 	if type(isfolderFn) == "function" and type(makefolderFn) == "function" then
-		local okExists, exists = pcall(isfolderFn, CONFIG.WorkspaceRoot)
-		if not okExists or not exists then
+		local okEx, exists = pcall(isfolderFn, CONFIG.WorkspaceRoot)
+		if not okEx or not exists then
 			pcall(makefolderFn, CONFIG.WorkspaceRoot)
 		end
 	end
@@ -1118,16 +1366,20 @@ local function readExecutorFile(relPath: string): (boolean, string)
 		end
 	end
 
-	local cached = SessionMapCache[relPath]
-	if type(cached) == "string" and cached ~= "" then
-		return true, cached
+	if type(SessionMapCache[relPath]) == "string" and SessionMapCache[relPath] ~= "" then
+		return true, SessionMapCache[relPath]
+	end
+	if LatestSavedFileName and SessionMapCache[LatestSavedFileName] then
+		return true, SessionMapCache[LatestSavedFileName]
 	end
 
-	return false, "File tidak ditemukan (lokal/sesi): " .. CONFIG.WorkspaceRoot .. "/" .. relPath
+	return false, "File tidak ditemukan: " .. CONFIG.WorkspaceRoot .. "/" .. relPath
 end
 
 local function writeExecutorFile(relPath: string, content: string): (boolean, string)
 	SessionMapCache[relPath] = content
+	LatestSavedFileName = relPath
+
 	local env = getExecutorEnv()
 	local writefileFn = env["writefile"]
 	if type(writefileFn) ~= "function" then
@@ -1155,132 +1407,40 @@ local function decompileDeltaScript(scr: LuaSourceContainer): string?
 	local getBytecodeFn = env["getscriptbytecode"]
 	if type(getBytecodeFn) == "function" then
 		local okB, bc = pcall(getBytecodeFn, scr)
-		if okB and type(bc) == "string" and bc ~= "" then
-			if type(decompileFn) == "function" then
-				local okD2, resD2 = pcall(decompileFn, bc)
-				if okD2 and type(resD2) == "string" and resD2 ~= "" then
-					return resD2
-				end
+		if okB and type(bc) == "string" and bc ~= "" and type(decompileFn) == "function" then
+			local okD2, resD2 = pcall(decompileFn, bc)
+			if okD2 and type(resD2) == "string" and resD2 ~= "" then
+				return resD2
 			end
 		end
 	end
 
-	local okSrc, directSrc = pcall(function()
-		return (scr :: any).Source
-	end)
+	local okSrc, directSrc = pcall(function() return (scr :: any).Source end)
 	if okSrc and type(directSrc) == "string" and directSrc ~= "" then
 		return directSrc
 	end
-
 	return nil
 end
 
 local PROP_WHITELIST: {string} = {
-	"Anchored",
-	"CanCollide",
-	"CanTouch",
-	"CanQuery",
-	"Massless",
-	"EnableFluidForces",
-	"CollisionGroup",
-	"CustomPhysicalProperties",
-	"RootPriority",
-	"CFrame",
-	"Size",
-	"Color",
-	"BrickColor",
-	"Material",
-	"MaterialVariant",
-	"Transparency",
-	"Reflectance",
-	"Shape",
-	"TopSurface",
-	"BottomSurface",
-	"FrontSurface",
-	"BackSurface",
-	"LeftSurface",
-	"RightSurface",
-	"MeshId",
-	"TextureID",
-	"RenderFidelity",
-	"CollisionFidelity",
-	"DoubleSided",
-	"UsePartColor",
-	"MeshType",
-	"Scale",
-	"Offset",
-	"VertexColor",
-	"Texture",
-	"Face",
-	"Color3",
-	"StudsPerTileU",
-	"StudsPerTileV",
-	"OffsetStudsU",
-	"OffsetStudsV",
-	"ZIndex",
-	"ColorMap",
-	"MetalnessMap",
-	"NormalMap",
-	"RoughnessMap",
-	"AlphaMode",
-	"Enabled",
-	"Brightness",
-	"Range",
-	"Angle",
-	"Rate",
-	"Lifetime",
-	"Speed",
-	"SpreadAngle",
-	"Acceleration",
-	"Drag",
-	"LightEmission",
-	"LightInfluence",
-	"Orientation",
-	"RotSpeed",
-	"Rotation",
-	"Squash",
-	"LockedToPart",
-	"Width0",
-	"Width1",
-	"CurveSize0",
-	"CurveSize1",
-	"Segments",
-	"TextureLength",
-	"TextureMode",
-	"TextureSpeed",
-	"MinLength",
-	"MaxLength",
-	"SoundId",
-	"Volume",
-	"PlaybackSpeed",
-	"Looped",
-	"RollOffMaxDistance",
-	"RollOffMinDistance",
-	"RollOffMode",
-	"TimePosition",
-	"Value",
-	"Text",
-	"Image",
-	"ImageColor3",
-	"ImageTransparency",
-	"BackgroundColor3",
-	"BackgroundTransparency",
-	"StudsOffset",
-	"AlwaysOnTop",
-	"MaxDistance",
-	"Adornee",
-	"WorldPivot",
-	"LevelOfDetail",
-	-- Tool / StarterPack props
-	"ToolTip",
-	"Grip",
-	"GripPos",
-	"GripForward",
-	"GripRight",
-	"GripUp",
-	"RequiresHandle",
-	"CanBeDropped",
-	"ManualActivationOnly",
+	"Anchored", "CanCollide", "CanTouch", "CanQuery", "Massless", "EnableFluidForces",
+	"CollisionGroup", "CustomPhysicalProperties", "RootPriority", "CFrame", "Size",
+	"Color", "BrickColor", "Material", "MaterialVariant", "Transparency", "Reflectance",
+	"Shape", "TopSurface", "BottomSurface", "FrontSurface", "BackSurface", "LeftSurface", "RightSurface",
+	"MeshId", "TextureID", "RenderFidelity", "CollisionFidelity", "DoubleSided", "UsePartColor",
+	"MeshType", "Scale", "Offset", "VertexColor", "Texture", "Face", "Color3",
+	"StudsPerTileU", "StudsPerTileV", "OffsetStudsU", "OffsetStudsV", "ZIndex",
+	"ColorMap", "MetalnessMap", "NormalMap", "RoughnessMap", "AlphaMode",
+	"Enabled", "Brightness", "Range", "Angle", "Rate", "Lifetime", "Speed", "SpreadAngle",
+	"Acceleration", "Drag", "LightEmission", "LightInfluence", "Orientation", "RotSpeed",
+	"Rotation", "Squash", "LockedToPart", "Width0", "Width1", "CurveSize0", "CurveSize1",
+	"Segments", "TextureLength", "TextureMode", "TextureSpeed", "MinLength", "MaxLength",
+	"SoundId", "Volume", "PlaybackSpeed", "Looped", "RollOffMaxDistance", "RollOffMinDistance",
+	"RollOffMode", "TimePosition", "Value", "Text", "Image", "ImageColor3", "ImageTransparency",
+	"BackgroundColor3", "BackgroundTransparency", "StudsOffset", "AlwaysOnTop", "MaxDistance",
+	"Adornee", "WorldPivot", "LevelOfDetail",
+	"ToolTip", "Grip", "GripPos", "GripForward", "GripRight", "GripUp",
+	"RequiresHandle", "CanBeDropped", "ManualActivationOnly",
 }
 
 local function serializePropertyValue(val: any): any
@@ -1290,20 +1450,13 @@ local function serializePropertyValue(val: any): any
 	elseif t == "Vector2" then
 		return { __type = "Vector2", x = val.X, y = val.Y }
 	elseif t == "CFrame" then
-		local comps = { val:GetComponents() }
-		return { __type = "CFrame", c = comps }
+		return { __type = "CFrame", c = { val:GetComponents() } }
 	elseif t == "Color3" then
 		return { __type = "Color3", r = val.R, g = val.G, b = val.B }
 	elseif t == "BrickColor" then
 		return { __type = "BrickColor", name = val.Name }
 	elseif t == "UDim2" then
-		return {
-			__type = "UDim2",
-			xs = val.X.Scale,
-			xo = val.X.Offset,
-			ys = val.Y.Scale,
-			yo = val.Y.Offset,
-		}
+		return { __type = "UDim2", xs = val.X.Scale, xo = val.X.Offset, ys = val.Y.Scale, yo = val.Y.Offset }
 	elseif t == "NumberRange" then
 		return { __type = "NumberRange", min = val.Min, max = val.Max }
 	elseif t == "NumberSequence" then
@@ -1345,12 +1498,7 @@ local function deserializePropertyValue(raw: any): any
 		elseif tp == "BrickColor" and type(raw.name) == "string" then
 			return BrickColor.new(raw.name)
 		elseif tp == "UDim2" then
-			return UDim2.new(
-				tonumber(raw.xs) or 0,
-				tonumber(raw.xo) or 0,
-				tonumber(raw.ys) or 0,
-				tonumber(raw.yo) or 0
-			)
+			return UDim2.new(tonumber(raw.xs) or 0, tonumber(raw.xo) or 0, tonumber(raw.ys) or 0, tonumber(raw.yo) or 0)
 		elseif tp == "NumberRange" then
 			return NumberRange.new(tonumber(raw.min) or 0, tonumber(raw.max) or 0)
 		elseif tp == "NumberSequence" and type(raw.kps) == "table" then
@@ -1360,9 +1508,7 @@ local function deserializePropertyValue(raw: any): any
 					table.insert(seqKps, NumberSequenceKeypoint.new(tonumber(kp.t) or 0, tonumber(kp.v) or 0, tonumber(kp.e) or 0))
 				end
 			end
-			if #seqKps >= 2 then
-				return NumberSequence.new(seqKps)
-			end
+			if #seqKps >= 2 then return NumberSequence.new(seqKps) end
 		elseif tp == "ColorSequence" and type(raw.kps) == "table" then
 			local colKps: {ColorSequenceKeypoint} = {}
 			for _, kp in ipairs(raw.kps) do
@@ -1373,14 +1519,10 @@ local function deserializePropertyValue(raw: any): any
 					))
 				end
 			end
-			if #colKps >= 2 then
-				return ColorSequence.new(colKps)
-			end
+			if #colKps >= 2 then return ColorSequence.new(colKps) end
 		elseif tp == "EnumItem" and type(raw.enumType) == "string" and type(raw.name) == "string" then
 			local enumGroup = (Enum :: any)[raw.enumType]
-			if enumGroup then
-				return enumGroup[raw.name]
-			end
+			if enumGroup then return enumGroup[raw.name] end
 		end
 		return nil
 	end
@@ -1397,10 +1539,7 @@ local function isPlayerCharacterDescendant(inst: Instance): boolean
 end
 
 local function serializeInstanceTree(inst: Instance, countRef: {n: number}, allowScripts: boolean): any?
-	if isPlayerCharacterDescendant(inst) then
-		return nil
-	end
-	if inst == ScreenGui or inst == MusicGroup then
+	if isPlayerCharacterDescendant(inst) or inst == ScreenGui or inst == MusicGroup then
 		return nil
 	end
 
@@ -1411,14 +1550,10 @@ local function serializeInstanceTree(inst: Instance, countRef: {n: number}, allo
 
 	local props: {[string]: any} = {}
 	for _, propName in ipairs(PROP_WHITELIST) do
-		local okGet, val = pcall(function()
-			return (inst :: any)[propName]
-		end)
+		local okGet, val = pcall(function() return (inst :: any)[propName] end)
 		if okGet and val ~= nil then
-			local encoded = serializePropertyValue(val)
-			if encoded ~= nil then
-				props[propName] = encoded
-			end
+			local enc = serializePropertyValue(val)
+			if enc ~= nil then props[propName] = enc end
 		end
 	end
 
@@ -1427,21 +1562,13 @@ local function serializeInstanceTree(inst: Instance, countRef: {n: number}, allo
 		decompiledCode = decompileDeltaScript(inst :: LuaSourceContainer)
 	end
 
-	local primaryPartName: string? = nil
-	if inst:IsA("Model") and inst.PrimaryPart then
-		primaryPartName = inst.PrimaryPart.Name
-	end
-
+	local primaryPartName: string? = (inst:IsA("Model") and inst.PrimaryPart) and inst.PrimaryPart.Name or nil
 	local attrs: {[string]: any} = {}
-	local okAttr, rawAttrs = pcall(function()
-		return inst:GetAttributes()
-	end)
+	local okAttr, rawAttrs = pcall(function() return inst:GetAttributes() end)
 	if okAttr and type(rawAttrs) == "table" then
 		for k, v in pairs(rawAttrs) do
 			local encAttr = serializePropertyValue(v)
-			if encAttr ~= nil then
-				attrs[tostring(k)] = encAttr
-			end
+			if encAttr ~= nil then attrs[tostring(k)] = encAttr end
 		end
 	end
 
@@ -1449,9 +1576,7 @@ local function serializeInstanceTree(inst: Instance, countRef: {n: number}, allo
 	local childrenSerialized: {any} = {}
 	for _, ch in ipairs(inst:GetChildren()) do
 		local childNode = serializeInstanceTree(ch, countRef, allowScripts)
-		if childNode ~= nil then
-			table.insert(childrenSerialized, childNode)
-		end
+		if childNode ~= nil then table.insert(childrenSerialized, childNode) end
 	end
 
 	return {
@@ -1480,9 +1605,7 @@ local function applyImportedProps(inst: Instance, propsTable: any, refOrigin: CF
 	if propsTable.Size ~= nil then
 		local sz = deserializePropertyValue(propsTable.Size)
 		if sz ~= nil then
-			pcall(function()
-				(inst :: any).Size = sz
-			end)
+			pcall(function() (inst :: any).Size = sz end)
 		end
 	end
 
@@ -1491,12 +1614,9 @@ local function applyImportedProps(inst: Instance, propsTable: any, refOrigin: CF
 			local decoded = deserializePropertyValue(rawVal)
 			if decoded ~= nil then
 				if propName == "CFrame" and typeof(decoded) == "CFrame" and CONFIG.MapPosMode == "InFrontOfChar" and refOrigin and frontAnchor and not isStarterPackTarget then
-					local rel = refOrigin:ToObjectSpace(decoded)
-					decoded = frontAnchor * rel
+					decoded = frontAnchor * refOrigin:ToObjectSpace(decoded)
 				end
-				pcall(function()
-					(inst :: any)[propName] = decoded
-				end)
+				pcall(function() (inst :: any)[propName] = decoded end)
 			end
 		end
 	end
@@ -1509,24 +1629,15 @@ local function applyImportedProps(inst: Instance, propsTable: any, refOrigin: CF
 			end
 		end)
 	elseif inst:IsA("Light") then
-		pcall(function()
-			inst.Shadows = false
-		end)
+		pcall(function() inst.Shadows = false end)
 	end
 end
 
 local function injectDecompiledSource(inst: Instance, sourceCode: any)
-	if type(sourceCode) ~= "string" or sourceCode == "" then
-		return
-	end
-	local okSet = pcall(function()
-		(inst :: any).Source = sourceCode
-	end)
+	if type(sourceCode) ~= "string" or sourceCode == "" then return end
+	local okSet = pcall(function() (inst :: any).Source = sourceCode end)
 	if not okSet then
-		-- Simpan juga di Attribute sebagai cadangan dekompilasi jika property Source read-only di runtime
-		pcall(function()
-			inst:SetAttribute("DecompiledSource", sourceCode)
-		end)
+		pcall(function() inst:SetAttribute("DecompiledSource", sourceCode) end)
 	end
 end
 
@@ -1536,131 +1647,55 @@ local function buildNodesIntoParent(nodes: any, parentTarget: Instance, imported
 		if type(node) == "table" and type(node.ClassName) == "string" then
 			local okNew, newInst = pcall(Instance.new, node.ClassName)
 			if okNew and newInst then
-				if type(node.Name) == "string" then
-					newInst.Name = node.Name
-				end
-
+				if type(node.Name) == "string" then newInst.Name = node.Name end
 				if type(node.Attributes) == "table" then
 					for aName, aRaw in pairs(node.Attributes) do
 						local aVal = deserializePropertyValue(aRaw)
-						if aVal ~= nil then
-							pcall(function()
-								newInst:SetAttribute(aName, aVal)
-							end)
-						end
+						if aVal ~= nil then pcall(function() newInst:SetAttribute(aName, aVal) end) end
 					end
 				end
-
 				applyImportedProps(newInst, node.Properties, refOrigin, frontAnchor, isStarterPackTarget)
-
 				if (newInst:IsA("Script") or newInst:IsA("LocalScript")) and isStarterPackTarget then
 					injectDecompiledSource(newInst, node.DecompiledSource)
 				end
-
 				newInst.Parent = parentTarget
 				importedCounter.n += 1
 
 				if type(node.Children) == "table" and #node.Children > 0 then
 					buildNodesIntoParent(node.Children, newInst, importedCounter, refOrigin, frontAnchor, isStarterPackTarget)
 				end
-
 				if newInst:IsA("Model") and type(node.PrimaryPartName) == "string" then
 					local foundPP = newInst:FindFirstChild(node.PrimaryPartName, true)
-					if foundPP and foundPP:IsA("BasePart") then
-						newInst.PrimaryPart = foundPP
-					end
+					if foundPP and foundPP:IsA("BasePart") then newInst.PrimaryPart = foundPP end
 				end
-
-				if importedCounter.n % 90 == 0 then
-					task.wait()
-				end
+				if importedCounter.n % 90 == 0 then task.wait() end
 			end
 		end
-		if i % 40 == 0 then
-			task.wait()
-		end
+		if i % 40 == 0 then task.wait() end
 	end
 end
 
-local function parseSimpleRbxml(xmlText: string): {any}
-	local roots: {any} = {}
-
-	for tagOpen, body in string.gmatch(xmlText, "<Item%s+class=\"([^\"]+)\"[^>]*>(.-)</Item>") do
-		local itemName = string.match(body, "<string%s+name=\"Name\">([^<]*)</string>") or tagOpen
-		local props: {[string]: any} = {}
-
-		local anchoredStr = string.match(body, "<bool%s+name=\"Anchored\">([^<]+)</bool>")
-		if anchoredStr then
-			props.Anchored = (string.lower(anchoredStr) == "true")
-		end
-		local canCollideStr = string.match(body, "<bool%s+name=\"CanCollide\">([^<]+)</bool>")
-		if canCollideStr then
-			props.CanCollide = (string.lower(canCollideStr) == "true")
-		end
-		local transpStr = string.match(body, "<float%s+name=\"Transparency\">([^<]+)</float>")
-		if transpStr and tonumber(transpStr) then
-			props.Transparency = tonumber(transpStr)
-		end
-
-		local sx, sy, sz = string.match(body, "<Vector3%s+name=\"Size\"><X>([^<]+)</X><Y>([^<]+)</Y><Z>([^<]+)</Z></Vector3>")
-		if sx and sy and sz then
-			props.Size = {
-				__type = "Vector3",
-				x = tonumber(sx) or 4,
-				y = tonumber(sy) or 1,
-				z = tonumber(sz) or 2,
-			}
-		end
-
-		local px, py, pz = string.match(body, "<CoordinateFrame%s+name=\"CFrame\"><X>([^<]+)</X><Y>([^<]+)</Y><Z>([^<]+)</Z>")
-		if px and py and pz then
-			props.CFrame = {
-				__type = "CFrame",
-				c = {
-					tonumber(px) or 0, tonumber(py) or 0, tonumber(pz) or 0,
-					1, 0, 0,
-					0, 1, 0,
-					0, 0, 1,
-				},
-			}
-		end
-
-		table.insert(roots, {
-			Name = itemName,
-			ClassName = tagOpen,
-			Properties = props,
-			Attributes = {},
-			Children = {},
-		})
-	end
-
-	return roots
-end
-
-local function performCopyAllMap()
+local function performCopyMap()
 	if CONFIG.MapBusy then return end
 	CONFIG.MapBusy = true
-	CONFIG.MapFileName = sanitizeFileName(FileNameBox.Text)
-	FileNameBox.Text = CONFIG.MapFileName
+	setProgress(0.08)
 
-	MapStatusLabel.Text = "Scanning Map (skip Script/LocalScript) + StarterPack..."
-	appendMapLog("[Copy] Map skip Script/LocalScript | StarterPack include Script/LocalScript (decompile)...")
+	local autoFile = buildAutoGameFileName()
+	CONFIG.MapFileName = autoFile
+	FileNameInput.Text = autoFile
+	ImportFileBox.Text = autoFile
+
+	StatusHeadlineLbl.Text = "Export otomatis: " .. autoFile
+	appendMapLog("[Copy] File otomatis game: " .. autoFile)
 
 	task.spawn(function()
-		local servicesToDump = {
-			"Workspace",
-			"StarterPack",
-			"Lighting",
-			"ReplicatedFirst",
-			"ReplicatedStorage",
-			"SoundService",
-			"MaterialService",
-		}
 		local dumpPayload: {[string]: any} = {
 			_meta = {
 				exportedBy = LocalPlayer.Name,
+				gameName = getCurrentGameTitle(),
 				placeId = game.PlaceId,
 				universeId = game.GameId,
+				crossGameCompatible = true,
 				skipMapScripts = true,
 				starterPackDecompile = true,
 				noShadow = true,
@@ -1669,44 +1704,43 @@ local function performCopyAllMap()
 		}
 
 		local totalCount = { n = 0 }
-		for _, sName in ipairs(servicesToDump) do
-			local okS, srv = pcall(game.GetService, game, sName)
-			if okS and srv then
-				local allowScriptsHere = (sName == "StarterPack")
-				local listNodes: {any} = {}
-				for _, child in ipairs(srv:GetChildren()) do
-					local node = serializeInstanceTree(child, totalCount, allowScriptsHere)
-					if node ~= nil then
-						table.insert(listNodes, node)
+		for idx, sName in ipairs(SERVICE_LIST) do
+			setProgress(0.1 + (idx / #SERVICE_LIST) * 0.65)
+			if CONFIG.SelectedServices[sName] then
+				local okS, srv = pcall(game.GetService, game, sName)
+				if okS and srv then
+					local allowScriptsHere = (sName == "StarterPack")
+					local listNodes: {any} = {}
+					for _, child in ipairs(srv:GetChildren()) do
+						local node = serializeInstanceTree(child, totalCount, allowScriptsHere)
+						if node ~= nil then table.insert(listNodes, node) end
 					end
+					dumpPayload[sName] = listNodes
+					appendMapLog(string.format("[Scan] %s -> %d root", sName, #listNodes))
+					task.wait()
 				end
-				dumpPayload[sName] = listNodes
-				appendMapLog(string.format("[Scan] %s -> %d root node", sName, #listNodes))
-				task.wait()
 			end
 		end
 
+		setProgress(0.85)
 		local okEncode, jsonStr = pcall(HttpService.JSONEncode, HttpService, dumpPayload)
 		if not okEncode or type(jsonStr) ~= "string" then
 			CONFIG.MapBusy = false
-			MapStatusLabel.Text = "Gagal encode JSON snapshot"
-			appendMapLog("[Error] Gagal serialize data map.")
+			setProgress(0)
+			StatusHeadlineLbl.Text = "Gagal encode JSON"
+			appendMapLog("[Error] Gagal serialize snapshot.")
 			return
 		end
 
-		local targetFile = CONFIG.MapFileName
-		if not string.match(string.lower(targetFile), "%.json$") then
-			targetFile = targetFile .. ".json"
-		end
-
-		local okSave, savedPathOrErr = writeExecutorFile(targetFile, jsonStr)
+		local okSave, savedPathOrErr = writeExecutorFile(autoFile, jsonStr)
 		CONFIG.MapBusy = false
+		setProgress(okSave and 1 or 0)
 
 		if okSave then
-			MapStatusLabel.Text = string.format("Selesai Copy: %d instance -> %s", totalCount.n, targetFile)
-			appendMapLog(string.format("[Success] Tersimpan (%d instance) di %s", totalCount.n, savedPathOrErr))
+			StatusHeadlineLbl.Text = string.format("Selesai: %s (%d inst)", autoFile, totalCount.n)
+			appendMapLog(string.format("[Success] Tersimpan (%d inst) -> %s", totalCount.n, savedPathOrErr))
 		else
-			MapStatusLabel.Text = "Gagal simpan file: " .. savedPathOrErr
+			StatusHeadlineLbl.Text = "Gagal simpan file"
 			appendMapLog("[Error] " .. savedPathOrErr)
 		end
 	end)
@@ -1715,38 +1749,41 @@ end
 local function performImportMap()
 	if CONFIG.MapBusy then return end
 	CONFIG.MapBusy = true
-	CONFIG.MapFileName = sanitizeFileName(FileNameBox.Text)
-	FileNameBox.Text = CONFIG.MapFileName
 
-	MapStatusLabel.Text = "Membaca file " .. CONFIG.MapFileName .. "..."
-	appendMapLog("[Import] Membaca '" .. CONFIG.WorkspaceRoot .. "/" .. CONFIG.MapFileName .. "'...")
+	local targetFile = sanitizeFileName(ImportFileBox.Text)
+	if targetFile == "" or targetFile == "auto_game_map.json" then
+		targetFile = LatestSavedFileName or buildAutoGameFileName()
+	end
+	CONFIG.MapFileName = targetFile
+	ImportFileBox.Text = targetFile
 
 	task.spawn(function()
-		local okRead, rawData = readExecutorFile(CONFIG.MapFileName)
+		local okRead, rawData = readExecutorFile(targetFile)
 		if not okRead then
 			CONFIG.MapBusy = false
-			MapStatusLabel.Text = rawData
-			appendMapLog("[Error] " .. rawData)
+			ImportInfoLbl.Text = "[Error] " .. rawData
 			return
 		end
 
-		local okTarget, targetService = pcall(game.GetService, game, CONFIG.MapTargetService)
+		local okTarget, targetService = pcall(game.GetService, game, selectedImportTarget)
 		if not okTarget or not targetService then
 			CONFIG.MapBusy = false
-			MapStatusLabel.Text = "Target service tidak valid"
+			ImportInfoLbl.Text = "[Error] Target service tidak valid."
 			return
 		end
 
-		local isStarterPackTarget = (CONFIG.MapTargetService == "StarterPack")
+		local isStarterPackTarget = (selectedImportTarget == "StarterPack")
 		local nodesToBuild: {any} = {}
 		local refOrigin: CFrame? = nil
+		local sourceGame = "Game Asal"
 
 		local okDecode, decoded = pcall(HttpService.JSONDecode, HttpService, rawData)
 		if okDecode and type(decoded) == "table" then
-			local svcNodes = decoded[CONFIG.MapTargetService] or decoded["Workspace"] or decoded
-			if type(svcNodes) == "table" then
-				nodesToBuild = svcNodes
+			if type(decoded._meta) == "table" then
+				sourceGame = tostring(decoded._meta.gameName or "Game Asal") .. " [" .. tostring(decoded._meta.placeId or "?") .. "]"
 			end
+			local svcNodes = decoded[selectedImportTarget] or decoded["Workspace"] or decoded
+			if type(svcNodes) == "table" then nodesToBuild = svcNodes end
 			for _, n in ipairs(nodesToBuild) do
 				if type(n) == "table" and type(n.Properties) == "table" and type(n.Properties.CFrame) == "table" then
 					local cfVal = deserializePropertyValue(n.Properties.CFrame)
@@ -1756,12 +1793,9 @@ local function performImportMap()
 					end
 				end
 			end
-		elseif string.find(rawData, "<roblox", 1, true) or string.find(rawData, "<Item", 1, true) then
-			nodesToBuild = parseSimpleRbxml(rawData)
 		else
 			CONFIG.MapBusy = false
-			MapStatusLabel.Text = "Format file tidak dikenali (.json / .rbxmx)"
-			appendMapLog("[Error] Format file harus JSON snapshot atau XML (.rbxmx).")
+			ImportInfoLbl.Text = "[Error] File bukan snapshot JSON valid."
 			return
 		end
 
@@ -1770,291 +1804,76 @@ local function performImportMap()
 		buildNodesIntoParent(nodesToBuild, targetService, importedCounter, refOrigin, frontAnchor, isStarterPackTarget)
 
 		CONFIG.MapBusy = false
-		MapStatusLabel.Text = string.format("Import selesai: %d instance -> %s", importedCounter.n, CONFIG.MapTargetService)
-		appendMapLog(string.format(
-			"[Success] %d instance di-import ke %s (%s)",
+		ImportInfoLbl.Text = string.format(
+			"[Success] %d instance dari %s berhasil di-import ke %s (%s).",
 			importedCounter.n,
-			CONFIG.MapTargetService,
-			isStarterPackTarget and "StarterPack+Decompile" or (CONFIG.MapPosMode .. " | NoShadow")
-		))
+			sourceGame,
+			selectedImportTarget,
+			isStarterPackTarget and "StarterPack + Decompile" or "NoShadow Mode"
+		)
 	end)
 end
 
-CopyMapBtn.MouseButton1Click:Connect(function()
-	performCopyAllMap()
+AutoNameBtn.MouseButton1Click:Connect(function()
+	local fName = buildAutoGameFileName()
+	CONFIG.MapFileName = fName
+	FileNameInput.Text = fName
+	ImportFileBox.Text = fName
+	StatusHeadlineLbl.Text = "Nama file game: " .. fName
 end)
 
-ImportMapBtn.MouseButton1Click:Connect(function()
+PrimaryCopyBtn.MouseButton1Click:Connect(function()
+	performCopyMap()
+end)
+
+PrimaryImportBtn.MouseButton1Click:Connect(function()
 	performImportMap()
 end)
 
 -- ==========================================
--- HALAMAN 3: ABOUT CREATOR & TOOLS
+-- APPLY TEMA & FONT
 -- ==========================================
-local AboutPage = Instance.new("Frame")
-AboutPage.Size = UDim2.fromScale(1, 1)
-AboutPage.BackgroundTransparency = 1
-AboutPage.Visible = false
-AboutPage.Parent = ContentArea
-tabPages["About"] = AboutPage
-
-local AboutTitle = Instance.new("TextLabel")
-AboutTitle.Size = UDim2.new(1, -24, 0, 18)
-AboutTitle.Position = UDim2.new(0, 12, 0, 8)
-AboutTitle.BackgroundTransparency = 1
-AboutTitle.Text = "Tentang Plugin Studio Lite"
-AboutTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-AboutTitle.TextSize = 13
-AboutTitle.Font = Enum.Font.GothamBold
-AboutTitle.TextXAlignment = Enum.TextXAlignment.Left
-AboutTitle.Parent = AboutPage
-
-local AboutCard = Instance.new("ScrollingFrame")
-AboutCard.Size = UDim2.new(1, -24, 1, -36)
-AboutCard.Position = UDim2.new(0, 12, 0, 30)
-AboutCard.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-AboutCard.BorderSizePixel = 0
-AboutCard.ScrollBarThickness = 3
-AboutCard.CanvasSize = UDim2.new(0, 0, 0, 0)
-AboutCard.AutomaticCanvasSize = Enum.AutomaticSize.Y
-AboutCard.Parent = AboutPage
-Instance.new("UICorner", AboutCard).CornerRadius = UDim.new(0, 8)
-local AboutStroke = Instance.new("UIStroke", AboutCard)
-AboutStroke.Color = Color3.fromRGB(64, 56, 102)
-AboutStroke.Thickness = 1
-
-local AboutText = Instance.new("TextLabel")
-AboutText.Size = UDim2.new(1, -16, 0, 160)
-AboutText.AutomaticSize = Enum.AutomaticSize.Y
-AboutText.Position = UDim2.new(0, 8, 0, 8)
-AboutText.BackgroundTransparency = 1
-AboutText.Text = table.concat({
-	"Creator       : Ikyy (@" .. LocalPlayer.Name .. " | ID: " .. tostring(LocalPlayer.UserId) .. ")",
-	"Tools         : Plugin Studio Lite (Delta Executor Edition)",
-	"Versi         : v1.7.0",
-	"",
-	"Fitur Aktif:",
-	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
-	"• Map Tool    : Copy map tanpa Script/LocalScript (NoShadow), + StarterPack Script/LocalScript decompile Delta.",
-	"• Settings    : Pengaturan warna tema GUI dan pilihan font secara langsung.",
-	"• About       : Informasi kreator dan versi tools.",
-}, "\n")
-AboutText.TextColor3 = Color3.fromRGB(215, 214, 238)
-AboutText.TextSize = 9
-AboutText.Font = Enum.Font.Code
-AboutText.TextXAlignment = Enum.TextXAlignment.Left
-AboutText.TextYAlignment = Enum.TextYAlignment.Top
-AboutText.TextWrapped = true
-AboutText.Parent = AboutCard
-
--- ==========================================
--- HALAMAN 4: SETTINGS (WARNA GUI & FONT)
--- ==========================================
-local SettingsPage = Instance.new("Frame")
-SettingsPage.Size = UDim2.fromScale(1, 1)
-SettingsPage.BackgroundTransparency = 1
-SettingsPage.Visible = false
-SettingsPage.Parent = ContentArea
-tabPages["Settings"] = SettingsPage
-
-local SettingsTitle = Instance.new("TextLabel")
-SettingsTitle.Size = UDim2.new(1, -24, 0, 18)
-SettingsTitle.Position = UDim2.new(0, 12, 0, 6)
-SettingsTitle.BackgroundTransparency = 1
-SettingsTitle.Text = "Pengaturan Tampilan (Warna & Font)"
-SettingsTitle.TextColor3 = Color3.fromRGB(245, 245, 255)
-SettingsTitle.TextSize = 12
-SettingsTitle.Font = Enum.Font.GothamBold
-SettingsTitle.TextXAlignment = Enum.TextXAlignment.Left
-SettingsTitle.Parent = SettingsPage
-
-local SettingsScroll = Instance.new("ScrollingFrame")
-SettingsScroll.Size = UDim2.new(1, -24, 1, -30)
-SettingsScroll.Position = UDim2.new(0, 12, 0, 26)
-SettingsScroll.BackgroundTransparency = 1
-SettingsScroll.BorderSizePixel = 0
-SettingsScroll.ScrollBarThickness = 3
-SettingsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-SettingsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-SettingsScroll.Parent = SettingsPage
-
-local SettingsLayout = Instance.new("UIListLayout")
-SettingsLayout.Padding = UDim.new(0, 8)
-SettingsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-SettingsLayout.Parent = SettingsScroll
-
-local ColorSectionLabel = Instance.new("TextLabel")
-ColorSectionLabel.Size = UDim2.new(1, 0, 0, 14)
-ColorSectionLabel.BackgroundTransparency = 1
-ColorSectionLabel.Text = "🎨 Warna Tema GUI"
-ColorSectionLabel.TextColor3 = Color3.fromRGB(205, 202, 230)
-ColorSectionLabel.TextSize = 10
-ColorSectionLabel.Font = Enum.Font.GothamBold
-ColorSectionLabel.TextXAlignment = Enum.TextXAlignment.Left
-ColorSectionLabel.LayoutOrder = 1
-ColorSectionLabel.Parent = SettingsScroll
-
-local ColorGrid = Instance.new("Frame")
-ColorGrid.Size = UDim2.new(1, 0, 0, 56)
-ColorGrid.BackgroundTransparency = 1
-ColorGrid.LayoutOrder = 2
-ColorGrid.Parent = SettingsScroll
-
-local ColorGridLayout = Instance.new("UIGridLayout")
-ColorGridLayout.CellSize = UDim2.new(0.5, -4, 0, 25)
-ColorGridLayout.CellPadding = UDim2.fromOffset(8, 6)
-ColorGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-ColorGridLayout.Parent = ColorGrid
-
-local themeButtons: {TextButton} = {}
-for idx, theme in ipairs(GUI_THEMES) do
-	local tBtn = Instance.new("TextButton")
-	tBtn.Text = "● " .. theme.name
-	tBtn.TextColor3 = Color3.fromRGB(245, 245, 255)
-	tBtn.TextSize = 9
-	tBtn.BackgroundColor3 = Color3.fromRGB(24, 23, 36)
-	tBtn.LayoutOrder = idx
-	tBtn.Parent = ColorGrid
-	Instance.new("UICorner", tBtn).CornerRadius = UDim.new(0, 7)
-	local stroke = Instance.new("UIStroke", tBtn)
-	stroke.Color = theme.accent
-	stroke.Thickness = 1.2
-
-	tBtn.MouseButton1Click:Connect(function()
-		CONFIG.ThemeIndex = idx
-		applyThemeAndFont()
-	end)
-	table.insert(themeButtons, tBtn)
-end
-
-local FontSectionLabel = Instance.new("TextLabel")
-FontSectionLabel.Size = UDim2.new(1, 0, 0, 14)
-FontSectionLabel.BackgroundTransparency = 1
-FontSectionLabel.Text = "🔤 Jenis Font UI"
-FontSectionLabel.TextColor3 = Color3.fromRGB(205, 202, 230)
-FontSectionLabel.TextSize = 10
-FontSectionLabel.Font = Enum.Font.GothamBold
-FontSectionLabel.TextXAlignment = Enum.TextXAlignment.Left
-FontSectionLabel.LayoutOrder = 3
-FontSectionLabel.Parent = SettingsScroll
-
-local FontGrid = Instance.new("Frame")
-FontGrid.Size = UDim2.new(1, 0, 0, 56)
-FontGrid.BackgroundTransparency = 1
-FontGrid.LayoutOrder = 4
-FontGrid.Parent = SettingsScroll
-
-local FontGridLayout = Instance.new("UIGridLayout")
-FontGridLayout.CellSize = UDim2.new(0.5, -4, 0, 25)
-FontGridLayout.CellPadding = UDim2.fromOffset(8, 6)
-FontGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-FontGridLayout.Parent = FontGrid
-
-local fontButtons: {TextButton} = {}
-for idx, fp in ipairs(FONT_PRESETS) do
-	local fBtn = Instance.new("TextButton")
-	fBtn.Text = fp.name
-	fBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-	fBtn.TextSize = 10
-	fBtn.BackgroundColor3 = Color3.fromRGB(24, 23, 36)
-	fBtn.LayoutOrder = idx
-	fBtn.Parent = FontGrid
-	Instance.new("UICorner", fBtn).CornerRadius = UDim.new(0, 7)
-
-	fBtn.MouseButton1Click:Connect(function()
-		CONFIG.FontIndex = idx
-		applyThemeAndFont()
-	end)
-	table.insert(fontButtons, fBtn)
-end
-
-local SettingsPreviewLabel = Instance.new("TextLabel")
-SettingsPreviewLabel.Size = UDim2.new(1, 0, 0, 22)
-SettingsPreviewLabel.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-SettingsPreviewLabel.Text = "Preview: Plugin Studio Lite • Beat & Vibe"
-SettingsPreviewLabel.TextColor3 = Color3.fromRGB(220, 218, 245)
-SettingsPreviewLabel.TextSize = 9
-SettingsPreviewLabel.LayoutOrder = 5
-SettingsPreviewLabel.Parent = SettingsScroll
-Instance.new("UICorner", SettingsPreviewLabel).CornerRadius = UDim.new(0, 6)
-
 applyThemeAndFont = function()
 	local theme = GUI_THEMES[CONFIG.ThemeIndex]
-	local fontPreset = FONT_PRESETS[CONFIG.FontIndex]
+	local fp = FONT_PRESETS[CONFIG.FontIndex]
 
 	FloatStroke.Color = theme.accent
 	MainStroke.Color = theme.stroke
-	LogoStroke.Color = theme.stroke
+	LeftStroke.Color = theme.stroke
+	RightStroke.Color = theme.stroke
+	ImpLeftStroke.Color = theme.stroke
+	ImpRightStroke.Color = theme.stroke
+	MusLeftStroke.Color = theme.stroke
+	MusRightStroke.Color = theme.stroke
+	SetStroke.Color = theme.stroke
+
 	MainGradient.Color = ColorSequence.new({
 		ColorSequenceKeypoint.new(0, theme.gradStart),
 		ColorSequenceKeypoint.new(1, theme.gradEnd),
 	})
-	EqStroke.Color = theme.stroke
-	VolSliderFill.BackgroundColor3 = theme.accent
-	PlayPauseBtn.BackgroundColor3 = theme.accent
-	CopyMapBtn.BackgroundColor3 = theme.accent
 
-	AutoAnchorBtn.BackgroundColor3 = CONFIG.MapAutoAnchor and theme.accentSoft or Color3.fromRGB(32, 30, 48)
-	AutoAnchorBtn.Text = CONFIG.MapAutoAnchor and "🔒 Anchor: ON" or "🔓 Anchor: OFF"
+	PrimaryCopyBtn.BackgroundColor3 = theme.accent
+	PrimaryImportBtn.BackgroundColor3 = theme.accent
+	PlayBtn.BackgroundColor3 = theme.accent
+	ProgFill.BackgroundColor3 = theme.accent
 
-	for sName, sBtn in pairs(serviceButtons) do
-		local active = (sName == CONFIG.MapTargetService)
-		sBtn.BackgroundColor3 = active and theme.accentSoft or Color3.fromRGB(24, 23, 36)
-		sBtn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(220, 218, 245)
-		sBtn.Font = active and fontPreset.boldFont or fontPreset.font
+	for k, btn in pairs(tabButtons) do
+		local active = (k == CONFIG.ActiveTab)
+		btn.BackgroundColor3 = active and theme.accent or Color3.fromRGB(255, 255, 255)
+		btn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(45, 42, 35)
+		btn.Font = active and fp.boldFont or fp.font
 	end
 
-	for name, btn in pairs(tabButtons) do
-		local active = (name == CONFIG.ActiveTab)
-		btn.BackgroundColor3 = active and theme.accentSoft or Color3.fromRGB(28, 27, 42)
-		btn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(185, 182, 210)
-		btn.Font = active and fontPreset.boldFont or fontPreset.font
-	end
-
-	SubTitleLabel.Font = fontPreset.boldFont
-	TitleLabel.Font = fontPreset.boldFont
-	MetaLabel.Font = fontPreset.font
-	MusicTrackLabel.Font = fontPreset.boldFont
-	MusicStatusLabel.Font = fontPreset.font
-	VolLabel.Font = fontPreset.boldFont
-	PrevTrackBtn.Font = fontPreset.boldFont
-	PlayPauseBtn.Font = fontPreset.boldFont
-	NextTrackBtn.Font = fontPreset.boldFont
-	MapTitleLabel.Font = fontPreset.boldFont
-	MapStatusLabel.Font = fontPreset.font
-	FileNameBox.Font = fontPreset.font
-	PosModeBtn.Font = fontPreset.boldFont
-	AutoAnchorBtn.Font = fontPreset.boldFont
-	CopyMapBtn.Font = fontPreset.boldFont
-	ImportMapBtn.Font = fontPreset.boldFont
-	AboutTitle.Font = fontPreset.boldFont
-	SettingsTitle.Font = fontPreset.boldFont
-	ColorSectionLabel.Font = fontPreset.boldFont
-	FontSectionLabel.Font = fontPreset.boldFont
-	SettingsPreviewLabel.Font = fontPreset.boldFont
-	SettingsPreviewLabel.Text = "Tema: " .. theme.name .. " • Font: " .. fontPreset.name
-
-	for idx, tBtn in ipairs(themeButtons) do
-		local selected = (idx == CONFIG.ThemeIndex)
-		tBtn.BackgroundColor3 = selected and theme.accentSoft or Color3.fromRGB(24, 23, 36)
-		tBtn.Font = selected and fontPreset.boldFont or fontPreset.font
-	end
-
-	for idx, fBtn in ipairs(fontButtons) do
-		local selected = (idx == CONFIG.FontIndex)
-		fBtn.BackgroundColor3 = selected and theme.accentSoft or Color3.fromRGB(24, 23, 36)
-		local fp = FONT_PRESETS[idx]
-		fBtn.Font = fp.font
-	end
-
-	renderMusicPlaylist()
+	BrandTitleLabel.Font = fp.boldFont
+	ServiceHeaderLbl.Font = fp.boldFont
+	RightHeaderLbl.Font = fp.boldFont
+	StatusHeadlineLbl.Font = fp.boldFont
+	PrimaryCopyBtn.Font = fp.boldFont
+	PrimaryImportBtn.Font = fp.boldFont
+	TrackTitleLbl.Font = fp.boldFont
+	SetTitleLbl.Font = fp.boldFont
 end
 
--- Navigasi Sidebar
-createNavButton("Music", "Music", 1).MouseButton1Click:Connect(function() switchTab("Music") end)
-createNavButton("MapTool", "Map Tool", 2).MouseButton1Click:Connect(function() switchTab("MapTool") end)
-createNavButton("Settings", "Settings", 3).MouseButton1Click:Connect(function() switchTab("Settings") end)
-createNavButton("About", "About", 4).MouseButton1Click:Connect(function() switchTab("About") end)
-
-switchTab("Music")
+updateServiceCardVisuals()
+switchTab("CopyMap")
 applyThemeAndFont()
