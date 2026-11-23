@@ -472,7 +472,7 @@ BodyArea.Position = UDim2.new(0, 10, 0, 40)
 BodyArea.BackgroundTransparency = 1
 BodyArea.Parent = MainWindow
 
--- PAGE 1: COPY MAP (KOLOM KIRI: SERVICE STUDIO | KOLOM KANAN: AUTO FILE & LOG)
+-- PAGE 1: COPY MAP
 local CopyPage = Instance.new("Frame")
 CopyPage.Size = UDim2.fromScale(1, 1)
 CopyPage.BackgroundTransparency = 1
@@ -641,7 +641,6 @@ FilterPackBtn.MouseButton1Click:Connect(function()
 	updateServiceCardVisuals()
 end)
 
--- Kolom Kanan Copy Map
 local RightControlCard = Instance.new("Frame")
 RightControlCard.Size = UDim2.new(0.58, -5, 1, 0)
 RightControlCard.Position = UDim2.new(0.42, 5, 0, 0)
@@ -657,7 +656,7 @@ local RightHeaderLbl = Instance.new("TextLabel")
 RightHeaderLbl.Size = UDim2.new(1, -16, 0, 15)
 RightHeaderLbl.Position = UDim2.new(0, 8, 0, 4)
 RightHeaderLbl.BackgroundTransparency = 1
-RightHeaderLbl.Text = "COPY MAP • SIMPAN KE FILE INTERNAL"
+RightHeaderLbl.Text = "COPY MAP • SANDBOX & INTERNAL FILE"
 RightHeaderLbl.TextColor3 = Color3.fromRGB(45, 42, 35)
 RightHeaderLbl.TextSize = 8
 RightHeaderLbl.Font = Enum.Font.GothamBold
@@ -710,7 +709,7 @@ end
 makeInfoTile(0, 0, "BAYANGAN", "OFF (Ringan)")
 makeInfoTile(1, 0, "MAP SCRIPT", "Skip Script/Local")
 makeInfoTile(0, 1, "STARTERPACK", "Script + Decompile")
-makeInfoTile(1, 1, "PENYIMPANAN", "Internal File JSON")
+makeInfoTile(1, 1, "BUILDER", "Sandbox Safe")
 
 local AutoFileBanner = Instance.new("Frame")
 AutoFileBanner.Size = UDim2.new(1, -16, 0, 24)
@@ -750,7 +749,7 @@ local StatusHeadlineLbl = Instance.new("TextLabel")
 StatusHeadlineLbl.Size = UDim2.new(1, -12, 0, 13)
 StatusHeadlineLbl.Position = UDim2.new(0, 6, 0, 3)
 StatusHeadlineLbl.BackgroundTransparency = 1
-StatusHeadlineLbl.Text = "Siap simpan hasil copy ke file internal"
+StatusHeadlineLbl.Text = "Siap copy ke file internal & sandbox import"
 StatusHeadlineLbl.TextColor3 = Color3.fromRGB(35, 32, 26)
 StatusHeadlineLbl.TextSize = 8
 StatusHeadlineLbl.Font = Enum.Font.GothamBold
@@ -786,7 +785,7 @@ local LogTextLbl = Instance.new("TextLabel")
 LogTextLbl.Size = UDim2.new(1, -4, 0, 16)
 LogTextLbl.AutomaticSize = Enum.AutomaticSize.Y
 LogTextLbl.BackgroundTransparency = 1
-LogTextLbl.Text = "[Ready] Menyimpan ke folder internal: " .. CONFIG.WorkspaceRoot .. "/\n[Ready] Buka tab IMPORT MAP di game lain untuk memilih file."
+LogTextLbl.Text = "[Ready] Folder internal: " .. CONFIG.WorkspaceRoot .. "/\n[Ready] Sandbox builder aktif (isolasi node + yield aman)."
 LogTextLbl.TextColor3 = Color3.fromRGB(95, 88, 72)
 LogTextLbl.TextSize = 7
 LogTextLbl.Font = Enum.Font.Code
@@ -806,9 +805,7 @@ PrimaryCopyBtn.Font = Enum.Font.GothamBold
 PrimaryCopyBtn.Parent = RightControlCard
 Instance.new("UICorner", PrimaryCopyBtn).CornerRadius = UDim.new(0, 6)
 
--- ==========================================
--- PAGE 2: IMPORT MAP (LIST FILE OTOMATIS + TARGET SERVICE)
--- ==========================================
+-- PAGE 2: IMPORT MAP (LIST FILE + SANDBOX BUILDER)
 local ImportPage = Instance.new("Frame")
 ImportPage.Size = UDim2.fromScale(1, 1)
 ImportPage.BackgroundTransparency = 1
@@ -816,7 +813,6 @@ ImportPage.Visible = false
 ImportPage.Parent = BodyArea
 pageFrames["ImportMap"] = ImportPage
 
--- Kolom Kiri Import: Daftar File Hasil Copy
 local ImportFileCard = Instance.new("Frame")
 ImportFileCard.Size = UDim2.new(0.45, -5, 1, 0)
 ImportFileCard.Position = UDim2.new(0, 0, 0, 0)
@@ -865,7 +861,6 @@ SavedFilesLayout.Padding = UDim.new(0, 5)
 SavedFilesLayout.SortOrder = Enum.SortOrder.LayoutOrder
 SavedFilesLayout.Parent = SavedFilesScroll
 
--- Kolom Kanan Import: Target Service + Opsi + Tombol IMPORT MAP
 local ImportRightCard = Instance.new("Frame")
 ImportRightCard.Size = UDim2.new(0.55, -5, 1, 0)
 ImportRightCard.Position = UDim2.new(0.45, 5, 0, 0)
@@ -881,7 +876,7 @@ local ImpRightTitle = Instance.new("TextLabel")
 ImpRightTitle.Size = UDim2.new(1, -16, 0, 15)
 ImpRightTitle.Position = UDim2.new(0, 8, 0, 5)
 ImpRightTitle.BackgroundTransparency = 1
-ImpRightTitle.Text = "IMPORT KE GAME INI"
+ImpRightTitle.Text = "SANDBOX BUILDER • IMPORT KE GAME INI"
 ImpRightTitle.TextColor3 = Color3.fromRGB(45, 42, 35)
 ImpRightTitle.TextSize = 8
 ImpRightTitle.Font = Enum.Font.GothamBold
@@ -978,7 +973,7 @@ local ImportInfoLbl = Instance.new("TextLabel")
 ImportInfoLbl.Size = UDim2.new(1, -16, 1, -160)
 ImportInfoLbl.Position = UDim2.new(0, 8, 0, 124)
 ImportInfoLbl.BackgroundColor3 = Color3.fromRGB(255, 253, 248)
-ImportInfoLbl.Text = "• Pilih file dari list di kiri (hasil copy game sebelumnya).\n• Tanpa bayangan (CastShadow=OFF & Shadows=OFF) agar ringan.\n• Target StarterPack memulihkan item + decompile Script/LocalScript."
+ImportInfoLbl.Text = "• Sandbox builder memproses tiap node secara terisolasi (error 1 item tidak menghentikan import).\n• Bayangan OFF (CastShadow/Shadows OFF) agar ringan.\n• StarterPack memulihkan item + decompile Script/LocalScript."
 ImportInfoLbl.TextColor3 = Color3.fromRGB(80, 74, 60)
 ImportInfoLbl.TextSize = 7
 ImportInfoLbl.Font = Enum.Font.GothamMedium
@@ -999,9 +994,7 @@ PrimaryImportBtn.Font = Enum.Font.GothamBold
 PrimaryImportBtn.Parent = ImportRightCard
 Instance.new("UICorner", PrimaryImportBtn).CornerRadius = UDim.new(0, 6)
 
--- ==========================================
 -- PAGE 3: MUSIC PLAYER
--- ==========================================
 local MusicPage = Instance.new("Frame")
 MusicPage.Size = UDim2.fromScale(1, 1)
 MusicPage.BackgroundTransparency = 1
@@ -1255,7 +1248,7 @@ local AboutSummaryLbl = Instance.new("TextLabel")
 AboutSummaryLbl.Size = UDim2.new(1, -16, 1, -110)
 AboutSummaryLbl.Position = UDim2.new(0, 8, 0, 102)
 AboutSummaryLbl.BackgroundColor3 = Color3.fromRGB(255, 251, 240)
-AboutSummaryLbl.Text = "Plugin Studio Lite (Delta Executor Edition) v2.0.0\n• Menyimpan file internal ke folder: " .. CONFIG.WorkspaceRoot .. "/\n• Tab IMPORT MAP menampilkan list file tersimpan untuk dipilih langsung lintas game\n• Bayangan OFF (CastShadow/Shadows OFF) + Map NoScript + StarterPack Decompile"
+AboutSummaryLbl.Text = "Plugin Studio Lite (Delta Executor Edition) v2.1.0\n• Penyimpanan internal: " .. CONFIG.WorkspaceRoot .. "/\n• Sandbox Builder: isolasi error per-instance & yield aman\n• Bayangan OFF + Map NoScript + StarterPack Decompile"
 AboutSummaryLbl.TextColor3 = Color3.fromRGB(70, 64, 52)
 AboutSummaryLbl.TextSize = 8
 AboutSummaryLbl.Font = Enum.Font.Code
@@ -1266,7 +1259,7 @@ AboutSummaryLbl.Parent = SettingsCard
 Instance.new("UICorner", AboutSummaryLbl).CornerRadius = UDim.new(0, 6)
 
 -- ==========================================
--- FILE SYSTEM INTERNAL, DECOMPILE & COPY/IMPORT
+-- FILE SYSTEM INTERNAL, DECOMPILE & SANDBOX BUILDER
 -- ==========================================
 local function appendMapLog(msg: string)
 	if LogTextLbl.Text == "" then
@@ -1379,7 +1372,7 @@ end
 local function saveToInternalStorage(fileName: string, content: string): (boolean, string)
 	local writefileFn = resolveExecFn("writefile")
 	if type(writefileFn) ~= "function" then
-		return false, "Executor tidak mengekspos writefile ke environment script."
+		return false, "Executor tidak mengekspos writefile."
 	end
 
 	ensureInternalFolder()
@@ -1715,7 +1708,19 @@ local function getFrontAnchorCFrame(): CFrame?
 	return nil
 end
 
-local function applyImportedProps(inst: Instance, propsTable: any, refOrigin: CFrame?, frontAnchor: CFrame?, isStarterPackTarget: boolean)
+-- ==========================================
+-- SANDBOX BUILDER ENGINE
+-- ==========================================
+type SandboxBuildContext = {
+	parentTarget: Instance,
+	refOrigin: CFrame?,
+	frontAnchor: CFrame?,
+	isStarterPackTarget: boolean,
+	builtCount: number,
+	skippedCount: number,
+}
+
+local function sandboxApplyProperties(inst: Instance, propsTable: any, ctx: SandboxBuildContext)
 	if type(propsTable) ~= "table" then return end
 
 	if propsTable.Size ~= nil then
@@ -1729,8 +1734,8 @@ local function applyImportedProps(inst: Instance, propsTable: any, refOrigin: CF
 		if propName ~= "Size" and propName ~= "CastShadow" and propName ~= "Shadows" then
 			local decoded = deserializePropertyValue(rawVal)
 			if decoded ~= nil then
-				if propName == "CFrame" and typeof(decoded) == "CFrame" and CONFIG.MapPosMode == "InFrontOfChar" and refOrigin and frontAnchor and not isStarterPackTarget then
-					decoded = frontAnchor * refOrigin:ToObjectSpace(decoded)
+				if propName == "CFrame" and typeof(decoded) == "CFrame" and CONFIG.MapPosMode == "InFrontOfChar" and ctx.refOrigin and ctx.frontAnchor and not ctx.isStarterPackTarget then
+					decoded = ctx.frontAnchor * ctx.refOrigin:ToObjectSpace(decoded)
 				end
 				pcall(function() (inst :: any)[propName] = decoded end)
 			end
@@ -1740,7 +1745,7 @@ local function applyImportedProps(inst: Instance, propsTable: any, refOrigin: CF
 	if inst:IsA("BasePart") then
 		pcall(function()
 			inst.CastShadow = false
-			if CONFIG.MapAutoAnchor and not isStarterPackTarget then
+			if CONFIG.MapAutoAnchor and not ctx.isStarterPackTarget then
 				inst.Anchored = true
 			end
 		end)
@@ -1749,7 +1754,7 @@ local function applyImportedProps(inst: Instance, propsTable: any, refOrigin: CF
 	end
 end
 
-local function injectDecompiledSource(inst: Instance, sourceCode: any)
+local function sandboxInjectScriptSource(inst: Instance, sourceCode: any)
 	if type(sourceCode) ~= "string" or sourceCode == "" then return end
 	local okSet = pcall(function() (inst :: any).Source = sourceCode end)
 	if not okSet then
@@ -1757,37 +1762,83 @@ local function injectDecompiledSource(inst: Instance, sourceCode: any)
 	end
 end
 
-local function buildNodesIntoParent(nodes: any, parentTarget: Instance, importedCounter: {n: number}, refOrigin: CFrame?, frontAnchor: CFrame?, isStarterPackTarget: boolean)
-	if type(nodes) ~= "table" then return end
-	for i, node in ipairs(nodes) do
-		if type(node) == "table" and type(node.ClassName) == "string" then
-			local okNew, newInst = pcall(Instance.new, node.ClassName)
-			if okNew and newInst then
-				if type(node.Name) == "string" then newInst.Name = node.Name end
-				if type(node.Attributes) == "table" then
-					for aName, aRaw in pairs(node.Attributes) do
-						local aVal = deserializePropertyValue(aRaw)
-						if aVal ~= nil then pcall(function() newInst:SetAttribute(aName, aVal) end) end
-					end
-				end
-				applyImportedProps(newInst, node.Properties, refOrigin, frontAnchor, isStarterPackTarget)
-				if (newInst:IsA("Script") or newInst:IsA("LocalScript")) and isStarterPackTarget then
-					injectDecompiledSource(newInst, node.DecompiledSource)
-				end
-				newInst.Parent = parentTarget
-				importedCounter.n += 1
+local function sandboxBuildSingleNode(node: any, parentInst: Instance, ctx: SandboxBuildContext)
+	if type(node) ~= "table" or type(node.ClassName) ~= "string" then
+		ctx.skippedCount += 1
+		return
+	end
 
-				if type(node.Children) == "table" and #node.Children > 0 then
-					buildNodesIntoParent(node.Children, newInst, importedCounter, refOrigin, frontAnchor, isStarterPackTarget)
+	local okCreate, inst = pcall(Instance.new, node.ClassName)
+	if not okCreate or not inst then
+		ctx.skippedCount += 1
+		return
+	end
+
+	local okSetup = pcall(function()
+		if type(node.Name) == "string" then
+			inst.Name = node.Name
+		end
+
+		if type(node.Attributes) == "table" then
+			for aName, aRaw in pairs(node.Attributes) do
+				local aVal = deserializePropertyValue(aRaw)
+				if aVal ~= nil then
+					pcall(function() inst:SetAttribute(aName, aVal) end)
 				end
-				if newInst:IsA("Model") and type(node.PrimaryPartName) == "string" then
-					local foundPP = newInst:FindFirstChild(node.PrimaryPartName, true)
-					if foundPP and foundPP:IsA("BasePart") then newInst.PrimaryPart = foundPP end
-				end
-				if importedCounter.n % 90 == 0 then task.wait() end
 			end
 		end
-		if i % 40 == 0 then task.wait() end
+
+		sandboxApplyProperties(inst, node.Properties, ctx)
+
+		if (inst:IsA("Script") or inst:IsA("LocalScript")) and ctx.isStarterPackTarget then
+			sandboxInjectScriptSource(inst, node.DecompiledSource)
+		end
+
+		inst.Parent = parentInst
+	end)
+
+	if not okSetup then
+		pcall(function() inst:Destroy() end)
+		ctx.skippedCount += 1
+		return
+	end
+
+	ctx.builtCount += 1
+
+	if type(node.Children) == "table" and #node.Children > 0 then
+		for idx, chNode in ipairs(node.Children) do
+			sandboxBuildSingleNode(chNode, inst, ctx)
+			if ctx.builtCount % 75 == 0 then
+				task.wait()
+			elseif idx % 35 == 0 then
+				task.wait()
+			end
+		end
+	end
+
+	if inst:IsA("Model") and type(node.PrimaryPartName) == "string" then
+		pcall(function()
+			local foundPP = inst:FindFirstChild(node.PrimaryPartName, true)
+			if foundPP and foundPP:IsA("BasePart") then
+				inst.PrimaryPart = foundPP
+			end
+		end)
+	end
+end
+
+local function runSandboxBuilder(nodes: {any}, ctx: SandboxBuildContext)
+	for i, rootNode in ipairs(nodes) do
+		sandboxBuildSingleNode(rootNode, ctx.parentTarget, ctx)
+		if i % 20 == 0 then
+			ImportInfoLbl.Text = string.format(
+				"[Sandbox] Memproses %d/%d root (%d built, %d skip)...",
+				i,
+				#nodes,
+				ctx.builtCount,
+				ctx.skippedCount
+			)
+			task.wait()
+		end
 	end
 end
 
@@ -1813,6 +1864,7 @@ local function performCopyMap()
 				skipMapScripts = true,
 				starterPackDecompile = true,
 				noShadow = true,
+				builderMode = "Sandbox",
 				exportedAt = os.date("%Y-%m-%d %H:%M:%S"),
 			},
 		}
@@ -1873,7 +1925,7 @@ local function performImportMap()
 
 	CONFIG.MapBusy = true
 	local targetFile = CONFIG.SelectedFileName
-	ImportInfoLbl.Text = "Membaca file internal: " .. targetFile .. "..."
+	ImportInfoLbl.Text = "[Sandbox] Memuat file: " .. targetFile .. "..."
 
 	task.spawn(function()
 		local okRead, rawData = readFromInternalStorage(targetFile)
@@ -1917,14 +1969,32 @@ local function performImportMap()
 			return
 		end
 
-		local frontAnchor = getFrontAnchorCFrame()
-		local importedCounter = { n = 0 }
-		buildNodesIntoParent(nodesToBuild, targetService, importedCounter, refOrigin, frontAnchor, isStarterPackTarget)
+		local ctx: SandboxBuildContext = {
+			parentTarget = targetService,
+			refOrigin = refOrigin,
+			frontAnchor = getFrontAnchorCFrame(),
+			isStarterPackTarget = isStarterPackTarget,
+			builtCount = 0,
+			skippedCount = 0,
+		}
 
+		local okSand, errSand = pcall(runSandboxBuilder, nodesToBuild, ctx)
 		CONFIG.MapBusy = false
+
+		if not okSand then
+			ImportInfoLbl.Text = string.format(
+				"[Sandbox Warning] Selesai sebagian (%d built, %d skip): %s",
+				ctx.builtCount,
+				ctx.skippedCount,
+				tostring(errSand)
+			)
+			return
+		end
+
 		ImportInfoLbl.Text = string.format(
-			"[Success] %d instance dari %s di-import ke %s (%s).",
-			importedCounter.n,
+			"[Sandbox Done] %d built, %d skip dari %s -> %s (%s).",
+			ctx.builtCount,
+			ctx.skippedCount,
 			sourceGame,
 			selectedImportTarget,
 			isStarterPackTarget and "StarterPack + Decompile" or "NoShadow Mode"
