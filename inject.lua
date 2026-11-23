@@ -111,7 +111,7 @@ local CONFIG = {
 	ActiveTab = "CopyMap" :: ToolModeTab,
 	ThemeIndex = 1,
 	FontIndex = 1,
-	MapFileName = "auto_game_map.json",
+	SelectedFileName = "",
 	MapPosMode = "OriginalCF" :: ImportPosMode,
 	MapAutoAnchor = true,
 	MapBusy = false,
@@ -249,6 +249,7 @@ TopTabLayout.Parent = TopTabContainer
 local tabButtons: {[string]: TextButton} = {}
 local pageFrames: {[string]: Frame} = {}
 local applyThemeAndFont: () -> () = function() end
+local refreshImportFileList: () -> () = function() end
 
 local function makeTopTab(tabKey: ToolModeTab, labelText: string)
 	local btn = Instance.new("TextButton")
@@ -274,6 +275,9 @@ local function switchTab(tabKey: ToolModeTab)
 	for k, frame in pairs(pageFrames) do
 		frame.Visible = (k == tabKey)
 	end
+	if tabKey == "ImportMap" then
+		refreshImportFileList()
+	end
 	applyThemeAndFont()
 end
 
@@ -288,7 +292,6 @@ for k, btn in pairs(tabButtons) do
 	end)
 end
 
--- Tombol kontrol kanan atas: Settings, Drag Window, Close ke Circle
 local QuickSettingsBtn = Instance.new("TextButton")
 QuickSettingsBtn.Size = UDim2.fromOffset(22, 22)
 QuickSettingsBtn.Position = UDim2.new(1, -80, 0.5, -11)
@@ -358,7 +361,7 @@ CloseToCircleBtn.MouseButton1Click:Connect(function()
 	setMinimized(true)
 end)
 
--- Drag MainWindow dari TopBar / DragHandleBtn
+-- Drag MainWindow
 do
 	local draggingWin = false
 	local dragStart = Vector3.zero
@@ -460,7 +463,7 @@ do
 end
 
 -- ==========================================
--- BODY AREA (DUA KOLOM RAPI SEPERTI REFERENSI)
+-- BODY AREA (DUA KOLOM RAPI)
 -- ==========================================
 local BodyArea = Instance.new("Frame")
 BodyArea.Name = "BodyArea"
@@ -469,7 +472,7 @@ BodyArea.Position = UDim2.new(0, 10, 0, 40)
 BodyArea.BackgroundTransparency = 1
 BodyArea.Parent = MainWindow
 
--- PAGE 1: COPY MAP (KOLOM KIRI: SERVICE STUDIO | KOLOM KANAN: PANEL KONTROL & LOG)
+-- PAGE 1: COPY MAP (KOLOM KIRI: SERVICE STUDIO | KOLOM KANAN: AUTO FILE & LOG)
 local CopyPage = Instance.new("Frame")
 CopyPage.Size = UDim2.fromScale(1, 1)
 CopyPage.BackgroundTransparency = 1
@@ -477,7 +480,6 @@ CopyPage.Visible = true
 CopyPage.Parent = BodyArea
 pageFrames["CopyMap"] = CopyPage
 
--- Kolom Kiri (Service Studio)
 local LeftServiceCard = Instance.new("Frame")
 LeftServiceCard.Size = UDim2.new(0.42, -5, 1, 0)
 LeftServiceCard.Position = UDim2.new(0, 0, 0, 0)
@@ -625,27 +627,21 @@ for idx, sName in ipairs(SERVICE_LIST) do
 end
 
 FilterAllBtn.MouseButton1Click:Connect(function()
-	for _, sName in ipairs(SERVICE_LIST) do
-		CONFIG.SelectedServices[sName] = true
-	end
+	for _, sName in ipairs(SERVICE_LIST) do CONFIG.SelectedServices[sName] = true end
 	updateServiceCardVisuals()
 end)
-
 FilterMapBtn.MouseButton1Click:Connect(function()
 	for _, sName in ipairs(SERVICE_LIST) do
 		CONFIG.SelectedServices[sName] = (sName == "Workspace" or sName == "Lighting" or sName == "MaterialService")
 	end
 	updateServiceCardVisuals()
 end)
-
 FilterPackBtn.MouseButton1Click:Connect(function()
-	for _, sName in ipairs(SERVICE_LIST) do
-		CONFIG.SelectedServices[sName] = (sName == "StarterPack")
-	end
+	for _, sName in ipairs(SERVICE_LIST) do CONFIG.SelectedServices[sName] = (sName == "StarterPack") end
 	updateServiceCardVisuals()
 end)
 
--- Kolom Kanan (Panel Info Grid + File Otomatis + Progress/Log + Tombol Aksi)
+-- Kolom Kanan Copy Map
 local RightControlCard = Instance.new("Frame")
 RightControlCard.Size = UDim2.new(0.58, -5, 1, 0)
 RightControlCard.Position = UDim2.new(0.42, 5, 0, 0)
@@ -661,14 +657,13 @@ local RightHeaderLbl = Instance.new("TextLabel")
 RightHeaderLbl.Size = UDim2.new(1, -16, 0, 15)
 RightHeaderLbl.Position = UDim2.new(0, 8, 0, 4)
 RightHeaderLbl.BackgroundTransparency = 1
-RightHeaderLbl.Text = "COPY MAP • AUTO FILE NAMA GAME"
+RightHeaderLbl.Text = "COPY MAP • SIMPAN KE FILE INTERNAL"
 RightHeaderLbl.TextColor3 = Color3.fromRGB(45, 42, 35)
 RightHeaderLbl.TextSize = 8
 RightHeaderLbl.Font = Enum.Font.GothamBold
 RightHeaderLbl.TextXAlignment = Enum.TextXAlignment.Left
 RightHeaderLbl.Parent = RightControlCard
 
--- Grid 2x2 Info Mode (Shadow OFF, Map NoScript, StarterPack Decompile, Cross-Game)
 local InfoGrid = Instance.new("Frame")
 InfoGrid.Size = UDim2.new(1, -16, 0, 62)
 InfoGrid.Position = UDim2.new(0, 8, 0, 20)
@@ -715,45 +710,31 @@ end
 makeInfoTile(0, 0, "BAYANGAN", "OFF (Ringan)")
 makeInfoTile(1, 0, "MAP SCRIPT", "Skip Script/Local")
 makeInfoTile(0, 1, "STARTERPACK", "Script + Decompile")
-makeInfoTile(1, 1, "LINTAS GAME", "Support Import")
+makeInfoTile(1, 1, "PENYIMPANAN", "Internal File JSON")
 
--- Baris Input File Otomatis + Tombol Reset Nama Game
-local FileRowBox = Instance.new("Frame")
-FileRowBox.Size = UDim2.new(1, -16, 0, 24)
-FileRowBox.Position = UDim2.new(0, 8, 0, 87)
-FileRowBox.BackgroundColor3 = Color3.fromRGB(252, 249, 242)
-FileRowBox.BorderSizePixel = 0
-FileRowBox.Parent = RightControlCard
-Instance.new("UICorner", FileRowBox).CornerRadius = UDim.new(0, 6)
-local FileRowStroke = Instance.new("UIStroke", FileRowBox)
-FileRowStroke.Color = Color3.fromRGB(232, 208, 148)
-FileRowStroke.Thickness = 1
+local AutoFileBanner = Instance.new("Frame")
+AutoFileBanner.Size = UDim2.new(1, -16, 0, 24)
+AutoFileBanner.Position = UDim2.new(0, 8, 0, 87)
+AutoFileBanner.BackgroundColor3 = Color3.fromRGB(252, 249, 242)
+AutoFileBanner.BorderSizePixel = 0
+AutoFileBanner.Parent = RightControlCard
+Instance.new("UICorner", AutoFileBanner).CornerRadius = UDim.new(0, 6)
+local AutoBannerStroke = Instance.new("UIStroke", AutoFileBanner)
+AutoBannerStroke.Color = Color3.fromRGB(232, 208, 148)
+AutoBannerStroke.Thickness = 1
 
-local FileNameInput = Instance.new("TextBox")
-FileNameInput.Size = UDim2.new(1, -72, 1, 0)
-FileNameInput.Position = UDim2.new(0, 6, 0, 0)
-FileNameInput.BackgroundTransparency = 1
-FileNameInput.Text = CONFIG.MapFileName
-FileNameInput.PlaceholderText = "nama_game_otomatis.json"
-FileNameInput.TextColor3 = Color3.fromRGB(35, 32, 26)
-FileNameInput.TextSize = 8
-FileNameInput.Font = Enum.Font.Code
-FileNameInput.TextXAlignment = Enum.TextXAlignment.Left
-FileNameInput.ClearTextOnFocus = false
-FileNameInput.Parent = FileRowBox
+local AutoFilePreviewLbl = Instance.new("TextLabel")
+AutoFilePreviewLbl.Size = UDim2.new(1, -12, 1, 0)
+AutoFilePreviewLbl.Position = UDim2.new(0, 6, 0, 0)
+AutoFilePreviewLbl.BackgroundTransparency = 1
+AutoFilePreviewLbl.Text = "File: otomatis mengikuti nama game saat COPY MAP"
+AutoFilePreviewLbl.TextColor3 = Color3.fromRGB(45, 42, 35)
+AutoFilePreviewLbl.TextSize = 8
+AutoFilePreviewLbl.Font = Enum.Font.Code
+AutoFilePreviewLbl.TextXAlignment = Enum.TextXAlignment.Left
+AutoFilePreviewLbl.TextTruncate = Enum.TextTruncate.AtEnd
+AutoFilePreviewLbl.Parent = AutoFileBanner
 
-local AutoNameBtn = Instance.new("TextButton")
-AutoNameBtn.Size = UDim2.new(0, 62, 0, 18)
-AutoNameBtn.Position = UDim2.new(1, -66, 0.5, -9)
-AutoNameBtn.BackgroundColor3 = Color3.fromRGB(245, 240, 225)
-AutoNameBtn.Text = "Auto Game"
-AutoNameBtn.TextColor3 = Color3.fromRGB(50, 44, 30)
-AutoNameBtn.TextSize = 7
-AutoNameBtn.Font = Enum.Font.GothamBold
-AutoNameBtn.Parent = FileRowBox
-Instance.new("UICorner", AutoNameBtn).CornerRadius = UDim.new(0, 4)
-
--- Panel Status & Log Ringkas
 local StatusLogBox = Instance.new("Frame")
 StatusLogBox.Size = UDim2.new(1, -16, 1, -154)
 StatusLogBox.Position = UDim2.new(0, 8, 0, 115)
@@ -769,7 +750,7 @@ local StatusHeadlineLbl = Instance.new("TextLabel")
 StatusHeadlineLbl.Size = UDim2.new(1, -12, 0, 13)
 StatusHeadlineLbl.Position = UDim2.new(0, 6, 0, 3)
 StatusHeadlineLbl.BackgroundTransparency = 1
-StatusHeadlineLbl.Text = "Siap scan map & StarterPack"
+StatusHeadlineLbl.Text = "Siap simpan hasil copy ke file internal"
 StatusHeadlineLbl.TextColor3 = Color3.fromRGB(35, 32, 26)
 StatusHeadlineLbl.TextSize = 8
 StatusHeadlineLbl.Font = Enum.Font.GothamBold
@@ -805,7 +786,7 @@ local LogTextLbl = Instance.new("TextLabel")
 LogTextLbl.Size = UDim2.new(1, -4, 0, 16)
 LogTextLbl.AutomaticSize = Enum.AutomaticSize.Y
 LogTextLbl.BackgroundTransparency = 1
-LogTextLbl.Text = "[Ready] Save otomatis pakai nama game ke " .. CONFIG.WorkspaceRoot .. "/\n[Ready] CastShadow=OFF & Shadows=OFF agar tetap ringan."
+LogTextLbl.Text = "[Ready] Menyimpan ke folder internal: " .. CONFIG.WorkspaceRoot .. "/\n[Ready] Buka tab IMPORT MAP di game lain untuk memilih file."
 LogTextLbl.TextColor3 = Color3.fromRGB(95, 88, 72)
 LogTextLbl.TextSize = 7
 LogTextLbl.Font = Enum.Font.Code
@@ -814,7 +795,6 @@ LogTextLbl.TextYAlignment = Enum.TextYAlignment.Top
 LogTextLbl.TextWrapped = true
 LogTextLbl.Parent = LogScroll
 
--- Tombol Utama Bawah Kanan (COPY MAP)
 local PrimaryCopyBtn = Instance.new("TextButton")
 PrimaryCopyBtn.Size = UDim2.new(1, -16, 0, 28)
 PrimaryCopyBtn.Position = UDim2.new(0, 8, 1, -34)
@@ -827,7 +807,7 @@ PrimaryCopyBtn.Parent = RightControlCard
 Instance.new("UICorner", PrimaryCopyBtn).CornerRadius = UDim.new(0, 6)
 
 -- ==========================================
--- PAGE 2: IMPORT MAP (LINTAS GAME + STARTERPACK)
+-- PAGE 2: IMPORT MAP (LIST FILE OTOMATIS + TARGET SERVICE)
 -- ==========================================
 local ImportPage = Instance.new("Frame")
 ImportPage.Size = UDim2.fromScale(1, 1)
@@ -836,27 +816,77 @@ ImportPage.Visible = false
 ImportPage.Parent = BodyArea
 pageFrames["ImportMap"] = ImportPage
 
-local ImportLeftCard = Instance.new("Frame")
-ImportLeftCard.Size = UDim2.new(0.42, -5, 1, 0)
-ImportLeftCard.Position = UDim2.new(0, 0, 0, 0)
-ImportLeftCard.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-ImportLeftCard.BorderSizePixel = 0
-ImportLeftCard.Parent = ImportPage
-Instance.new("UICorner", ImportLeftCard).CornerRadius = UDim.new(0, 8)
-local ImpLeftStroke = Instance.new("UIStroke", ImportLeftCard)
+-- Kolom Kiri Import: Daftar File Hasil Copy
+local ImportFileCard = Instance.new("Frame")
+ImportFileCard.Size = UDim2.new(0.45, -5, 1, 0)
+ImportFileCard.Position = UDim2.new(0, 0, 0, 0)
+ImportFileCard.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+ImportFileCard.BorderSizePixel = 0
+ImportFileCard.Parent = ImportPage
+Instance.new("UICorner", ImportFileCard).CornerRadius = UDim.new(0, 8)
+local ImpLeftStroke = Instance.new("UIStroke", ImportFileCard)
 ImpLeftStroke.Color = Color3.fromRGB(235, 212, 152)
 ImpLeftStroke.Thickness = 1
 
-local ImpTargetLbl = Instance.new("TextLabel")
-ImpTargetLbl.Size = UDim2.new(1, -16, 0, 16)
-ImpTargetLbl.Position = UDim2.new(0, 8, 0, 6)
-ImpTargetLbl.BackgroundTransparency = 1
-ImpTargetLbl.Text = "TARGET SERVICE IMPORT"
-ImpTargetLbl.TextColor3 = Color3.fromRGB(45, 42, 35)
-ImpTargetLbl.TextSize = 8
-ImpTargetLbl.Font = Enum.Font.GothamBold
-ImpTargetLbl.TextXAlignment = Enum.TextXAlignment.Left
-ImpTargetLbl.Parent = ImportLeftCard
+local FileListTitleLbl = Instance.new("TextLabel")
+FileListTitleLbl.Size = UDim2.new(1, -68, 0, 18)
+FileListTitleLbl.Position = UDim2.new(0, 8, 0, 5)
+FileListTitleLbl.BackgroundTransparency = 1
+FileListTitleLbl.Text = "LIST FILE TERSIMPAN"
+FileListTitleLbl.TextColor3 = Color3.fromRGB(45, 42, 35)
+FileListTitleLbl.TextSize = 8
+FileListTitleLbl.Font = Enum.Font.GothamBold
+FileListTitleLbl.TextXAlignment = Enum.TextXAlignment.Left
+FileListTitleLbl.Parent = ImportFileCard
+
+local RefreshFilesBtn = Instance.new("TextButton")
+RefreshFilesBtn.Size = UDim2.fromOffset(54, 18)
+RefreshFilesBtn.Position = UDim2.new(1, -62, 0, 5)
+RefreshFilesBtn.BackgroundColor3 = Color3.fromRGB(255, 245, 214)
+RefreshFilesBtn.Text = "↻ Refresh"
+RefreshFilesBtn.TextColor3 = Color3.fromRGB(50, 44, 30)
+RefreshFilesBtn.TextSize = 7
+RefreshFilesBtn.Font = Enum.Font.GothamBold
+RefreshFilesBtn.Parent = ImportFileCard
+Instance.new("UICorner", RefreshFilesBtn).CornerRadius = UDim.new(0, 4)
+
+local SavedFilesScroll = Instance.new("ScrollingFrame")
+SavedFilesScroll.Size = UDim2.new(1, -12, 1, -30)
+SavedFilesScroll.Position = UDim2.new(0, 6, 0, 26)
+SavedFilesScroll.BackgroundTransparency = 1
+SavedFilesScroll.BorderSizePixel = 0
+SavedFilesScroll.ScrollBarThickness = 2
+SavedFilesScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+SavedFilesScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+SavedFilesScroll.Parent = ImportFileCard
+
+local SavedFilesLayout = Instance.new("UIListLayout")
+SavedFilesLayout.Padding = UDim.new(0, 5)
+SavedFilesLayout.SortOrder = Enum.SortOrder.LayoutOrder
+SavedFilesLayout.Parent = SavedFilesScroll
+
+-- Kolom Kanan Import: Target Service + Opsi + Tombol IMPORT MAP
+local ImportRightCard = Instance.new("Frame")
+ImportRightCard.Size = UDim2.new(0.55, -5, 1, 0)
+ImportRightCard.Position = UDim2.new(0.45, 5, 0, 0)
+ImportRightCard.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+ImportRightCard.BorderSizePixel = 0
+ImportRightCard.Parent = ImportPage
+Instance.new("UICorner", ImportRightCard).CornerRadius = UDim.new(0, 8)
+local ImpRightStroke = Instance.new("UIStroke", ImportRightCard)
+ImpRightStroke.Color = Color3.fromRGB(235, 212, 152)
+ImpRightStroke.Thickness = 1
+
+local ImpRightTitle = Instance.new("TextLabel")
+ImpRightTitle.Size = UDim2.new(1, -16, 0, 15)
+ImpRightTitle.Position = UDim2.new(0, 8, 0, 5)
+ImpRightTitle.BackgroundTransparency = 1
+ImpRightTitle.Text = "IMPORT KE GAME INI"
+ImpRightTitle.TextColor3 = Color3.fromRGB(45, 42, 35)
+ImpRightTitle.TextSize = 8
+ImpRightTitle.Font = Enum.Font.GothamBold
+ImpRightTitle.TextXAlignment = Enum.TextXAlignment.Left
+ImpRightTitle.Parent = ImportRightCard
 
 local selectedImportTarget = "Workspace"
 local importTargetBtns: {[string]: TextButton} = {}
@@ -869,18 +899,20 @@ local function refreshImportTargetBtns()
 	end
 end
 
-for i, sName in ipairs({ "Workspace", "StarterPack", "Lighting", "ReplicatedStorage" }) do
+local targetList = { "Workspace", "StarterPack", "Lighting", "ReplicatedStorage" }
+for i, sName in ipairs(targetList) do
+	local col = (i - 1) % 2
+	local rowIdx = math.floor((i - 1) / 2)
 	local b = Instance.new("TextButton")
-	b.Size = UDim2.new(1, -16, 0, 28)
-	b.Position = UDim2.new(0, 8, 0, 26 + (i - 1) * 33)
+	b.Size = UDim2.new(0.5, -10, 0, 22)
+	b.Position = UDim2.new(col * 0.5, (col == 0 and 8 or 2), 0, 22 + rowIdx * 25)
 	b.BackgroundColor3 = Color3.fromRGB(255, 253, 248)
 	b.Text = "○ " .. sName
 	b.TextColor3 = Color3.fromRGB(35, 32, 26)
-	b.TextSize = 8
+	b.TextSize = 7
 	b.Font = Enum.Font.GothamBold
-	b.TextXAlignment = Enum.TextXAlignment.Left
-	b.Parent = ImportLeftCard
-	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
+	b.Parent = ImportRightCard
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0, 5)
 	local st = Instance.new("UIStroke", b)
 	st.Color = Color3.fromRGB(236, 216, 166)
 	st.Thickness = 1
@@ -892,49 +924,27 @@ for i, sName in ipairs({ "Workspace", "StarterPack", "Lighting", "ReplicatedStor
 end
 refreshImportTargetBtns()
 
-local ImportRightCard = Instance.new("Frame")
-ImportRightCard.Size = UDim2.new(0.58, -5, 1, 0)
-ImportRightCard.Position = UDim2.new(0.42, 5, 0, 0)
-ImportRightCard.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-ImportRightCard.BorderSizePixel = 0
-ImportRightCard.Parent = ImportPage
-Instance.new("UICorner", ImportRightCard).CornerRadius = UDim.new(0, 8)
-local ImpRightStroke = Instance.new("UIStroke", ImportRightCard)
-ImpRightStroke.Color = Color3.fromRGB(235, 212, 152)
-ImpRightStroke.Thickness = 1
-
-local ImpRightTitle = Instance.new("TextLabel")
-ImpRightTitle.Size = UDim2.new(1, -16, 0, 16)
-ImpRightTitle.Position = UDim2.new(0, 8, 0, 6)
-ImpRightTitle.BackgroundTransparency = 1
-ImpRightTitle.Text = "IMPORT KE GAME INI (CROSS-GAME)"
-ImpRightTitle.TextColor3 = Color3.fromRGB(45, 42, 35)
-ImpRightTitle.TextSize = 8
-ImpRightTitle.Font = Enum.Font.GothamBold
-ImpRightTitle.TextXAlignment = Enum.TextXAlignment.Left
-ImpRightTitle.Parent = ImportRightCard
-
 local PosToggleBtn = Instance.new("TextButton")
-PosToggleBtn.Size = UDim2.new(0.5, -11, 0, 24)
-PosToggleBtn.Position = UDim2.new(0, 8, 0, 28)
+PosToggleBtn.Size = UDim2.new(0.5, -10, 0, 22)
+PosToggleBtn.Position = UDim2.new(0, 8, 0, 74)
 PosToggleBtn.BackgroundColor3 = Color3.fromRGB(255, 251, 240)
 PosToggleBtn.Text = "Posisi: Original CF"
 PosToggleBtn.TextColor3 = Color3.fromRGB(35, 32, 26)
-PosToggleBtn.TextSize = 8
+PosToggleBtn.TextSize = 7
 PosToggleBtn.Font = Enum.Font.GothamBold
 PosToggleBtn.Parent = ImportRightCard
-Instance.new("UICorner", PosToggleBtn).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", PosToggleBtn).CornerRadius = UDim.new(0, 5)
 
 local AnchorToggleBtn = Instance.new("TextButton")
-AnchorToggleBtn.Size = UDim2.new(0.5, -11, 0, 24)
-AnchorToggleBtn.Position = UDim2.new(0.5, 3, 0, 28)
+AnchorToggleBtn.Size = UDim2.new(0.5, -10, 0, 22)
+AnchorToggleBtn.Position = UDim2.new(0.5, 2, 0, 74)
 AnchorToggleBtn.BackgroundColor3 = Color3.fromRGB(255, 245, 214)
 AnchorToggleBtn.Text = "Anchor: ON"
 AnchorToggleBtn.TextColor3 = Color3.fromRGB(35, 32, 26)
-AnchorToggleBtn.TextSize = 8
+AnchorToggleBtn.TextSize = 7
 AnchorToggleBtn.Font = Enum.Font.GothamBold
 AnchorToggleBtn.Parent = ImportRightCard
-Instance.new("UICorner", AnchorToggleBtn).CornerRadius = UDim.new(0, 6)
+Instance.new("UICorner", AnchorToggleBtn).CornerRadius = UDim.new(0, 5)
 
 PosToggleBtn.MouseButton1Click:Connect(function()
 	if CONFIG.MapPosMode == "OriginalCF" then
@@ -951,26 +961,26 @@ AnchorToggleBtn.MouseButton1Click:Connect(function()
 	AnchorToggleBtn.Text = CONFIG.MapAutoAnchor and "Anchor: ON" or "Anchor: OFF"
 end)
 
-local ImportFileBox = Instance.new("TextBox")
-ImportFileBox.Size = UDim2.new(1, -16, 0, 24)
-ImportFileBox.Position = UDim2.new(0, 8, 0, 58)
-ImportFileBox.BackgroundColor3 = Color3.fromRGB(252, 249, 242)
-ImportFileBox.Text = CONFIG.MapFileName
-ImportFileBox.PlaceholderText = "nama_file_game_asal.json"
-ImportFileBox.TextColor3 = Color3.fromRGB(35, 32, 26)
-ImportFileBox.TextSize = 8
-ImportFileBox.Font = Enum.Font.Code
-ImportFileBox.ClearTextOnFocus = false
-ImportFileBox.Parent = ImportRightCard
-Instance.new("UICorner", ImportFileBox).CornerRadius = UDim.new(0, 6)
+local SelectedFileBanner = Instance.new("TextLabel")
+SelectedFileBanner.Size = UDim2.new(1, -16, 0, 20)
+SelectedFileBanner.Position = UDim2.new(0, 8, 0, 100)
+SelectedFileBanner.BackgroundColor3 = Color3.fromRGB(252, 249, 242)
+SelectedFileBanner.Text = "File terpilih: (klik file di list kiri)"
+SelectedFileBanner.TextColor3 = Color3.fromRGB(45, 42, 35)
+SelectedFileBanner.TextSize = 7
+SelectedFileBanner.Font = Enum.Font.Code
+SelectedFileBanner.TextXAlignment = Enum.TextXAlignment.Left
+SelectedFileBanner.TextTruncate = Enum.TextTruncate.AtEnd
+SelectedFileBanner.Parent = ImportRightCard
+Instance.new("UICorner", SelectedFileBanner).CornerRadius = UDim.new(0, 5)
 
 local ImportInfoLbl = Instance.new("TextLabel")
-ImportInfoLbl.Size = UDim2.new(1, -16, 1, -124)
-ImportInfoLbl.Position = UDim2.new(0, 8, 0, 88)
+ImportInfoLbl.Size = UDim2.new(1, -16, 1, -160)
+ImportInfoLbl.Position = UDim2.new(0, 8, 0, 124)
 ImportInfoLbl.BackgroundColor3 = Color3.fromRGB(255, 253, 248)
-ImportInfoLbl.Text = "• Mendukung file JSON hasil Copy dari game manapun.\n• Map di-import tanpa bayangan (CastShadow=OFF & Shadows=OFF).\n• Target StarterPack memulihkan item + decompiled Script/LocalScript."
+ImportInfoLbl.Text = "• Pilih file dari list di kiri (hasil copy game sebelumnya).\n• Tanpa bayangan (CastShadow=OFF & Shadows=OFF) agar ringan.\n• Target StarterPack memulihkan item + decompile Script/LocalScript."
 ImportInfoLbl.TextColor3 = Color3.fromRGB(80, 74, 60)
-ImportInfoLbl.TextSize = 8
+ImportInfoLbl.TextSize = 7
 ImportInfoLbl.Font = Enum.Font.GothamMedium
 ImportInfoLbl.TextXAlignment = Enum.TextXAlignment.Left
 ImportInfoLbl.TextYAlignment = Enum.TextYAlignment.Top
@@ -1245,7 +1255,7 @@ local AboutSummaryLbl = Instance.new("TextLabel")
 AboutSummaryLbl.Size = UDim2.new(1, -16, 1, -110)
 AboutSummaryLbl.Position = UDim2.new(0, 8, 0, 102)
 AboutSummaryLbl.BackgroundColor3 = Color3.fromRGB(255, 251, 240)
-AboutSummaryLbl.Text = "Plugin Studio Lite (Delta Executor Edition) v1.9.0\n• Auto save nama game ke folder: " .. CONFIG.WorkspaceRoot .. "/\n• Import lintas game didukung penuh + mode ringan (CastShadow/Shadows OFF)\n• Map mengabaikan Script/LocalScript; StarterPack menyalin Script/LocalScript + decompile Delta"
+AboutSummaryLbl.Text = "Plugin Studio Lite (Delta Executor Edition) v2.0.0\n• Menyimpan file internal ke folder: " .. CONFIG.WorkspaceRoot .. "/\n• Tab IMPORT MAP menampilkan list file tersimpan untuk dipilih langsung lintas game\n• Bayangan OFF (CastShadow/Shadows OFF) + Map NoScript + StarterPack Decompile"
 AboutSummaryLbl.TextColor3 = Color3.fromRGB(70, 64, 52)
 AboutSummaryLbl.TextSize = 8
 AboutSummaryLbl.Font = Enum.Font.Code
@@ -1256,11 +1266,8 @@ AboutSummaryLbl.Parent = SettingsCard
 Instance.new("UICorner", AboutSummaryLbl).CornerRadius = UDim.new(0, 6)
 
 -- ==========================================
--- LOGIKA FILE, DECOMPILE, NO SHADOW & COPY/IMPORT
+-- FILE SYSTEM INTERNAL, DECOMPILE & COPY/IMPORT
 -- ==========================================
-local SessionMapCache: {[string]: string} = {}
-local LatestSavedFileName: string? = nil
-
 local function appendMapLog(msg: string)
 	if LogTextLbl.Text == "" then
 		LogTextLbl.Text = msg
@@ -1301,8 +1308,8 @@ local function getCurrentGameTitle(): string
 	if clean == "" then
 		clean = "RobloxGame"
 	end
-	if #clean > 48 then
-		clean = string.sub(clean, 1, 48)
+	if #clean > 44 then
+		clean = string.sub(clean, 1, 44)
 	end
 	return clean
 end
@@ -1313,90 +1320,199 @@ local function buildAutoGameFileName(): string
 	return sanitizeFileName(gameSlug .. "_" .. placePart .. ".json")
 end
 
-local function getExecutorEnv(): {[string]: any}
-	local env: {[string]: any} = {}
-	local okFenv, fenvTbl = pcall(function() return getfenv(1) end)
-	if okFenv and type(fenvTbl) == "table" then
-		for k, v in pairs(fenvTbl) do env[tostring(k)] = v end
+local function resolveExecFn(fnName: string): ((...any) -> any)?
+	local okG, directFn = pcall(function()
+		return (getfenv(0) :: any)[fnName]
+	end)
+	if okG and type(directFn) == "function" then
+		return directFn
 	end
-	local okRootFenv, rootFenv = pcall(function() return getfenv(0) end)
-	if okRootFenv and type(rootFenv) == "table" then
-		for k, v in pairs(rootFenv) do
-			if env[tostring(k)] == nil then env[tostring(k)] = v end
+
+	local okL, localFn = pcall(function()
+		return (getfenv(1) :: any)[fnName]
+	end)
+	if okL and type(localFn) == "function" then
+		return localFn
+	end
+
+	local okR, renv = pcall(function()
+		local gRen = (getfenv(0) :: any)["getrenv"]
+		if type(gRen) == "function" then
+			return gRen()
 		end
+		return nil
+	end)
+	if okR and type(renv) == "table" and type(renv[fnName]) == "function" then
+		return renv[fnName]
 	end
-	if type(shared) == "table" then
-		for k, v in pairs(shared :: any) do
-			if env[tostring(k)] == nil then env[tostring(k)] = v end
-		end
+
+	if type(shared) == "table" and type((shared :: any)[fnName]) == "function" then
+		return (shared :: any)[fnName]
 	end
-	if type(_G) == "table" then
-		for k, v in pairs(_G :: any) do
-			if env[tostring(k)] == nil then env[tostring(k)] = v end
-		end
+
+	if type(_G) == "table" and type((_G :: any)[fnName]) == "function" then
+		return (_G :: any)[fnName]
 	end
-	return env
+
+	return nil
 end
 
-local function ensureWorkspaceFolder()
-	local env = getExecutorEnv()
-	local isfolderFn = env["isfolder"]
-	local makefolderFn = env["makefolder"]
-	if type(isfolderFn) == "function" and type(makefolderFn) == "function" then
+local function ensureInternalFolder(): (boolean, string)
+	local isfolderFn = resolveExecFn("isfolder")
+	local makefolderFn = resolveExecFn("makefolder")
+	if type(makefolderFn) ~= "function" then
+		return false, "makefolder tidak tersedia di executor"
+	end
+	if type(isfolderFn) == "function" then
 		local okEx, exists = pcall(isfolderFn, CONFIG.WorkspaceRoot)
-		if not okEx or not exists then
-			pcall(makefolderFn, CONFIG.WorkspaceRoot)
+		if okEx and exists then
+			return true, CONFIG.WorkspaceRoot
 		end
 	end
+	local okMk, errMk = pcall(makefolderFn, CONFIG.WorkspaceRoot)
+	if not okMk then
+		return false, "Gagal membuat folder " .. CONFIG.WorkspaceRoot .. ": " .. tostring(errMk)
+	end
+	return true, CONFIG.WorkspaceRoot
 end
 
-local function readExecutorFile(relPath: string): (boolean, string)
-	local env = getExecutorEnv()
-	local isfileFn = env["isfile"]
-	local readfileFn = env["readfile"]
+local function saveToInternalStorage(fileName: string, content: string): (boolean, string)
+	local writefileFn = resolveExecFn("writefile")
+	if type(writefileFn) ~= "function" then
+		return false, "Executor tidak mengekspos writefile ke environment script."
+	end
 
-	if type(isfileFn) == "function" and type(readfileFn) == "function" then
-		local fullPath = CONFIG.WorkspaceRoot .. "/" .. relPath
+	ensureInternalFolder()
+	local fullPath = CONFIG.WorkspaceRoot .. "/" .. fileName
+	local okW, errW = pcall(writefileFn, fullPath, content)
+	if not okW then
+		return false, "Gagal menulis ke " .. fullPath .. " (" .. tostring(errW) .. ")"
+	end
+
+	local isfileFn = resolveExecFn("isfile")
+	if type(isfileFn) == "function" then
+		local okCheck, existsAfter = pcall(isfileFn, fullPath)
+		if not okCheck or not existsAfter then
+			return false, "File tidak terverifikasi ada di " .. fullPath
+		end
+	end
+
+	return true, fullPath
+end
+
+local function readFromInternalStorage(fileName: string): (boolean, string)
+	local readfileFn = resolveExecFn("readfile")
+	if type(readfileFn) ~= "function" then
+		return false, "Executor tidak mengekspos readfile."
+	end
+
+	local fullPath = CONFIG.WorkspaceRoot .. "/" .. fileName
+	local isfileFn = resolveExecFn("isfile")
+	if type(isfileFn) == "function" then
 		local okEx, exists = pcall(isfileFn, fullPath)
-		if okEx and exists then
-			local okRead, content = pcall(readfileFn, fullPath)
-			if okRead and type(content) == "string" then
-				return true, content
+		if not okEx or not exists then
+			return false, "File tidak ditemukan di penyimpanan internal: " .. fullPath
+		end
+	end
+
+	local okR, raw = pcall(readfileFn, fullPath)
+	if not okR or type(raw) ~= "string" or raw == "" then
+		return false, "Gagal membaca isi file: " .. fullPath
+	end
+	return true, raw
+end
+
+local function listInternalExportFiles(): {string}
+	local result: {string} = {}
+	local seen: {[string]: boolean} = {}
+
+	local function pushIfJson(rawEntry: any)
+		if type(rawEntry) ~= "string" then return end
+		local base = string.match(rawEntry, "([^/\\]+)$") or rawEntry
+		if string.match(string.lower(base), "%.json$") and not seen[base] then
+			seen[base] = true
+			table.insert(result, base)
+		end
+	end
+
+	local listfilesFn = resolveExecFn("listfiles")
+	if type(listfilesFn) == "function" then
+		local okL, listRes = pcall(listfilesFn, CONFIG.WorkspaceRoot)
+		if okL and type(listRes) == "table" then
+			for _, item in ipairs(listRes) do
+				pushIfJson(item)
 			end
 		end
 	end
 
-	if type(SessionMapCache[relPath]) == "string" and SessionMapCache[relPath] ~= "" then
-		return true, SessionMapCache[relPath]
-	end
-	if LatestSavedFileName and SessionMapCache[LatestSavedFileName] then
-		return true, SessionMapCache[LatestSavedFileName]
+	if CONFIG.SelectedFileName ~= "" then
+		pushIfJson(CONFIG.SelectedFileName)
 	end
 
-	return false, "File tidak ditemukan: " .. CONFIG.WorkspaceRoot .. "/" .. relPath
+	table.sort(result)
+	return result
 end
 
-local function writeExecutorFile(relPath: string, content: string): (boolean, string)
-	SessionMapCache[relPath] = content
-	LatestSavedFileName = relPath
+refreshImportFileList = function()
+	for _, child in ipairs(SavedFilesScroll:GetChildren()) do
+		if child:IsA("TextButton") or child:IsA("TextLabel") then
+			child:Destroy()
+		end
+	end
 
-	local env = getExecutorEnv()
-	local writefileFn = env["writefile"]
-	if type(writefileFn) ~= "function" then
-		return true, "MEMORI_SESI://" .. CONFIG.WorkspaceRoot .. "/" .. relPath
+	local files = listInternalExportFiles()
+	if #files == 0 then
+		local emptyLbl = Instance.new("TextLabel")
+		emptyLbl.Size = UDim2.new(1, -8, 0, 44)
+		emptyLbl.BackgroundColor3 = Color3.fromRGB(255, 251, 240)
+		emptyLbl.Text = "Belum ada file .json di " .. CONFIG.WorkspaceRoot .. "/.\nCopy map di game asal dulu, lalu klik ↻ Refresh."
+		emptyLbl.TextColor3 = Color3.fromRGB(115, 106, 86)
+		emptyLbl.TextSize = 7
+		emptyLbl.Font = Enum.Font.GothamMedium
+		emptyLbl.TextWrapped = true
+		emptyLbl.Parent = SavedFilesScroll
+		Instance.new("UICorner", emptyLbl).CornerRadius = UDim.new(0, 6)
+		return
 	end
-	ensureWorkspaceFolder()
-	local fullPath = CONFIG.WorkspaceRoot .. "/" .. relPath
-	local okW, errW = pcall(writefileFn, fullPath, content)
-	if not okW then
-		return true, "MEMORI_SESI://" .. fullPath .. " (" .. tostring(errW) .. ")"
+
+	if CONFIG.SelectedFileName == "" then
+		CONFIG.SelectedFileName = files[1]
 	end
-	return true, fullPath
+
+	for idx, fName in ipairs(files) do
+		local isSel = (fName == CONFIG.SelectedFileName)
+		local fBtn = Instance.new("TextButton")
+		fBtn.Size = UDim2.new(1, -4, 0, 28)
+		fBtn.BackgroundColor3 = isSel and Color3.fromRGB(255, 245, 214) or Color3.fromRGB(255, 253, 248)
+		fBtn.Text = (isSel and "▶ " or "  ") .. fName
+		fBtn.TextColor3 = Color3.fromRGB(35, 32, 26)
+		fBtn.TextSize = 7
+		fBtn.Font = Enum.Font.Code
+		fBtn.TextXAlignment = Enum.TextXAlignment.Left
+		fBtn.TextTruncate = Enum.TextTruncate.AtEnd
+		fBtn.LayoutOrder = idx
+		fBtn.Parent = SavedFilesScroll
+		Instance.new("UICorner", fBtn).CornerRadius = UDim.new(0, 5)
+		local st = Instance.new("UIStroke", fBtn)
+		st.Color = isSel and Color3.fromRGB(245, 178, 36) or Color3.fromRGB(236, 216, 166)
+		st.Thickness = 1
+
+		fBtn.MouseButton1Click:Connect(function()
+			CONFIG.SelectedFileName = fName
+			SelectedFileBanner.Text = "File terpilih: " .. fName
+			refreshImportFileList()
+		end)
+	end
+
+	SelectedFileBanner.Text = "File terpilih: " .. tostring(CONFIG.SelectedFileName)
 end
+
+RefreshFilesBtn.MouseButton1Click:Connect(function()
+	refreshImportFileList()
+end)
 
 local function decompileDeltaScript(scr: LuaSourceContainer): string?
-	local env = getExecutorEnv()
-	local decompileFn = env["decompile"]
+	local decompileFn = resolveExecFn("decompile")
 	if type(decompileFn) == "function" then
 		local okD, resD = pcall(decompileFn, scr)
 		if okD and type(resD) == "string" and resD ~= "" then
@@ -1404,7 +1520,7 @@ local function decompileDeltaScript(scr: LuaSourceContainer): string?
 		end
 	end
 
-	local getBytecodeFn = env["getscriptbytecode"]
+	local getBytecodeFn = resolveExecFn("getscriptbytecode")
 	if type(getBytecodeFn) == "function" then
 		local okB, bc = pcall(getBytecodeFn, scr)
 		if okB and type(bc) == "string" and bc ~= "" and type(decompileFn) == "function" then
@@ -1681,12 +1797,10 @@ local function performCopyMap()
 	setProgress(0.08)
 
 	local autoFile = buildAutoGameFileName()
-	CONFIG.MapFileName = autoFile
-	FileNameInput.Text = autoFile
-	ImportFileBox.Text = autoFile
-
-	StatusHeadlineLbl.Text = "Export otomatis: " .. autoFile
-	appendMapLog("[Copy] File otomatis game: " .. autoFile)
+	CONFIG.SelectedFileName = autoFile
+	AutoFilePreviewLbl.Text = "File: " .. CONFIG.WorkspaceRoot .. "/" .. autoFile
+	StatusHeadlineLbl.Text = "Menyimpan ke file internal..."
+	appendMapLog("[Copy] File internal: " .. CONFIG.WorkspaceRoot .. "/" .. autoFile)
 
 	task.spawn(function()
 		local dumpPayload: {[string]: any} = {
@@ -1732,15 +1846,16 @@ local function performCopyMap()
 			return
 		end
 
-		local okSave, savedPathOrErr = writeExecutorFile(autoFile, jsonStr)
+		local okSave, savedPathOrErr = saveToInternalStorage(autoFile, jsonStr)
 		CONFIG.MapBusy = false
 		setProgress(okSave and 1 or 0)
 
 		if okSave then
-			StatusHeadlineLbl.Text = string.format("Selesai: %s (%d inst)", autoFile, totalCount.n)
-			appendMapLog(string.format("[Success] Tersimpan (%d inst) -> %s", totalCount.n, savedPathOrErr))
+			StatusHeadlineLbl.Text = string.format("Tersimpan: %s (%d inst)", autoFile, totalCount.n)
+			appendMapLog(string.format("[Saved] %d inst -> %s", totalCount.n, savedPathOrErr))
+			refreshImportFileList()
 		else
-			StatusHeadlineLbl.Text = "Gagal simpan file"
+			StatusHeadlineLbl.Text = "Gagal simpan file internal"
 			appendMapLog("[Error] " .. savedPathOrErr)
 		end
 	end)
@@ -1748,17 +1863,20 @@ end
 
 local function performImportMap()
 	if CONFIG.MapBusy then return end
-	CONFIG.MapBusy = true
-
-	local targetFile = sanitizeFileName(ImportFileBox.Text)
-	if targetFile == "" or targetFile == "auto_game_map.json" then
-		targetFile = LatestSavedFileName or buildAutoGameFileName()
+	if CONFIG.SelectedFileName == "" then
+		refreshImportFileList()
 	end
-	CONFIG.MapFileName = targetFile
-	ImportFileBox.Text = targetFile
+	if CONFIG.SelectedFileName == "" then
+		ImportInfoLbl.Text = "[Error] Belum ada file yang dipilih dari daftar."
+		return
+	end
+
+	CONFIG.MapBusy = true
+	local targetFile = CONFIG.SelectedFileName
+	ImportInfoLbl.Text = "Membaca file internal: " .. targetFile .. "..."
 
 	task.spawn(function()
-		local okRead, rawData = readExecutorFile(targetFile)
+		local okRead, rawData = readFromInternalStorage(targetFile)
 		if not okRead then
 			CONFIG.MapBusy = false
 			ImportInfoLbl.Text = "[Error] " .. rawData
@@ -1805,7 +1923,7 @@ local function performImportMap()
 
 		CONFIG.MapBusy = false
 		ImportInfoLbl.Text = string.format(
-			"[Success] %d instance dari %s berhasil di-import ke %s (%s).",
+			"[Success] %d instance dari %s di-import ke %s (%s).",
 			importedCounter.n,
 			sourceGame,
 			selectedImportTarget,
@@ -1813,14 +1931,6 @@ local function performImportMap()
 		)
 	end)
 end
-
-AutoNameBtn.MouseButton1Click:Connect(function()
-	local fName = buildAutoGameFileName()
-	CONFIG.MapFileName = fName
-	FileNameInput.Text = fName
-	ImportFileBox.Text = fName
-	StatusHeadlineLbl.Text = "Nama file game: " .. fName
-end)
 
 PrimaryCopyBtn.MouseButton1Click:Connect(function()
 	performCopyMap()
@@ -1875,5 +1985,6 @@ applyThemeAndFont = function()
 end
 
 updateServiceCardVisuals()
+refreshImportFileList()
 switchTab("CopyMap")
 applyThemeAndFont()
