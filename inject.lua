@@ -26,7 +26,7 @@ local CONFIG = {
 	Cookie = "",
 	IsMinimized = false,
 	ActiveTab = "CreatePlace",
-	DefaultUniverseId = "10516113765",
+	DefaultUniverseId = "",
 	UserAgent = "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36",
 }
 
@@ -332,6 +332,10 @@ local function resolveRealtimeGameIcon(universeId: string, rootPlaceId: string?,
 	local cleanUniv = trim(universeId):match("%d+") or ""
 	local cleanPlace = (rootPlaceId and trim(rootPlaceId):match("%d+")) or ""
 
+	if cleanUniv == "" and cleanPlace == "" then
+		return "rbxasset://textures/ui/GuiImagePlaceholder.png"
+	end
+
 	local authHeaders: {[string]: string} = {}
 	if trim(cookieVal) ~= "" then
 		authHeaders["Cookie"] = ".ROBLOSECURITY=" .. normalizeCookie(cookieVal)
@@ -378,11 +382,7 @@ local function resolveRealtimeGameIcon(universeId: string, rootPlaceId: string?,
 		return "rbxthumb://type=Asset&id=" .. cleanPlace .. "&w=150&h=150"
 	end
 
-	if cleanUniv ~= "" then
-		return "rbxthumb://type=GameIcon&id=" .. cleanUniv .. "&w=150&h=150"
-	end
-
-	return "rbxasset://textures/ui/GuiImagePlaceholder.png"
+	return "rbxthumb://type=GameIcon&id=" .. cleanUniv .. "&w=150&h=150"
 end
 
 local function fetchRealtimeGameData(universeId: string, cookieVal: string, fallbackPlaceId: string?): GameResultCardData
@@ -558,7 +558,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		})
 	end
 
-	-- 1. Ambil dari Profile Creations API (www.roblox.com/users/{uid}/profile -> Creations)
 	local profileApiUrls = {
 		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=All&limit=50&sortOrder=Desc", uid),
 		string.format("https://games.roblox.com/v2/users/%d/games?accessFilter=2&limit=50&sortOrder=Desc", uid),
@@ -601,7 +600,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 2. Parse langsung halaman HTML profil: https://www.roblox.com/users/{uid}/profile
 	local profilePageUrl = string.format("https://www.roblox.com/users/%d/profile", uid)
 	local htmlRes, htmlOk = apiRequest({
 		Url = profilePageUrl,
@@ -656,7 +654,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 3. Lengkapi nama, rootPlaceId & status (publik / private) tiap universe
 	for _, it in ipairs(rawItems) do
 		local dRes, dOk = apiRequest({
 			Url = "https://develop.roblox.com/v1/universes/" .. it.univId,
@@ -689,7 +686,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 4. Batch fetch nama & rootPlaceId lewat games.roblox.com
 	local gamesInfoMap: {[string]: {name: string?, rootPlaceId: string?}} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -722,7 +718,6 @@ local function fetchMyPlacesList(cookieVal: string): (boolean, {GameResultCardDa
 		end
 	end
 
-	-- 5. Batch fetch icon lewat thumbnails.roblox.com
 	local iconMap: {[string]: string} = {}
 	if #rawItems > 0 then
 		local idsArr: {string} = {}
@@ -1574,8 +1569,8 @@ local PlaceCountBox = Instance.new("TextBox")
 PlaceCountBox.Size = UDim2.new(0.28, -10, 0, 21)
 PlaceCountBox.Position = UDim2.new(0.72, 0, 0, 20)
 PlaceCountBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-PlaceCountBox.Text = "1"
-PlaceCountBox.PlaceholderText = "Jumlah"
+PlaceCountBox.Text = ""
+PlaceCountBox.PlaceholderText = "Jumlah (1)"
 PlaceCountBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 PlaceCountBox.TextColor3 = Color3.fromRGB(235, 235, 250)
 PlaceCountBox.TextSize = 10
@@ -1828,7 +1823,7 @@ local VoiceUniverseBox = Instance.new("TextBox")
 VoiceUniverseBox.Size = UDim2.new(1, -108, 0, 26)
 VoiceUniverseBox.Position = UDim2.new(0, 12, 0, 26)
 VoiceUniverseBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-VoiceUniverseBox.Text = CONFIG.DefaultUniverseId
+VoiceUniverseBox.Text = ""
 VoiceUniverseBox.PlaceholderText = "Masukkan Universe ID..."
 VoiceUniverseBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 VoiceUniverseBox.TextColor3 = Color3.fromRGB(235, 235, 250)
@@ -1918,7 +1913,7 @@ local VoiceIconImg = Instance.new("ImageLabel")
 VoiceIconImg.Size = UDim2.fromOffset(52, 52)
 VoiceIconImg.Position = UDim2.new(0, 8, 0.5, -26)
 VoiceIconImg.BackgroundColor3 = Color3.fromRGB(20, 19, 32)
-VoiceIconImg.Image = resolveRealtimeGameIcon(CONFIG.DefaultUniverseId, nil, CONFIG.Cookie)
+VoiceIconImg.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
 VoiceIconImg.ScaleType = Enum.ScaleType.Crop
 VoiceIconImg.Parent = VoicePreviewCard
 Instance.new("UICorner", VoiceIconImg).CornerRadius = UDim.new(0, 8)
@@ -1927,7 +1922,7 @@ local VoiceGameName = Instance.new("TextLabel")
 VoiceGameName.Size = UDim2.new(1, -74, 0, 16)
 VoiceGameName.Position = UDim2.new(0, 68, 0, 8)
 VoiceGameName.BackgroundTransparency = 1
-VoiceGameName.Text = "Universe #" .. CONFIG.DefaultUniverseId
+VoiceGameName.Text = "Belum ada Universe ID"
 VoiceGameName.TextColor3 = Color3.fromRGB(245, 245, 255)
 VoiceGameName.TextSize = 11
 VoiceGameName.Font = Enum.Font.GothamBold
@@ -1939,7 +1934,7 @@ local VoiceStatusText = Instance.new("TextLabel")
 VoiceStatusText.Size = UDim2.new(1, -74, 0, 26)
 VoiceStatusText.Position = UDim2.new(0, 68, 0, 26)
 VoiceStatusText.BackgroundTransparency = 1
-VoiceStatusText.Text = "Siap sinkronisasi status Voice Chat universe."
+VoiceStatusText.Text = "Masukkan Universe ID lalu klik Cek Status."
 VoiceStatusText.TextColor3 = Color3.fromRGB(165, 162, 194)
 VoiceStatusText.TextSize = 9
 VoiceStatusText.Font = Enum.Font.GothamMedium
@@ -1972,7 +1967,7 @@ local SalesUniverseBox = Instance.new("TextBox")
 SalesUniverseBox.Size = UDim2.new(1, -108, 0, 26)
 SalesUniverseBox.Position = UDim2.new(0, 12, 0, 26)
 SalesUniverseBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-SalesUniverseBox.Text = CONFIG.DefaultUniverseId
+SalesUniverseBox.Text = ""
 SalesUniverseBox.PlaceholderText = "Masukkan Universe ID..."
 SalesUniverseBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 SalesUniverseBox.TextColor3 = Color3.fromRGB(235, 235, 250)
@@ -2062,7 +2057,7 @@ local SalesIconImg = Instance.new("ImageLabel")
 SalesIconImg.Size = UDim2.fromOffset(52, 52)
 SalesIconImg.Position = UDim2.new(0, 8, 0.5, -26)
 SalesIconImg.BackgroundColor3 = Color3.fromRGB(20, 19, 32)
-SalesIconImg.Image = resolveRealtimeGameIcon(CONFIG.DefaultUniverseId, nil, CONFIG.Cookie)
+SalesIconImg.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
 SalesIconImg.ScaleType = Enum.ScaleType.Crop
 SalesIconImg.Parent = SalesPreviewCard
 Instance.new("UICorner", SalesIconImg).CornerRadius = UDim.new(0, 8)
@@ -2071,7 +2066,7 @@ local SalesGameName = Instance.new("TextLabel")
 SalesGameName.Size = UDim2.new(1, -74, 0, 16)
 SalesGameName.Position = UDim2.new(0, 68, 0, 8)
 SalesGameName.BackgroundTransparency = 1
-SalesGameName.Text = "Universe #" .. CONFIG.DefaultUniverseId
+SalesGameName.Text = "Belum ada Universe ID"
 SalesGameName.TextColor3 = Color3.fromRGB(245, 245, 255)
 SalesGameName.TextSize = 11
 SalesGameName.Font = Enum.Font.GothamBold
@@ -2083,7 +2078,7 @@ local SalesStatusText = Instance.new("TextLabel")
 SalesStatusText.Size = UDim2.new(1, -74, 0, 26)
 SalesStatusText.Position = UDim2.new(0, 68, 0, 26)
 SalesStatusText.BackgroundTransparency = 1
-SalesStatusText.Text = "Siap sinkronisasi status Allow Third Party Sales."
+SalesStatusText.Text = "Masukkan Universe ID lalu klik Cek Status."
 SalesStatusText.TextColor3 = Color3.fromRGB(165, 162, 194)
 SalesStatusText.TextSize = 9
 SalesStatusText.Font = Enum.Font.GothamMedium
@@ -2116,7 +2111,7 @@ local CookieBox = Instance.new("TextBox")
 CookieBox.Size = UDim2.new(1, -24, 0, 96)
 CookieBox.Position = UDim2.new(0, 12, 0, 32)
 CookieBox.BackgroundColor3 = Color3.fromRGB(13, 12, 20)
-CookieBox.Text = CONFIG.Cookie
+CookieBox.Text = ""
 CookieBox.PlaceholderText = "Tempel .ROBLOSECURITY Cookie di sini..."
 CookieBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 138)
 CookieBox.TextColor3 = Color3.fromRGB(235, 235, 250)
@@ -2146,7 +2141,7 @@ SettingStatusLabel.Size = UDim2.new(1, -24, 0, 56)
 SettingStatusLabel.Position = UDim2.new(0, 12, 0, 176)
 SettingStatusLabel.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
 SettingStatusLabel.Text = CONFIG.Cookie ~= ""
-	and ("Status Cookie: Terisi (" .. tostring(#CONFIG.Cookie) .. " karakter)")
+	and ("Status Cookie: Tersimpan di file (" .. tostring(#CONFIG.Cookie) .. " karakter)")
 	or ("Status Cookie: Kosong • Simpan ke " .. CONFIG.WorkspaceRoot .. "/cookie.txt")
 SettingStatusLabel.TextColor3 = Color3.fromRGB(185, 205, 255)
 SettingStatusLabel.TextSize = 9
