@@ -859,7 +859,7 @@ do
 end
 
 -- ==========================================
--- HALAMAN 2: JAIL + FLING (UNANCHORED PART & FLING PHYSICS ACCESS)
+-- HALAMAN 2: JAIL + FLING (UNANCHORED PART & TOUCH FLING PHYSICS)
 -- ==========================================
 local JailPage = Instance.new("Frame")
 JailPage.Size = UDim2.fromScale(1, 1)
@@ -1054,10 +1054,12 @@ UserListPad.PaddingLeft = UDim.new(0, 4)
 UserListPad.PaddingRight = UDim.new(0, 4)
 UserListPad.Parent = UserListScroll
 
--- Logika Scan & Akses Unanchored Part + Fling (No Visual)
+-- Logika Scan & Akses Unanchored Part + Touch Fling (No Visual)
 local scannedUnanchoredParts: {BasePart} = {}
 local activeAttackedParts: {[BasePart]: boolean} = {}
 local lockedAnchoredParts: {[BasePart]: boolean} = {}
+local flingCooldowns: {[number]: number} = {}
+local characterTouchConnections: {RBXScriptConnection} = {}
 
 local function getCharacterRoot(player: Player?): BasePart?
 	local plr = player or LocalPlayer
@@ -1082,6 +1084,100 @@ local function isDescendantOfAnyCharacter(inst: Instance): boolean
 	end
 	return false
 end
+
+local function getPlayerFromHitPart(hit: BasePart?): Player?
+	if not hit or not hit.Parent then return nil end
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer and plr.Character and hit:IsDescendantOf(plr.Character) then
+			return plr
+		end
+	end
+	return nil
+end
+
+local function launchPlayerFarAndHigh(targetPlr: Player, sourcePos: Vector3)
+	if not CONFIG.FlingEnabled then return end
+	local now = os.clock()
+	local lastHit = flingCooldowns[targetPlr.UserId] or 0
+	if (now - lastHit) < 0.25 then
+		return
+	end
+	flingCooldowns[targetPlr.UserId] = now
+
+	local targetChar = targetPlr.Character
+	if not targetChar then return end
+	local targetRoot = getCharacterRoot(targetPlr)
+	if not targetRoot then return end
+
+	local speed = CONFIG.JailSpeed
+	local horizVec = Vector3.new(targetRoot.Position.X - sourcePos.X, 0, targetRoot.Position.Z - sourcePos.Z)
+	local horizDir = horizVec.Magnitude > 0.05 and horizVec.Unit or Vector3.new(math.random(-10, 10), 0, math.random(-10, 10)).Unit
+
+	local farSpeed = 240 * speed
+	local highSpeed = 210 * speed
+	local launchVel = (horizDir * farSpeed) + Vector3.new(0, highSpeed, 0)
+	local spinVel = Vector3.new(320 * speed, 360 * speed, 320 * speed)
+
+	pcall(function()
+		local hum = targetChar:FindFirstChildOfClass("Humanoid")
+		if hum then
+			hum.PlatformStand = true
+			task.delay(0.35, function()
+				if hum and hum.Parent then
+					hum.PlatformStand = false
+				end
+			end)
+		end
+
+		for _, part in ipairs(targetChar:GetDescendants()) do
+			if part:IsA("BasePart") and not part.Anchored then
+				part.AssemblyLinearVelocity = launchVel
+				part.AssemblyAngularVelocity = spinVel
+			end
+		end
+
+		targetRoot.AssemblyLinearVelocity = launchVel
+		targetRoot.AssemblyAngularVelocity = spinVel
+	end)
+end
+
+local function bindLocalCharacterTouchFling(char: Model)
+	for _, conn in ipairs(characterTouchConnections) do
+		conn:Disconnect()
+	end
+	table.clear(characterTouchConnections)
+
+	local function hookPart(part: Instance)
+		if part:IsA("BasePart") then
+			local conn = part.Touched:Connect(function(hit: BasePart)
+				if not CONFIG.FlingEnabled then return end
+				local hitPlr = getPlayerFromHitPart(hit)
+				if hitPlr then
+					local myRoot = getCharacterRoot(LocalPlayer)
+					local origin = myRoot and myRoot.Position or part.Position
+					launchPlayerFarAndHigh(hitPlr, origin)
+				end
+			end)
+			table.insert(characterTouchConnections, conn)
+		end
+	end
+
+	for _, desc in ipairs(char:GetDescendants()) do
+		hookPart(desc)
+	end
+
+	local addedConn = char.DescendantAdded:Connect(function(desc: Instance)
+		hookPart(desc)
+	end)
+	table.insert(characterTouchConnections, addedConn)
+end
+
+if LocalPlayer.Character then
+	bindLocalCharacterTouchFling(LocalPlayer.Character)
+end
+LocalPlayer.CharacterAdded:Connect(function(char: Model)
+	bindLocalCharacterTouchFling(char)
+end)
 
 local function isConstraintBindingPart(inst: Instance, part: BasePart): boolean
 	if inst:IsA("RopeConstraint") or inst:IsA("AlignPosition") or inst:IsA("AlignOrientation") or inst:IsA("RodConstraint") or inst:IsA("SpringConstraint") or inst:IsA("WeldConstraint") then
@@ -1292,7 +1388,11 @@ end)
 FlingSwitchBtn.MouseButton1Click:Connect(function()
 	CONFIG.FlingEnabled = not CONFIG.FlingEnabled
 	if CONFIG.FlingEnabled then
+		table.clear(flingCooldowns)
 		scanUnanchoredParts()
+		if LocalPlayer.Character then
+			bindLocalCharacterTouchFling(LocalPlayer.Character)
+		end
 	else
 		clearSelfFlingVelocity()
 	end
@@ -1312,6 +1412,7 @@ Players.PlayerAdded:Connect(function()
 end)
 
 Players.PlayerRemoving:Connect(function(plr: Player)
+	flingCooldowns[plr.UserId] = nil
 	if plr.UserId == CONFIG.JailTargetUserId then
 		CONFIG.JailTargetUserId = 0
 	end
@@ -1355,7 +1456,7 @@ do
 	end)
 end
 
--- Loop eksekusi fisika JAIL & FLING (Server-side physics replication, no visual)
+-- Loop eksekusi fisika JAIL & TOUCH FLING (No Visual)
 do
 	local jailClock = 0
 	local scanAccum = 0
@@ -1387,20 +1488,30 @@ do
 		local speed = CONFIG.JailSpeed
 		local activeCount = #scannedUnanchoredParts
 
-		if CONFIG.FlingEnabled and myRoot and targetRoot and targetPlr then
+		if CONFIG.FlingEnabled and myRoot then
 			pcall(function()
-				local offset = Vector3.new(
-					math.cos(jailClock * 28 * speed) * 1.4,
-					math.sin(jailClock * 22 * speed) * 0.6,
-					math.sin(jailClock * 28 * speed) * 1.4
-				)
-				myRoot.CFrame = CFrame.new(targetRoot.Position + offset, targetRoot.Position)
-				myRoot.AssemblyLinearVelocity = Vector3.new(
-					math.cos(jailClock * 35 * speed) * 140 * speed,
-					95 * speed,
-					math.sin(jailClock * 35 * speed) * 140 * speed
-				)
-				myRoot.AssemblyAngularVelocity = Vector3.new(250 * speed, 250 * speed, 250 * speed)
+				local overlapParams = OverlapParams.new()
+				overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+				if LocalPlayer.Character then
+					overlapParams.FilterDescendantsInstances = { LocalPlayer.Character }
+				end
+
+				local nearParts = workspace:GetPartBoundsInRadius(myRoot.Position, 5.5, overlapParams)
+				local hitSet: {[Player]: boolean} = {}
+				for _, part in ipairs(nearParts) do
+					local hitPlr = getPlayerFromHitPart(part)
+					if hitPlr and not hitSet[hitPlr] then
+						hitSet[hitPlr] = true
+						launchPlayerFarAndHigh(hitPlr, myRoot.Position)
+					end
+				end
+
+				if targetPlr and targetRoot then
+					local distToTarget = (targetRoot.Position - myRoot.Position).Magnitude
+					if distToTarget <= 7.5 then
+						launchPlayerFarAndHigh(targetPlr, myRoot.Position)
+					end
+				end
 			end)
 		end
 
@@ -1475,7 +1586,7 @@ do
 			end
 		end
 
-		local targetName = targetPlr and ("@" .. targetPlr.Name) or "Self"
+		local targetName = targetPlr and ("@" .. targetPlr.Name) or "Any Touch"
 		local jailStateText = CONFIG.JailEnabled and ("JAIL: ON (" .. tostring(activeCount) .. " part)") or "JAIL: OFF"
 		local flingStateText = CONFIG.FlingEnabled and "Fling: ON" or "Fling: OFF"
 		JailStatusLabel.Text = string.format("%s • %s • %s • Target: %s", jailStateText, flingStateText, CONFIG.JailMode, targetName)
@@ -1532,7 +1643,7 @@ AboutText.Text = table.concat({
 	"",
 	"Fitur Aktif:",
 	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
-	"• JAIL & Fling: Akses fisika unanchored part (Orbit, Shake, Throw, Pull, Rope, Fall, Carry, Anchor Lock) + toggle Fling ON/OFF.",
+	"• JAIL & Fling: Akses fisika unanchored part (Orbit, Shake, Throw, Pull, Rope, Fall, Carry, Anchor Lock) + Touch Fling jauh & tinggi.",
 	"• Settings    : Pengaturan warna tema GUI dan pilihan font secara langsung.",
 	"• About       : Informasi kreator dan versi tools.",
 }, "\n")
