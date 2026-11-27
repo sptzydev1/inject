@@ -1,5 +1,5 @@
 --!strict
--- ID, Feature Request & Playtest Scanner Studio Lite (Delta Executor Edition) by Ikyy
+-- Realtime ID, Feature & Playtest Scanner Studio Lite (Delta Executor Edition) by Ikyy
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -191,7 +191,7 @@ local TitleLabel = Instance.new("TextLabel")
 TitleLabel.Size = UDim2.new(1, -90, 0, 18)
 TitleLabel.Position = UDim2.new(0, 14, 0, 6)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🔎 ID, Feature & Playtest Scanner"
+TitleLabel.Text = "⚡ Realtime ID & Request Scanner"
 TitleLabel.TextColor3 = Color3.fromRGB(245, 245, 255)
 TitleLabel.TextSize = 12
 TitleLabel.Font = Enum.Font.GothamBold
@@ -203,7 +203,7 @@ local MetaLabel = Instance.new("TextLabel")
 MetaLabel.Size = UDim2.new(1, -90, 0, 12)
 MetaLabel.Position = UDim2.new(0, 14, 0, 24)
 MetaLabel.BackgroundTransparency = 1
-MetaLabel.Text = "by Ikyy • Auto-Save TXT + Req Hook • @" .. LocalPlayer.Name
+MetaLabel.Text = "by Ikyy • Auto-Realtime TXT • @" .. LocalPlayer.Name
 MetaLabel.TextColor3 = Color3.fromRGB(120, 116, 148)
 MetaLabel.TextSize = 8
 MetaLabel.Font = Enum.Font.GothamMedium
@@ -333,11 +333,11 @@ InputRow.Parent = ContentFrame
 
 local SearchBox = Instance.new("TextBox")
 SearchBox.Name = "SearchIdInput"
-SearchBox.Size = UDim2.new(0.56, -4, 1, 0)
+SearchBox.Size = UDim2.new(0.70, -4, 1, 0)
 SearchBox.Position = UDim2.new(0, 0, 0, 0)
 SearchBox.BackgroundColor3 = Color3.fromRGB(13, 12, 21)
 SearchBox.Text = ""
-SearchBox.PlaceholderText = "ID musik / nama objek / teks..."
+SearchBox.PlaceholderText = "Ketik ID musik / nama objek / teks (scan otomatis)..."
 SearchBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 142)
 SearchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 SearchBox.TextSize = 9
@@ -357,36 +357,23 @@ BoxPad.PaddingLeft = UDim.new(0, 7)
 BoxPad.PaddingRight = UDim.new(0, 7)
 BoxPad.Parent = SearchBox
 
-local ScanBtn = Instance.new("TextButton")
-ScanBtn.Name = "ScanBtn"
-ScanBtn.Size = UDim2.new(0.14, -3, 1, 0)
-ScanBtn.Position = UDim2.new(0.56, 2, 0, 0)
-ScanBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-ScanBtn.Text = "Cari"
-ScanBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ScanBtn.TextSize = 8
-ScanBtn.Font = Enum.Font.GothamBold
-ScanBtn.ClipsDescendants = true
-ScanBtn.Parent = InputRow
-Instance.new("UICorner", ScanBtn).CornerRadius = UDim.new(0, 6)
-
-local PlayScanBtn = Instance.new("TextButton")
-PlayScanBtn.Name = "PlayScanBtn"
-PlayScanBtn.Size = UDim2.new(0.17, -3, 1, 0)
-PlayScanBtn.Position = UDim2.new(0.70, 2, 0, 0)
-PlayScanBtn.BackgroundColor3 = Color3.fromRGB(34, 92, 68)
-PlayScanBtn.Text = "▶ Scan"
-PlayScanBtn.TextColor3 = Color3.fromRGB(220, 255, 235)
-PlayScanBtn.TextSize = 8
-PlayScanBtn.Font = Enum.Font.GothamBold
-PlayScanBtn.ClipsDescendants = true
-PlayScanBtn.Parent = InputRow
-Instance.new("UICorner", PlayScanBtn).CornerRadius = UDim.new(0, 6)
+local LiveToggleBtn = Instance.new("TextButton")
+LiveToggleBtn.Name = "LiveToggleBtn"
+LiveToggleBtn.Size = UDim2.new(0.16, -3, 1, 0)
+LiveToggleBtn.Position = UDim2.new(0.70, 2, 0, 0)
+LiveToggleBtn.BackgroundColor3 = Color3.fromRGB(34, 92, 68)
+LiveToggleBtn.Text = "● Live"
+LiveToggleBtn.TextColor3 = Color3.fromRGB(220, 255, 235)
+LiveToggleBtn.TextSize = 8
+LiveToggleBtn.Font = Enum.Font.GothamBold
+LiveToggleBtn.ClipsDescendants = true
+LiveToggleBtn.Parent = InputRow
+Instance.new("UICorner", LiveToggleBtn).CornerRadius = UDim.new(0, 6)
 
 local ClearBtn = Instance.new("TextButton")
 ClearBtn.Name = "ClearBtn"
-ClearBtn.Size = UDim2.new(0.13, 0, 1, 0)
-ClearBtn.Position = UDim2.new(0.87, 2, 0, 0)
+ClearBtn.Size = UDim2.new(0.14, 0, 1, 0)
+ClearBtn.Position = UDim2.new(0.86, 2, 0, 0)
 ClearBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
 ClearBtn.Text = "Hapus"
 ClearBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
@@ -400,7 +387,7 @@ local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 14)
 StatusLabel.Position = UDim2.new(0, 0, 0, 29)
 StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "File TXT: " .. SCAN_TXT_FILE .. " • Tekan ▶ Scan saat test play"
+StatusLabel.Text = "Realtime ON • Auto-save TXT -> " .. SCAN_TXT_FILE
 StatusLabel.TextColor3 = Color3.fromRGB(155, 152, 188)
 StatusLabel.TextSize = 8
 StatusLabel.Font = Enum.Font.GothamMedium
@@ -491,16 +478,17 @@ ResPad.PaddingRight = UDim.new(0, 5)
 ResPad.Parent = ResultsScroll
 
 -- ==========================================
--- LOGIKA SCAN, FEATURE REQUEST HOOK & AUTO-SAVE TXT
+-- LOGIKA REALTIME SCAN, REQUEST HOOK & AUTO-SAVE TXT
 -- ==========================================
 local lastMatches: {SearchMatch} = {}
 local selectedIndex: number? = nil
-local playScanActive = false
+local realtimeScanActive = true -- Aktif otomatis sejak skrip dijalankan
 local capturedRuntimeLogs: {string} = {}
 local capturedNewInstances: {string} = {}
 local capturedFeatureRequests: {string} = {}
 local hookedRemotes: {[Instance]: boolean} = {}
 local lastSavedSnapshot = ""
+local lastRenderedSignature = ""
 
 local function appendCaptureList(list: {string}, line: string, maxItems: number)
 	table.insert(list, line)
@@ -565,7 +553,7 @@ local function hookRemoteInstance(inst: Instance)
 		hookedRemotes[inst] = true
 		pcall(function()
 			inst.OnClientEvent:Connect(function(...: any)
-				if not playScanActive then return end
+				if not realtimeScanActive then return end
 				local full = inst.Name
 				pcall(function()
 					full = inst:GetFullName()
@@ -579,7 +567,7 @@ local function hookRemoteInstance(inst: Instance)
 		hookedRemotes[inst] = true
 		pcall(function()
 			inst.Event:Connect(function(...: any)
-				if not playScanActive then return end
+				if not realtimeScanActive then return end
 				local full = inst.Name
 				pcall(function()
 					full = inst:GetFullName()
@@ -592,7 +580,6 @@ local function hookRemoteInstance(inst: Instance)
 	end
 end
 
--- Hook metamethod __namecall jika tersedia di executor untuk menangkap FireServer / InvokeServer / Fire / Invoke
 do
 	local hookMetaFn = getExecutorFunc("hookmetamethod")
 	local getNamecallFn = getExecutorFunc("getnamecallmethod")
@@ -603,7 +590,7 @@ do
 			local oldNamecall: any
 			oldNamecall = hookMetaFn(game, "__namecall", function(self: any, ...: any)
 				local method = getNamecallFn()
-				if playScanActive and typeof(self) == "Instance" and not isIgnoredStudioOrPluginInstance(self) then
+				if realtimeScanActive and typeof(self) == "Instance" and not isIgnoredStudioOrPluginInstance(self) then
 					if method == "FireServer" or method == "InvokeServer" or method == "Fire" or method == "Invoke" then
 						local callerTag = "GAME"
 						if type(checkCallerFn) == "function" then
@@ -640,18 +627,18 @@ end
 
 local function buildTxtReport(queryText: string): string
 	local lines: {string} = {
-		"=== IKYY STUDIO LITE • PLAYTEST, REQUEST & ID SCAN LOG ===",
+		"=== IKYY STUDIO LITE • REALTIME PLAYTEST, REQUEST & ID LOG ===",
 		"Timestamp   : " .. os.date("!%Y-%m-%d %H:%M:%S UTC"),
 		"Player      : " .. LocalPlayer.Name .. " (" .. tostring(LocalPlayer.UserId) .. ")",
 		"PlaceId     : " .. tostring(game.PlaceId),
-		"Query Filter: " .. (queryText ~= "" and queryText or "(Semua / Playtest Monitor)"),
-		"PlayScan    : " .. (playScanActive and "ACTIVE" or "IDLE"),
+		"Query Filter: " .. (queryText ~= "" and queryText or "(Realtime Auto-Monitor)"),
+		"Realtime    : " .. (realtimeScanActive and "ON" or "PAUSED"),
 		"",
 		"--- PROSES PERMINTAAN FITUR / SISTEM (" .. tostring(#capturedFeatureRequests) .. ") ---",
 	}
 
 	if #capturedFeatureRequests == 0 then
-		table.insert(lines, "(Belum ada permintaan Remote/Bindable terekam saat playtest)")
+		table.insert(lines, "(Belum ada permintaan Remote/Bindable terekam)")
 	else
 		for _, reqLine in ipairs(capturedFeatureRequests) do
 			table.insert(lines, reqLine)
@@ -661,7 +648,7 @@ local function buildTxtReport(queryText: string): string
 	table.insert(lines, "")
 	table.insert(lines, "--- HASIL SCAN OBJEK / ID (" .. tostring(#lastMatches) .. ") ---")
 	if #lastMatches == 0 then
-		table.insert(lines, "(Tidak ada kecocokan objek/ID pada scan terakhir)")
+		table.insert(lines, "(Tidak ada kecocokan objek/ID pada query aktif)")
 	else
 		for i, m in ipairs(lastMatches) do
 			table.insert(lines, string.format("#%d | Name=%s | Class=%s | Type=%s | Path=%s | Detail=%s",
@@ -670,9 +657,9 @@ local function buildTxtReport(queryText: string): string
 	end
 
 	table.insert(lines, "")
-	table.insert(lines, "--- OBJEK BARU SAAT PLAYTEST (" .. tostring(#capturedNewInstances) .. ") ---")
+	table.insert(lines, "--- OBJEK BARU REALTIME (" .. tostring(#capturedNewInstances) .. ") ---")
 	if #capturedNewInstances == 0 then
-		table.insert(lines, "(Belum ada objek baru terdeteksi saat playtest)")
+		table.insert(lines, "(Belum ada objek baru terdeteksi)")
 	else
 		for _, entry in ipairs(capturedNewInstances) do
 			table.insert(lines, entry)
@@ -700,10 +687,7 @@ local function saveSnapshotToTxt(queryText: string, forceSave: boolean): boolean
 	lastSavedSnapshot = report
 	local saved = writeScanTxt(report)
 	if saved then
-		print("[StudioLiteTXT] Tersimpan otomatis ke -> " .. SCAN_TXT_FILE)
-	else
-		print("[StudioLiteTXT] Executor tanpa writefile; ringkasan log dicetak ke console:")
-		print(report)
+		print("[StudioLiteTXT] Auto-saved -> " .. SCAN_TXT_FILE)
 	end
 	return saved
 end
@@ -726,7 +710,21 @@ local function selectMatch(idx: number)
 	StatusLabel.Text = "Dipilih #" .. tostring(idx) .. " (" .. item.objectName .. ")" .. extraMsg
 end
 
+local function buildMatchesSignature(matches: {SearchMatch}, selIdx: number?): string
+	local parts: {string} = { tostring(#matches), tostring(selIdx or 0) }
+	for _, m in ipairs(matches) do
+		table.insert(parts, m.fullName .. "|" .. m.sourceType .. "|" .. m.detail)
+	end
+	return table.concat(parts, ";;")
+end
+
 local function renderResults(matches: {SearchMatch})
+	local sig = buildMatchesSignature(matches, selectedIndex)
+	if sig == lastRenderedSignature then
+		return
+	end
+	lastRenderedSignature = sig
+
 	for _, child in ipairs(ResultsScroll:GetChildren()) do
 		if child:IsA("TextButton") then
 			child:Destroy()
@@ -737,7 +735,7 @@ local function renderResults(matches: {SearchMatch})
 		local emptyBtn = Instance.new("TextButton")
 		emptyBtn.Size = UDim2.new(1, -4, 0, 26)
 		emptyBtn.BackgroundColor3 = Color3.fromRGB(22, 21, 34)
-		emptyBtn.Text = "  Belum ada hasil cocok (atau tekan ▶ Scan saat playtest)"
+		emptyBtn.Text = "  Ketik ID/nama untuk filter realtime • Req & Log tetap direkam ke TXT"
 		emptyBtn.TextColor3 = Color3.fromRGB(165, 162, 190)
 		emptyBtn.TextSize = 8
 		emptyBtn.Font = Enum.Font.GothamMedium
@@ -777,22 +775,30 @@ local function renderResults(matches: {SearchMatch})
 
 		btn.MouseButton1Click:Connect(function()
 			selectMatch(idx)
+			lastRenderedSignature = ""
 			renderResults(matches)
 		end)
 	end
 end
 
-local function runSearch(rawQuery: string, autoSaveTxt: boolean)
+local function runRealtimeScan(rawQuery: string, autoSaveTxt: boolean)
 	local trimmed = string.match(rawQuery, "^%s*(.-)%s*$") or ""
-	selectedIndex = nil
-	SelectedNameLabel.Text = "Terpilih: - (Klik salah satu hasil di bawah)"
-	SelectedMetaLabel.Text = "Tipe / Info: -"
-	SelectedPathLabel.Text = "Path: -"
+	local prevSelectedPath = ""
+	if selectedIndex and lastMatches[selectedIndex] then
+		prevSelectedPath = lastMatches[selectedIndex].fullName
+	end
 
 	if trimmed == "" then
+		selectedIndex = nil
 		table.clear(lastMatches)
+		SelectedNameLabel.Text = "Terpilih: - (Realtime memantau semua objek & request)"
+		SelectedMetaLabel.Text = string.format("Req: %d • NewObj: %d • Log: %d",
+			#capturedFeatureRequests, #capturedNewInstances, #capturedRuntimeLogs)
+		SelectedPathLabel.Text = "TXT: " .. SCAN_TXT_FILE
 		renderResults(lastMatches)
-		StatusLabel.Text = "Ketik ID musik / nama objek lalu tekan Cari"
+		StatusLabel.Text = string.format("Realtime %s • Req:%d Obj:%d Log:%d",
+			realtimeScanActive and "ON" or "PAUSED",
+			#capturedFeatureRequests, #capturedNewInstances, #capturedRuntimeLogs)
 		if autoSaveTxt then
 			saveSnapshotToTxt("", false)
 		end
@@ -913,82 +919,97 @@ local function runSearch(rawQuery: string, autoSaveTxt: boolean)
 	end
 
 	lastMatches = matches
-	renderResults(matches)
-	if #matches > 0 then
-		selectMatch(1)
-		renderResults(matches)
-	else
-		StatusLabel.Text = string.format("'%s' • 0 cocok (%d objek dicek)", trimmed, checkedCount)
-		if autoSaveTxt then
-			saveSnapshotToTxt(trimmed, false)
+	local chosenIdx: number? = nil
+	if prevSelectedPath ~= "" then
+		for i, m in ipairs(matches) do
+			if m.fullName == prevSelectedPath then
+				chosenIdx = i
+				break
+			end
 		end
+	end
+	if not chosenIdx and #matches > 0 then
+		chosenIdx = 1
+	end
+
+	selectedIndex = chosenIdx
+	if chosenIdx and matches[chosenIdx] then
+		local item = matches[chosenIdx]
+		SelectedNameLabel.Text = string.format("Nama: %s  [%s]", item.objectName, item.className)
+		SelectedMetaLabel.Text = string.format("Tipe: %s • %s", item.sourceType, item.detail)
+		SelectedPathLabel.Text = "Path: " .. item.fullName
+	else
+		SelectedNameLabel.Text = "Terpilih: - (Tidak ada hasil cocok)"
+		SelectedMetaLabel.Text = "Tipe / Info: -"
+		SelectedPathLabel.Text = "Path: -"
+	end
+
+	renderResults(matches)
+	StatusLabel.Text = string.format("Realtime '%s' • %d cocok (%d dicek)", trimmed, #matches, checkedCount)
+	if autoSaveTxt then
+		saveSnapshotToTxt(trimmed, false)
 	end
 end
 
+-- Filter otomatis saat teks diketik
+SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+	runRealtimeScan(SearchBox.Text, true)
+end)
+
+-- Monitor otomatis log konsol / error / kick
 LogService.MessageOut:Connect(function(message: string, messageType: Enum.MessageType)
-	if not playScanActive then return end
+	if not realtimeScanActive then return end
 	local entry = string.format("[%s][%s] %s", os.date("!%H:%M:%S"), messageType.Name, message)
 	appendCaptureList(capturedRuntimeLogs, entry, 200)
 	saveSnapshotToTxt(SearchBox.Text, false)
 end)
 
+-- Monitor otomatis objek baru & hook Remote/Bindable baru
 game.DescendantAdded:Connect(function(desc: Instance)
 	hookRemoteInstance(desc)
-	if not playScanActive then return end
+	if not realtimeScanActive then return end
 	if isIgnoredStudioOrPluginInstance(desc) then return end
 	task.defer(function()
-		if not playScanActive then return end
+		if not realtimeScanActive then return end
 		local summary = formatInstanceSummary(desc, "NEW@" .. os.date("!%H:%M:%S"))
 		appendCaptureList(capturedNewInstances, summary, 200)
-
-		local q = string.match(SearchBox.Text, "^%s*(.-)%s*$") or ""
-		if q ~= "" then
-			runSearch(q, true)
-		else
-			saveSnapshotToTxt("", false)
-		end
+		runRealtimeScan(SearchBox.Text, true)
 	end)
 end)
 
+-- Loop realtime otomatis (scan objek & simpan TXT berkala)
 do
-	local acc = 0
+	local scanAcc = 0
+	local saveAcc = 0
 	RunService.Heartbeat:Connect(function(dt: number)
-		if not playScanActive then return end
-		acc += dt
-		if acc >= 1.2 then
-			acc = 0
+		if not realtimeScanActive then return end
+		scanAcc += dt
+		saveAcc += dt
+
+		if scanAcc >= 0.65 then
+			scanAcc = 0
+			runRealtimeScan(SearchBox.Text, false)
+		end
+
+		if saveAcc >= 1.0 then
+			saveAcc = 0
 			saveSnapshotToTxt(SearchBox.Text, false)
 		end
 	end)
 end
 
-ScanBtn.MouseButton1Click:Connect(function()
-	runSearch(SearchBox.Text, true)
-end)
-
-SearchBox.FocusLost:Connect(function(enterPressed: boolean)
-	if enterPressed then
-		runSearch(SearchBox.Text, true)
-	end
-end)
-
-PlayScanBtn.MouseButton1Click:Connect(function()
-	playScanActive = not playScanActive
-	if playScanActive then
+LiveToggleBtn.MouseButton1Click:Connect(function()
+	realtimeScanActive = not realtimeScanActive
+	if realtimeScanActive then
 		attachExistingRemoteListeners()
-		PlayScanBtn.Text = "⏹ Stop"
-		PlayScanBtn.BackgroundColor3 = Color3.fromRGB(165, 45, 65)
-		local q = string.match(SearchBox.Text, "^%s*(.-)%s*$") or ""
-		if q ~= "" then
-			runSearch(q, false)
-		end
-		saveSnapshotToTxt(SearchBox.Text, true)
-		StatusLabel.Text = "PlayScan ON (Req+Obj+Log) • " .. SCAN_TXT_FILE
+		LiveToggleBtn.Text = "● Live"
+		LiveToggleBtn.BackgroundColor3 = Color3.fromRGB(34, 92, 68)
+		runRealtimeScan(SearchBox.Text, true)
 	else
-		PlayScanBtn.Text = "▶ Scan"
-		PlayScanBtn.BackgroundColor3 = Color3.fromRGB(34, 92, 68)
+		LiveToggleBtn.Text = "❚❚ Pause"
+		LiveToggleBtn.BackgroundColor3 = Color3.fromRGB(130, 82, 32)
 		saveSnapshotToTxt(SearchBox.Text, true)
-		StatusLabel.Text = "PlayScan OFF • Tersimpan ke " .. SCAN_TXT_FILE
+		StatusLabel.Text = "Realtime PAUSED • Tersimpan ke " .. SCAN_TXT_FILE
 	end
 end)
 
@@ -999,11 +1020,15 @@ ClearBtn.MouseButton1Click:Connect(function()
 	table.clear(capturedRuntimeLogs)
 	table.clear(capturedNewInstances)
 	table.clear(capturedFeatureRequests)
-	SelectedNameLabel.Text = "Terpilih: - (Klik hasil di bawah)"
+	lastRenderedSignature = ""
+	SelectedNameLabel.Text = "Terpilih: - (Realtime memantau semua objek & request)"
 	SelectedMetaLabel.Text = "Tipe / Info: -"
 	SelectedPathLabel.Text = "Path: -"
-	StatusLabel.Text = "Hasil & log dibersihkan • File: " .. SCAN_TXT_FILE
+	StatusLabel.Text = "Riwayat dibersihkan • Realtime tetap aktif"
 	renderResults(lastMatches)
+	saveSnapshotToTxt("", true)
 end)
 
-renderResults(lastMatches)
+-- Inisialisasi realtime langsung saat dijalankan
+attachExistingRemoteListeners()
+runRealtimeScan("", true)
