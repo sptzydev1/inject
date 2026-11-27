@@ -1,11 +1,11 @@
 --!strict
--- Lite & Anti-Crash ID & Playtest Scanner (Delta Mobile Edition) by Ikyy
+-- ID, Feature Request & Playtest Scanner Studio Lite (Delta Executor Edition) by Ikyy
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local LogService = game:GetService("LogService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -23,13 +23,23 @@ export type SearchMatch = {
 	detail: string,
 }
 
-local WINDOW_SIZE = UDim2.fromOffset(480, 290)
-local WINDOW_POS = UDim2.new(0.5, -240, 0.5, -145)
+local WINDOW_SIZE = UDim2.fromOffset(500, 304)
+local WINDOW_POS = UDim2.new(0.5, -250, 0.5, -152)
 local ICON_SIZE = UDim2.fromOffset(42, 42)
 local ICON_DEFAULT_POS = UDim2.new(0.5, -21, 0.08, 0)
 local currentIconPos = ICON_DEFAULT_POS
 local SCAN_FOLDER = "IkyyStudioLite"
 local SCAN_TXT_FILE = SCAN_FOLDER .. "/playtest_scan_log.txt"
+
+local function getUserAvatarAsync(userId: number): string
+	local ok, content = pcall(function()
+		return Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+	end)
+	if ok and type(content) == "string" and content ~= "" then
+		return content
+	end
+	return "rbxasset://textures/ui/GuiImagePlaceholder.png"
+end
 
 local function getExecutorFunc(name: string): any
 	local env = (getgenv and getgenv()) or _G
@@ -87,18 +97,24 @@ local function safeArgSummary(args: {any}): string
 		return "()"
 	end
 	local parts: {string} = {}
-	local limit = math.min(#args, 3)
+	local limit = math.min(#args, 4)
 	for i = 1, limit do
 		local v = args[i]
 		local t = typeof(v)
 		if t == "Instance" then
-			table.insert(parts, "Instance(" .. tostring(v.Name) .. ")")
+			local n = v.Name
+			pcall(function()
+				n = v:GetFullName()
+			end)
+			table.insert(parts, string.format("Instance(%s)", n))
 		elseif t == "string" then
 			local s = tostring(v)
-			if #s > 32 then
-				s = string.sub(s, 1, 32) .. "..."
+			if #s > 40 then
+				s = string.sub(s, 1, 40) .. "..."
 			end
 			table.insert(parts, string.format("%q", s))
+		elseif t == "table" then
+			table.insert(parts, "table")
 		else
 			table.insert(parts, tostring(v))
 		end
@@ -110,7 +126,7 @@ local function safeArgSummary(args: {any}): string
 end
 
 -- ==========================================
--- UI UTAMA (RINGAN & ANTI-CRASH)
+-- UI UTAMA
 -- ==========================================
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "IkyyPluginStudioLite_GUI"
@@ -119,19 +135,16 @@ ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.Parent = PlayerGui
 
-local FloatingProfileBtn = Instance.new("TextButton")
+local FloatingProfileBtn = Instance.new("ImageButton")
 FloatingProfileBtn.Name = "FloatingProfileToggle"
 FloatingProfileBtn.Size = ICON_SIZE
 FloatingProfileBtn.Position = ICON_DEFAULT_POS
-FloatingProfileBtn.BackgroundColor3 = Color3.fromRGB(28, 24, 48)
-FloatingProfileBtn.Text = "🔎"
-FloatingProfileBtn.TextColor3 = Color3.fromRGB(245, 245, 255)
-FloatingProfileBtn.TextSize = 18
-FloatingProfileBtn.Font = Enum.Font.GothamBold
+FloatingProfileBtn.BackgroundColor3 = Color3.fromRGB(20, 18, 32)
 FloatingProfileBtn.BorderSizePixel = 0
 FloatingProfileBtn.Visible = false
 FloatingProfileBtn.AutoButtonColor = false
 FloatingProfileBtn.ZIndex = 50
+FloatingProfileBtn.Image = getUserAvatarAsync(LocalPlayer.UserId)
 FloatingProfileBtn.Parent = ScreenGui
 
 Instance.new("UICorner", FloatingProfileBtn).CornerRadius = UDim.new(1, 0)
@@ -148,24 +161,37 @@ MainWindow.BorderSizePixel = 0
 MainWindow.ClipsDescendants = true
 MainWindow.Parent = ScreenGui
 
-Instance.new("UICorner", MainWindow).CornerRadius = UDim.new(0, 12)
+Instance.new("UICorner", MainWindow).CornerRadius = UDim.new(0, 14)
 local MainStroke = Instance.new("UIStroke", MainWindow)
 MainStroke.Color = Color3.fromRGB(92, 72, 168)
-MainStroke.Thickness = 1.2
+MainStroke.Thickness = 1.4
+MainStroke.Transparency = 0.25
 
+local MainGradient = Instance.new("UIGradient")
+MainGradient.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(22, 20, 34)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(13, 12, 20)),
+})
+MainGradient.Rotation = 135
+MainGradient.Parent = MainWindow
+
+-- ==========================================
+-- HEADER BAR
+-- ==========================================
 local HeaderBar = Instance.new("Frame")
 HeaderBar.Name = "HeaderBar"
-HeaderBar.Size = UDim2.new(1, 0, 0, 38)
-HeaderBar.BackgroundColor3 = Color3.fromRGB(22, 20, 34)
+HeaderBar.Size = UDim2.new(1, 0, 0, 42)
+HeaderBar.BackgroundColor3 = Color3.fromRGB(20, 19, 30)
+HeaderBar.BackgroundTransparency = 0.25
 HeaderBar.BorderSizePixel = 0
 HeaderBar.ClipsDescendants = true
 HeaderBar.Parent = MainWindow
 
 local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, -80, 0, 16)
-TitleLabel.Position = UDim2.new(0, 12, 0, 4)
+TitleLabel.Size = UDim2.new(1, -90, 0, 18)
+TitleLabel.Position = UDim2.new(0, 14, 0, 6)
 TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🔎 Lite ID & Playtest Scanner"
+TitleLabel.Text = "🔎 ID, Feature & Playtest Scanner"
 TitleLabel.TextColor3 = Color3.fromRGB(245, 245, 255)
 TitleLabel.TextSize = 12
 TitleLabel.Font = Enum.Font.GothamBold
@@ -174,11 +200,11 @@ TitleLabel.TextTruncate = Enum.TextTruncate.AtEnd
 TitleLabel.Parent = HeaderBar
 
 local MetaLabel = Instance.new("TextLabel")
-MetaLabel.Size = UDim2.new(1, -80, 0, 12)
-MetaLabel.Position = UDim2.new(0, 12, 0, 21)
+MetaLabel.Size = UDim2.new(1, -90, 0, 12)
+MetaLabel.Position = UDim2.new(0, 14, 0, 24)
 MetaLabel.BackgroundTransparency = 1
-MetaLabel.Text = "Anti-Crash Mode • Auto-Save TXT • @" .. LocalPlayer.Name
-MetaLabel.TextColor3 = Color3.fromRGB(130, 126, 160)
+MetaLabel.Text = "by Ikyy • Auto-Save TXT + Req Hook • @" .. LocalPlayer.Name
+MetaLabel.TextColor3 = Color3.fromRGB(120, 116, 148)
 MetaLabel.TextSize = 8
 MetaLabel.Font = Enum.Font.GothamMedium
 MetaLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -187,9 +213,9 @@ MetaLabel.Parent = HeaderBar
 
 local CloseCircleBtn = Instance.new("TextButton")
 CloseCircleBtn.Name = "CloseToCircleBtn"
-CloseCircleBtn.Size = UDim2.fromOffset(24, 24)
-CloseCircleBtn.Position = UDim2.new(1, -34, 0.5, -12)
-CloseCircleBtn.BackgroundColor3 = Color3.fromRGB(36, 33, 54)
+CloseCircleBtn.Size = UDim2.fromOffset(26, 26)
+CloseCircleBtn.Position = UDim2.new(1, -38, 0.5, -13)
+CloseCircleBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 50)
 CloseCircleBtn.Text = "✕"
 CloseCircleBtn.TextColor3 = Color3.fromRGB(255, 110, 125)
 CloseCircleBtn.TextSize = 11
@@ -199,14 +225,28 @@ Instance.new("UICorner", CloseCircleBtn).CornerRadius = UDim.new(1, 0)
 
 local function setMinimized(minimized: boolean)
 	if minimized then
-		MainWindow.Visible = false
-		FloatingProfileBtn.Position = currentIconPos
-		FloatingProfileBtn.Visible = true
+		local tw = TweenService:Create(MainWindow, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			Size = ICON_SIZE,
+			Position = currentIconPos,
+		})
+		tw:Play()
+		tw.Completed:Connect(function()
+			if MainWindow.Size == ICON_SIZE then
+				MainWindow.Visible = false
+				FloatingProfileBtn.Position = currentIconPos
+				FloatingProfileBtn.Size = ICON_SIZE
+				FloatingProfileBtn.Visible = true
+			end
+		end)
 	else
 		FloatingProfileBtn.Visible = false
-		MainWindow.Position = WINDOW_POS
-		MainWindow.Size = WINDOW_SIZE
+		MainWindow.Position = currentIconPos
+		MainWindow.Size = ICON_SIZE
 		MainWindow.Visible = true
+		TweenService:Create(MainWindow, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Size = WINDOW_SIZE,
+			Position = WINDOW_POS,
+		}):Play()
 	end
 end
 
@@ -216,12 +256,16 @@ do
 	local dragStart = Vector3.zero
 	local startPos = UDim2.new()
 	local activeInput: InputObject? = nil
+	local DRAG_THRESHOLD = 6
 
 	local function clampToViewport(pos: UDim2): UDim2
 		local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
-		local maxX = math.max(6, viewport.X - 48)
-		local maxY = math.max(6, viewport.Y - 48)
-		return UDim2.fromOffset(math.clamp(pos.X.Offset, 6, maxX), math.clamp(pos.Y.Offset, 6, maxY))
+		local iconW = ICON_SIZE.X.Offset
+		local iconH = ICON_SIZE.Y.Offset
+		local pad = 6
+		local maxX = math.max(pad, viewport.X - iconW - pad)
+		local maxY = math.max(pad, viewport.Y - iconH - pad)
+		return UDim2.fromOffset(math.clamp(pos.X.Offset, pad, maxX), math.clamp(pos.Y.Offset, pad, maxY))
 	end
 
 	local function getCurrentOffsetPos(): UDim2
@@ -245,7 +289,7 @@ do
 		if not dragging or input ~= activeInput then return end
 		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
 			local delta = input.Position - dragStart
-			if delta.Magnitude > 6 then
+			if delta.Magnitude > DRAG_THRESHOLD then
 				movedSignificantly = true
 			end
 			local nextPos = clampToViewport(UDim2.fromOffset(startPos.X.Offset + delta.X, startPos.Y.Offset + delta.Y))
@@ -271,27 +315,29 @@ CloseCircleBtn.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- KONTEN UTAMA
+-- KONTEN UTAMA (ANTI-OVERFLOW TEKS)
 -- ==========================================
 local ContentFrame = Instance.new("Frame")
-ContentFrame.Size = UDim2.new(1, -18, 1, -44)
-ContentFrame.Position = UDim2.new(0, 9, 0, 40)
+ContentFrame.Size = UDim2.new(1, -20, 1, -50)
+ContentFrame.Position = UDim2.new(0, 10, 0, 44)
 ContentFrame.BackgroundTransparency = 1
 ContentFrame.ClipsDescendants = true
 ContentFrame.Parent = MainWindow
 
 local InputRow = Instance.new("Frame")
 InputRow.Size = UDim2.new(1, 0, 0, 26)
+InputRow.Position = UDim2.new(0, 0, 0, 0)
 InputRow.BackgroundTransparency = 1
 InputRow.ClipsDescendants = true
 InputRow.Parent = ContentFrame
 
 local SearchBox = Instance.new("TextBox")
 SearchBox.Name = "SearchIdInput"
-SearchBox.Size = UDim2.new(0.66, -4, 1, 0)
+SearchBox.Size = UDim2.new(0.56, -4, 1, 0)
+SearchBox.Position = UDim2.new(0, 0, 0, 0)
 SearchBox.BackgroundColor3 = Color3.fromRGB(13, 12, 21)
 SearchBox.Text = ""
-SearchBox.PlaceholderText = "Ketik ID musik / nama part / module..."
+SearchBox.PlaceholderText = "ID musik / nama objek / teks..."
 SearchBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 142)
 SearchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 SearchBox.TextSize = 9
@@ -313,21 +359,34 @@ BoxPad.Parent = SearchBox
 
 local ScanBtn = Instance.new("TextButton")
 ScanBtn.Name = "ScanBtn"
-ScanBtn.Size = UDim2.new(0.18, -3, 1, 0)
-ScanBtn.Position = UDim2.new(0.66, 2, 0, 0)
+ScanBtn.Size = UDim2.new(0.14, -3, 1, 0)
+ScanBtn.Position = UDim2.new(0.56, 2, 0, 0)
 ScanBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
 ScanBtn.Text = "Cari"
 ScanBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-ScanBtn.TextSize = 9
+ScanBtn.TextSize = 8
 ScanBtn.Font = Enum.Font.GothamBold
 ScanBtn.ClipsDescendants = true
 ScanBtn.Parent = InputRow
 Instance.new("UICorner", ScanBtn).CornerRadius = UDim.new(0, 6)
 
+local PlayScanBtn = Instance.new("TextButton")
+PlayScanBtn.Name = "PlayScanBtn"
+PlayScanBtn.Size = UDim2.new(0.17, -3, 1, 0)
+PlayScanBtn.Position = UDim2.new(0.70, 2, 0, 0)
+PlayScanBtn.BackgroundColor3 = Color3.fromRGB(34, 92, 68)
+PlayScanBtn.Text = "▶ Scan"
+PlayScanBtn.TextColor3 = Color3.fromRGB(220, 255, 235)
+PlayScanBtn.TextSize = 8
+PlayScanBtn.Font = Enum.Font.GothamBold
+PlayScanBtn.ClipsDescendants = true
+PlayScanBtn.Parent = InputRow
+Instance.new("UICorner", PlayScanBtn).CornerRadius = UDim.new(0, 6)
+
 local ClearBtn = Instance.new("TextButton")
 ClearBtn.Name = "ClearBtn"
-ClearBtn.Size = UDim2.new(0.16, 0, 1, 0)
-ClearBtn.Position = UDim2.new(0.84, 2, 0, 0)
+ClearBtn.Size = UDim2.new(0.13, 0, 1, 0)
+ClearBtn.Position = UDim2.new(0.87, 2, 0, 0)
 ClearBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
 ClearBtn.Text = "Hapus"
 ClearBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
@@ -341,7 +400,7 @@ local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 14)
 StatusLabel.Position = UDim2.new(0, 0, 0, 29)
 StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "Auto-Log Aktif -> " .. SCAN_TXT_FILE
+StatusLabel.Text = "File TXT: " .. SCAN_TXT_FILE .. " • Tekan ▶ Scan saat test play"
 StatusLabel.TextColor3 = Color3.fromRGB(155, 152, 188)
 StatusLabel.TextSize = 8
 StatusLabel.Font = Enum.Font.GothamMedium
@@ -352,7 +411,7 @@ StatusLabel.Parent = ContentFrame
 
 local SelectedBox = Instance.new("ScrollingFrame")
 SelectedBox.Name = "SelectedDetailBox"
-SelectedBox.Size = UDim2.new(1, 0, 0, 58)
+SelectedBox.Size = UDim2.new(1, 0, 0, 62)
 SelectedBox.Position = UDim2.new(0, 0, 0, 45)
 SelectedBox.BackgroundColor3 = Color3.fromRGB(21, 19, 34)
 SelectedBox.BorderSizePixel = 0
@@ -405,8 +464,8 @@ local SelectedPathLabel = makeWrappedDetailLabel(3, Color3.fromRGB(185, 182, 212
 SelectedPathLabel.Text = "Path: -"
 
 local ResultsScroll = Instance.new("ScrollingFrame")
-ResultsScroll.Size = UDim2.new(1, 0, 1, -108)
-ResultsScroll.Position = UDim2.new(0, 0, 0, 107)
+ResultsScroll.Size = UDim2.new(1, 0, 1, -113)
+ResultsScroll.Position = UDim2.new(0, 0, 0, 112)
 ResultsScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
 ResultsScroll.BorderSizePixel = 0
 ResultsScroll.ScrollBarThickness = 3
@@ -432,16 +491,16 @@ ResPad.PaddingRight = UDim.new(0, 5)
 ResPad.Parent = ResultsScroll
 
 -- ==========================================
--- LOGIKA SCAN RINGAN (BATCHED YIELD AGAR TIDAK CRASH)
+-- LOGIKA SCAN, FEATURE REQUEST HOOK & AUTO-SAVE TXT
 -- ==========================================
 local lastMatches: {SearchMatch} = {}
 local selectedIndex: number? = nil
+local playScanActive = false
 local capturedRuntimeLogs: {string} = {}
 local capturedNewInstances: {string} = {}
 local capturedFeatureRequests: {string} = {}
 local hookedRemotes: {[Instance]: boolean} = {}
-local isScanningNow = false
-local saveQueued = false
+local lastSavedSnapshot = ""
 
 local function appendCaptureList(list: {string}, line: string, maxItems: number)
 	table.insert(list, line)
@@ -450,33 +509,149 @@ local function appendCaptureList(list: {string}, line: string, maxItems: number)
 	end
 end
 
-local function isIgnoredInstance(inst: Instance): boolean
+local function isIgnoredStudioOrPluginInstance(inst: Instance): boolean
 	if inst == ScreenGui or inst:IsDescendantOf(ScreenGui) then
 		return true
 	end
-	local p = inst.Parent
-	while p do
-		if p.Name == "StudioGui" then
-			return true
-		end
-		p = p.Parent
+	local full = ""
+	local ok, res = pcall(function()
+		return inst:GetFullName()
+	end)
+	if ok and type(res) == "string" then
+		full = res
+	end
+	if string.find(full, "StudioGui", 1, true) then
+		return true
 	end
 	return false
 end
 
+local function formatInstanceSummary(inst: Instance, tag: string): string
+	local objName = inst.Name
+	local className = inst.ClassName
+	local fullName = objName
+	local okFull, fullRes = pcall(function()
+		return inst:GetFullName()
+	end)
+	if okFull and type(fullRes) == "string" then
+		fullName = fullRes
+	end
+
+	local extra = ""
+	if inst:IsA("Sound") then
+		local okId, sid = pcall(function()
+			return tostring(inst.SoundId)
+		end)
+		if okId then
+			extra = " | SoundId=" .. sid
+		end
+	elseif inst:IsA("StringValue") or inst:IsA("NumberValue") or inst:IsA("IntValue") then
+		local okVal, val = pcall(function()
+			return tostring((inst :: any).Value)
+		end)
+		if okVal then
+			extra = " | Value=" .. val
+		end
+	end
+
+	return string.format("[%s] Name=%s | Class=%s | Path=%s%s", tag, objName, className, fullName, extra)
+end
+
+local function hookRemoteInstance(inst: Instance)
+	if hookedRemotes[inst] or isIgnoredStudioOrPluginInstance(inst) then
+		return
+	end
+	if inst:IsA("RemoteEvent") then
+		hookedRemotes[inst] = true
+		pcall(function()
+			inst.OnClientEvent:Connect(function(...: any)
+				if not playScanActive then return end
+				local full = inst.Name
+				pcall(function()
+					full = inst:GetFullName()
+				end)
+				local line = string.format("[%s][RemoteEvent:OnClientEvent] %s args=%s",
+					os.date("!%H:%M:%S"), full, safeArgSummary({ ... }))
+				appendCaptureList(capturedFeatureRequests, line, 200)
+			end)
+		end)
+	elseif inst:IsA("BindableEvent") then
+		hookedRemotes[inst] = true
+		pcall(function()
+			inst.Event:Connect(function(...: any)
+				if not playScanActive then return end
+				local full = inst.Name
+				pcall(function()
+					full = inst:GetFullName()
+				end)
+				local line = string.format("[%s][BindableEvent] %s args=%s",
+					os.date("!%H:%M:%S"), full, safeArgSummary({ ... }))
+				appendCaptureList(capturedFeatureRequests, line, 200)
+			end)
+		end)
+	end
+end
+
+-- Hook metamethod __namecall jika tersedia di executor untuk menangkap FireServer / InvokeServer / Fire / Invoke
+do
+	local hookMetaFn = getExecutorFunc("hookmetamethod")
+	local getNamecallFn = getExecutorFunc("getnamecallmethod")
+	local checkCallerFn = getExecutorFunc("checkcaller")
+
+	if type(hookMetaFn) == "function" and type(getNamecallFn) == "function" then
+		pcall(function()
+			local oldNamecall: any
+			oldNamecall = hookMetaFn(game, "__namecall", function(self: any, ...: any)
+				local method = getNamecallFn()
+				if playScanActive and typeof(self) == "Instance" and not isIgnoredStudioOrPluginInstance(self) then
+					if method == "FireServer" or method == "InvokeServer" or method == "Fire" or method == "Invoke" then
+						local callerTag = "GAME"
+						if type(checkCallerFn) == "function" then
+							local okC, isExec = pcall(checkCallerFn)
+							if okC and isExec then
+								callerTag = "EXEC"
+							end
+						end
+						local full = tostring(self.Name)
+						pcall(function()
+							full = self:GetFullName()
+						end)
+						local line = string.format("[%s][REQ:%s/%s] %s args=%s",
+							os.date("!%H:%M:%S"), callerTag, tostring(method), full, safeArgSummary({ ... }))
+						appendCaptureList(capturedFeatureRequests, line, 200)
+					end
+				end
+				return oldNamecall(self, ...)
+			end)
+		end)
+	end
+end
+
+local function attachExistingRemoteListeners()
+	local okD, desc = pcall(function()
+		return game:GetDescendants()
+	end)
+	if okD and desc then
+		for _, inst in ipairs(desc) do
+			hookRemoteInstance(inst)
+		end
+	end
+end
+
 local function buildTxtReport(queryText: string): string
 	local lines: {string} = {
-		"=== IKYY STUDIO LITE • PLAYTEST & ID LOG ===",
+		"=== IKYY STUDIO LITE • PLAYTEST, REQUEST & ID SCAN LOG ===",
 		"Timestamp   : " .. os.date("!%Y-%m-%d %H:%M:%S UTC"),
 		"Player      : " .. LocalPlayer.Name .. " (" .. tostring(LocalPlayer.UserId) .. ")",
 		"PlaceId     : " .. tostring(game.PlaceId),
-		"Query       : " .. (queryText ~= "" and queryText or "(Auto-Monitor)"),
+		"Query Filter: " .. (queryText ~= "" and queryText or "(Semua / Playtest Monitor)"),
+		"PlayScan    : " .. (playScanActive and "ACTIVE" or "IDLE"),
 		"",
-		"--- REMOTE / REQUEST FITUR (" .. tostring(#capturedFeatureRequests) .. ") ---",
+		"--- PROSES PERMINTAAN FITUR / SISTEM (" .. tostring(#capturedFeatureRequests) .. ") ---",
 	}
 
 	if #capturedFeatureRequests == 0 then
-		table.insert(lines, "(Belum ada aktivitas RemoteEvent/BindableEvent)")
+		table.insert(lines, "(Belum ada permintaan Remote/Bindable terekam saat playtest)")
 	else
 		for _, reqLine in ipairs(capturedFeatureRequests) do
 			table.insert(lines, reqLine)
@@ -486,7 +661,7 @@ local function buildTxtReport(queryText: string): string
 	table.insert(lines, "")
 	table.insert(lines, "--- HASIL SCAN OBJEK / ID (" .. tostring(#lastMatches) .. ") ---")
 	if #lastMatches == 0 then
-		table.insert(lines, "(Belum ada hasil scan)")
+		table.insert(lines, "(Tidak ada kecocokan objek/ID pada scan terakhir)")
 	else
 		for i, m in ipairs(lastMatches) do
 			table.insert(lines, string.format("#%d | Name=%s | Class=%s | Type=%s | Path=%s | Detail=%s",
@@ -497,7 +672,7 @@ local function buildTxtReport(queryText: string): string
 	table.insert(lines, "")
 	table.insert(lines, "--- OBJEK BARU SAAT PLAYTEST (" .. tostring(#capturedNewInstances) .. ") ---")
 	if #capturedNewInstances == 0 then
-		table.insert(lines, "(Belum ada objek baru)")
+		table.insert(lines, "(Belum ada objek baru terdeteksi saat playtest)")
 	else
 		for _, entry in ipairs(capturedNewInstances) do
 			table.insert(lines, entry)
@@ -505,9 +680,9 @@ local function buildTxtReport(queryText: string): string
 	end
 
 	table.insert(lines, "")
-	table.insert(lines, "--- CONSOLE / ERROR / KICK LOG (" .. tostring(#capturedRuntimeLogs) .. ") ---")
+	table.insert(lines, "--- CONSOLE / KICK / ERROR LOG (" .. tostring(#capturedRuntimeLogs) .. ") ---")
 	if #capturedRuntimeLogs == 0 then
-		table.insert(lines, "(Belum ada log konsol)")
+		table.insert(lines, "(Belum ada log konsol terekam)")
 	else
 		for _, logLine in ipairs(capturedRuntimeLogs) do
 			table.insert(lines, logLine)
@@ -517,41 +692,20 @@ local function buildTxtReport(queryText: string): string
 	return table.concat(lines, "\n")
 end
 
-local function queueSaveTxt()
-	if saveQueued then return end
-	saveQueued = true
-	task.delay(0.8, function()
-		saveQueued = false
-		local report = buildTxtReport(SearchBox.Text)
-		writeScanTxt(report)
-	end)
-end
-
-local function hookRemoteInstance(inst: Instance)
-	if hookedRemotes[inst] or isIgnoredInstance(inst) then
-		return
+local function saveSnapshotToTxt(queryText: string, forceSave: boolean): boolean
+	local report = buildTxtReport(queryText)
+	if not forceSave and report == lastSavedSnapshot then
+		return false
 	end
-	if inst:IsA("RemoteEvent") then
-		hookedRemotes[inst] = true
-		pcall(function()
-			inst.OnClientEvent:Connect(function(...: any)
-				local line = string.format("[%s][OnClientEvent] %s args=%s",
-					os.date("!%H:%M:%S"), inst:GetFullName(), safeArgSummary({ ... }))
-				appendCaptureList(capturedFeatureRequests, line, 120)
-				queueSaveTxt()
-			end)
-		end)
-	elseif inst:IsA("BindableEvent") then
-		hookedRemotes[inst] = true
-		pcall(function()
-			inst.Event:Connect(function(...: any)
-				local line = string.format("[%s][BindableEvent] %s args=%s",
-					os.date("!%H:%M:%S"), inst:GetFullName(), safeArgSummary({ ... }))
-				appendCaptureList(capturedFeatureRequests, line, 120)
-				queueSaveTxt()
-			end)
-		end)
+	lastSavedSnapshot = report
+	local saved = writeScanTxt(report)
+	if saved then
+		print("[StudioLiteTXT] Tersimpan otomatis ke -> " .. SCAN_TXT_FILE)
+	else
+		print("[StudioLiteTXT] Executor tanpa writefile; ringkasan log dicetak ke console:")
+		print(report)
 	end
+	return saved
 end
 
 local function selectMatch(idx: number)
@@ -564,8 +718,12 @@ local function selectMatch(idx: number)
 	SelectedPathLabel.Text = "Path: " .. item.fullName
 
 	local copied = copyTextToClipboard(item.fullName)
-	StatusLabel.Text = "Dipilih #" .. tostring(idx) .. " (" .. item.objectName .. ")" .. (copied and " • Path disalin" or "")
-	queueSaveTxt()
+	local txtSaved = saveSnapshotToTxt(SearchBox.Text, false)
+	local extraMsg = copied and " • Path disalin" or ""
+	if txtSaved then
+		extraMsg = extraMsg .. " • TXT tersimpan"
+	end
+	StatusLabel.Text = "Dipilih #" .. tostring(idx) .. " (" .. item.objectName .. ")" .. extraMsg
 end
 
 local function renderResults(matches: {SearchMatch})
@@ -579,7 +737,7 @@ local function renderResults(matches: {SearchMatch})
 		local emptyBtn = Instance.new("TextButton")
 		emptyBtn.Size = UDim2.new(1, -4, 0, 26)
 		emptyBtn.BackgroundColor3 = Color3.fromRGB(22, 21, 34)
-		emptyBtn.Text = "  Ketik ID musik / nama objek lalu tekan Cari (Log & Request tetap tersimpan otomatis)"
+		emptyBtn.Text = "  Belum ada hasil cocok (atau tekan ▶ Scan saat playtest)"
 		emptyBtn.TextColor3 = Color3.fromRGB(165, 162, 190)
 		emptyBtn.TextSize = 8
 		emptyBtn.Font = Enum.Font.GothamMedium
@@ -595,7 +753,7 @@ local function renderResults(matches: {SearchMatch})
 	for idx, item in ipairs(matches) do
 		local isSelected = (idx == selectedIndex)
 		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(1, -4, 0, 32)
+		btn.Size = UDim2.new(1, -4, 0, 34)
 		btn.AutomaticSize = Enum.AutomaticSize.Y
 		btn.BackgroundColor3 = isSelected and Color3.fromRGB(52, 46, 86) or Color3.fromRGB(22, 21, 34)
 		btn.Text = string.format("#%d %s [%s]\n%s • %s", idx, item.objectName, item.className, item.sourceType, item.detail)
@@ -624,163 +782,213 @@ local function renderResults(matches: {SearchMatch})
 	end
 end
 
--- Pemindaian bertahap (yield setiap 400 objek) agar HP tidak hang/mental
-local function runAsyncSearch(rawQuery: string)
-	if isScanningNow then
-		return
-	end
+local function runSearch(rawQuery: string, autoSaveTxt: boolean)
 	local trimmed = string.match(rawQuery, "^%s*(.-)%s*$") or ""
+	selectedIndex = nil
+	SelectedNameLabel.Text = "Terpilih: - (Klik salah satu hasil di bawah)"
+	SelectedMetaLabel.Text = "Tipe / Info: -"
+	SelectedPathLabel.Text = "Path: -"
+
 	if trimmed == "" then
-		selectedIndex = nil
 		table.clear(lastMatches)
 		renderResults(lastMatches)
-		StatusLabel.Text = "Masukkan ID musik / nama objek lalu tekan Cari"
+		StatusLabel.Text = "Ketik ID musik / nama objek lalu tekan Cari"
+		if autoSaveTxt then
+			saveSnapshotToTxt("", false)
+		end
 		return
 	end
 
-	isScanningNow = true
-	StatusLabel.Text = "Memindai '" .. trimmed .. "'..."
+	local needleLower = string.lower(trimmed)
+	local numericPart = string.match(trimmed, "%d+")
+	local matches: {SearchMatch} = {}
+	local checkedCount = 0
 
-	task.spawn(function()
-		local needleLower = string.lower(trimmed)
-		local numericPart = string.match(trimmed, "%d+")
-		local matches: {SearchMatch} = {}
-		local checkedCount = 0
+	local okDesc, descendants = pcall(function()
+		return game:GetDescendants()
+	end)
 
-		local targets: {Instance} = { workspace, ReplicatedStorage, game:GetService("SoundService"), game:GetService("StarterGui"), game:GetService("StarterPack"), PlayerGui }
-		for _, root in ipairs(targets) do
-			local okDesc, descendants = pcall(function()
-				return root:GetDescendants()
-			end)
-			if okDesc and descendants then
-				for _, inst in ipairs(descendants) do
-					checkedCount += 1
-					if checkedCount % 400 == 0 then
-						task.wait() -- Beri jeda 1 frame agar Delta mobile tidak force close
-					end
+	if okDesc and descendants then
+		for _, inst in ipairs(descendants) do
+			if not isIgnoredStudioOrPluginInstance(inst) then
+				checkedCount += 1
 
-					if not isIgnoredInstance(inst) and #matches < 100 then
-						local objName = inst.Name
-						local className = inst.ClassName
-						local matched = false
-						local sourceType = ""
-						local detail = ""
+				local objName = inst.Name
+				local className = inst.ClassName
+				local fullName = objName
+				local okFull, fullRes = pcall(function()
+					return inst:GetFullName()
+				end)
+				if okFull and type(fullRes) == "string" then
+					fullName = fullRes
+				end
 
-						if string.find(string.lower(objName), needleLower, 1, true) then
-							matched = true
-							sourceType = "Nama (" .. className .. ")"
-							detail = "Cocok pada nama"
-						elseif inst:IsA("Sound") then
-							local sid = tostring(inst.SoundId)
+				local nameLower = string.lower(objName)
+				local matched = false
+				local sourceType = "Nama Objek"
+				local detail = "Class: " .. className
+
+				if string.find(nameLower, needleLower, 1, true) then
+					matched = true
+					sourceType = "Nama (" .. className .. ")"
+					detail = "Nama objek cocok"
+				end
+
+				if not matched then
+					local okSound, isSound = pcall(function()
+						return inst:IsA("Sound")
+					end)
+					if okSound and isSound then
+						local okId, sid = pcall(function()
+							return tostring(inst.SoundId)
+						end)
+						if okId then
 							if string.find(string.lower(sid), needleLower, 1, true)
 								or (numericPart and numericPart ~= "" and string.find(sid, numericPart, 1, true)) then
 								matched = true
 								sourceType = "SoundId"
 								detail = sid
 							end
-						elseif inst:IsA("StringValue") or inst:IsA("NumberValue") or inst:IsA("IntValue") then
-							local valStr = tostring((inst :: any).Value)
-							if string.find(string.lower(valStr), needleLower, 1, true)
-								or (numericPart and numericPart ~= "" and string.find(valStr, numericPart, 1, true)) then
-								matched = true
-								sourceType = className .. ".Value"
-								detail = valStr
-							end
-						else
-							local okAttr, attrs = pcall(function()
-								return inst:GetAttributes()
-							end)
-							if okAttr and type(attrs) == "table" then
-								for attrName, attrVal in pairs(attrs) do
-									local valStr = tostring(attrVal)
-									if string.find(string.lower(valStr), needleLower, 1, true)
-										or (numericPart and numericPart ~= "" and string.find(valStr, numericPart, 1, true)) then
-										matched = true
-										sourceType = "Attr:" .. tostring(attrName)
-										detail = valStr
-										break
-									end
-								end
-							end
-						end
-
-						if matched then
-							local fullName = objName
-							pcall(function()
-								fullName = inst:GetFullName()
-							end)
-							table.insert(matches, {
-								objectName = objName,
-								className = className,
-								sourceType = sourceType,
-								fullName = fullName,
-								detail = detail,
-							})
 						end
 					end
 				end
+
+				if not matched then
+					if inst:IsA("StringValue") or inst:IsA("NumberValue") or inst:IsA("IntValue") then
+						local okVal, valStr = pcall(function()
+							return tostring((inst :: any).Value)
+						end)
+						if okVal and (string.find(string.lower(valStr), needleLower, 1, true)
+							or (numericPart and numericPart ~= "" and string.find(valStr, numericPart, 1, true))) then
+							matched = true
+							sourceType = className .. ".Value"
+							detail = "Value: " .. valStr
+						end
+					end
+				end
+
+				if not matched then
+					local okAttr, attrs = pcall(function()
+						return inst:GetAttributes()
+					end)
+					if okAttr and type(attrs) == "table" then
+						for attrName, attrVal in pairs(attrs) do
+							local valStr = tostring(attrVal)
+							if string.find(string.lower(valStr), needleLower, 1, true)
+								or (numericPart and numericPart ~= "" and string.find(valStr, numericPart, 1, true)) then
+								matched = true
+								sourceType = "Attr:" .. tostring(attrName)
+								detail = valStr
+								break
+							end
+						end
+					end
+				end
+
+				if not matched then
+					if inst:IsA("TextBox") or inst:IsA("TextLabel") then
+						local okTxt, txtVal = pcall(function()
+							return tostring(inst.Text)
+						end)
+						if okTxt and (string.find(string.lower(txtVal), needleLower, 1, true)
+							or (numericPart and numericPart ~= "" and string.find(txtVal, numericPart, 1, true))) then
+							matched = true
+							sourceType = className .. ".Text"
+							detail = txtVal
+						end
+					end
+				end
+
+				if matched then
+					table.insert(matches, {
+						objectName = objName,
+						className = className,
+						sourceType = sourceType,
+						fullName = fullName,
+						detail = detail,
+					})
+				end
 			end
 		end
+	end
 
-		isScanningNow = false
-		lastMatches = matches
-		selectedIndex = (#matches > 0) and 1 or nil
+	lastMatches = matches
+	renderResults(matches)
+	if #matches > 0 then
+		selectMatch(1)
 		renderResults(matches)
-		if #matches > 0 then
-			selectMatch(1)
-		else
-			SelectedNameLabel.Text = "Terpilih: - (Tidak ada kecocokan)"
-			SelectedMetaLabel.Text = "Tipe / Info: -"
-			SelectedPathLabel.Text = "Path: -"
-			StatusLabel.Text = string.format("'%s' • 0 cocok (%d objek dicek)", trimmed, checkedCount)
+	else
+		StatusLabel.Text = string.format("'%s' • 0 cocok (%d objek dicek)", trimmed, checkedCount)
+		if autoSaveTxt then
+			saveSnapshotToTxt(trimmed, false)
 		end
-		queueSaveTxt()
-	end)
+	end
 end
 
--- Monitor otomatis Console / Kick / Error (Ringan, event-based)
 LogService.MessageOut:Connect(function(message: string, messageType: Enum.MessageType)
+	if not playScanActive then return end
 	local entry = string.format("[%s][%s] %s", os.date("!%H:%M:%S"), messageType.Name, message)
-	appendCaptureList(capturedRuntimeLogs, entry, 150)
-	queueSaveTxt()
+	appendCaptureList(capturedRuntimeLogs, entry, 200)
+	saveSnapshotToTxt(SearchBox.Text, false)
 end)
 
--- Monitor otomatis RemoteEvent & objek baru di Workspace & ReplicatedStorage saja (tanpa scan seluruh game)
-local function watchContainer(container: Instance)
-	task.spawn(function()
-		local okD, desc = pcall(function()
-			return container:GetDescendants()
-		end)
-		if okD and desc then
-			for i, inst in ipairs(desc) do
-				if i % 500 == 0 then
-					task.wait()
-				end
-				hookRemoteInstance(inst)
-			end
+game.DescendantAdded:Connect(function(desc: Instance)
+	hookRemoteInstance(desc)
+	if not playScanActive then return end
+	if isIgnoredStudioOrPluginInstance(desc) then return end
+	task.defer(function()
+		if not playScanActive then return end
+		local summary = formatInstanceSummary(desc, "NEW@" .. os.date("!%H:%M:%S"))
+		appendCaptureList(capturedNewInstances, summary, 200)
+
+		local q = string.match(SearchBox.Text, "^%s*(.-)%s*$") or ""
+		if q ~= "" then
+			runSearch(q, true)
+		else
+			saveSnapshotToTxt("", false)
 		end
 	end)
+end)
 
-	container.DescendantAdded:Connect(function(desc: Instance)
-		if isIgnoredInstance(desc) then return end
-		hookRemoteInstance(desc)
-		local summary = string.format("[NEW@%s] Name=%s | Class=%s | Path=%s",
-			os.date("!%H:%M:%S"), desc.Name, desc.ClassName, desc:GetFullName())
-		appendCaptureList(capturedNewInstances, summary, 150)
-		queueSaveTxt()
+do
+	local acc = 0
+	RunService.Heartbeat:Connect(function(dt: number)
+		if not playScanActive then return end
+		acc += dt
+		if acc >= 1.2 then
+			acc = 0
+			saveSnapshotToTxt(SearchBox.Text, false)
+		end
 	end)
 end
 
-watchContainer(workspace)
-watchContainer(ReplicatedStorage)
-
 ScanBtn.MouseButton1Click:Connect(function()
-	runAsyncSearch(SearchBox.Text)
+	runSearch(SearchBox.Text, true)
 end)
 
 SearchBox.FocusLost:Connect(function(enterPressed: boolean)
 	if enterPressed then
-		runAsyncSearch(SearchBox.Text)
+		runSearch(SearchBox.Text, true)
+	end
+end)
+
+PlayScanBtn.MouseButton1Click:Connect(function()
+	playScanActive = not playScanActive
+	if playScanActive then
+		attachExistingRemoteListeners()
+		PlayScanBtn.Text = "⏹ Stop"
+		PlayScanBtn.BackgroundColor3 = Color3.fromRGB(165, 45, 65)
+		local q = string.match(SearchBox.Text, "^%s*(.-)%s*$") or ""
+		if q ~= "" then
+			runSearch(q, false)
+		end
+		saveSnapshotToTxt(SearchBox.Text, true)
+		StatusLabel.Text = "PlayScan ON (Req+Obj+Log) • " .. SCAN_TXT_FILE
+	else
+		PlayScanBtn.Text = "▶ Scan"
+		PlayScanBtn.BackgroundColor3 = Color3.fromRGB(34, 92, 68)
+		saveSnapshotToTxt(SearchBox.Text, true)
+		StatusLabel.Text = "PlayScan OFF • Tersimpan ke " .. SCAN_TXT_FILE
 	end
 end)
 
@@ -794,10 +1002,8 @@ ClearBtn.MouseButton1Click:Connect(function()
 	SelectedNameLabel.Text = "Terpilih: - (Klik hasil di bawah)"
 	SelectedMetaLabel.Text = "Tipe / Info: -"
 	SelectedPathLabel.Text = "Path: -"
-	StatusLabel.Text = "Riwayat dibersihkan • File: " .. SCAN_TXT_FILE
+	StatusLabel.Text = "Hasil & log dibersihkan • File: " .. SCAN_TXT_FILE
 	renderResults(lastMatches)
-	queueSaveTxt()
 end)
 
 renderResults(lastMatches)
-queueSaveTxt()
