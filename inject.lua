@@ -147,7 +147,7 @@ FloatingProfileBtn.ZIndex = 50
 FloatingProfileBtn.Image = getUserAvatarAsync(LocalPlayer.UserId)
 FloatingProfileBtn.Parent = ScreenGui
 
-Instance.new("UICorner", FloatingProfileBtn).CornerRadius = UDim.new(1, 0)
+Instance.new("UICner", FloatingProfileBtn).CornerRadius = UDim.new(1, 0)
 local FloatStroke = Instance.new("UIStroke", FloatingProfileBtn)
 FloatStroke.Color = Color3.fromRGB(108, 86, 245)
 FloatStroke.Thickness = 2
@@ -400,7 +400,7 @@ local StatusLabel = Instance.new("TextLabel")
 StatusLabel.Size = UDim2.new(1, 0, 0, 14)
 StatusLabel.Position = UDim2.new(0, 0, 0, 29)
 StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "File TXT: " .. SCAN_TXT_FILE .. " • Tekan ▶ Scan saat test play"
+StatusLabel.Text = "File TXT: " .. SCAN_TXT_FILE .. " • Tekan ▶ Scan untuk hook aman"
 StatusLabel.TextColor3 = Color3.fromRGB(155, 152, 188)
 StatusLabel.TextSize = 8
 StatusLabel.Font = Enum.Font.GothamMedium
@@ -496,6 +496,7 @@ ResPad.Parent = ResultsScroll
 local lastMatches: {SearchMatch} = {}
 local selectedIndex: number? = nil
 local playScanActive = false
+local namecallHookInstalled = false
 local capturedRuntimeLogs: {string} = {}
 local capturedNewInstances: {string} = {}
 local capturedFeatureRequests: {string} = {}
@@ -555,87 +556,6 @@ local function formatInstanceSummary(inst: Instance, tag: string): string
 	end
 
 	return string.format("[%s] Name=%s | Class=%s | Path=%s%s", tag, objName, className, fullName, extra)
-end
-
-local function hookRemoteInstance(inst: Instance)
-	if hookedRemotes[inst] or isIgnoredStudioOrPluginInstance(inst) then
-		return
-	end
-	if inst:IsA("RemoteEvent") then
-		hookedRemotes[inst] = true
-		pcall(function()
-			inst.OnClientEvent:Connect(function(...: any)
-				if not playScanActive then return end
-				local full = inst.Name
-				pcall(function()
-					full = inst:GetFullName()
-				end)
-				local line = string.format("[%s][RemoteEvent:OnClientEvent] %s args=%s",
-					os.date("!%H:%M:%S"), full, safeArgSummary({ ... }))
-				appendCaptureList(capturedFeatureRequests, line, 200)
-			end)
-		end)
-	elseif inst:IsA("BindableEvent") then
-		hookedRemotes[inst] = true
-		pcall(function()
-			inst.Event:Connect(function(...: any)
-				if not playScanActive then return end
-				local full = inst.Name
-				pcall(function()
-					full = inst:GetFullName()
-				end)
-				local line = string.format("[%s][BindableEvent] %s args=%s",
-					os.date("!%H:%M:%S"), full, safeArgSummary({ ... }))
-				appendCaptureList(capturedFeatureRequests, line, 200)
-			end)
-		end)
-	end
-end
-
--- Hook metamethod __namecall jika tersedia di executor untuk menangkap FireServer / InvokeServer / Fire / Invoke
-do
-	local hookMetaFn = getExecutorFunc("hookmetamethod")
-	local getNamecallFn = getExecutorFunc("getnamecallmethod")
-	local checkCallerFn = getExecutorFunc("checkcaller")
-
-	if type(hookMetaFn) == "function" and type(getNamecallFn) == "function" then
-		pcall(function()
-			local oldNamecall: any
-			oldNamecall = hookMetaFn(game, "__namecall", function(self: any, ...: any)
-				local method = getNamecallFn()
-				if playScanActive and typeof(self) == "Instance" and not isIgnoredStudioOrPluginInstance(self) then
-					if method == "FireServer" or method == "InvokeServer" or method == "Fire" or method == "Invoke" then
-						local callerTag = "GAME"
-						if type(checkCallerFn) == "function" then
-							local okC, isExec = pcall(checkCallerFn)
-							if okC and isExec then
-								callerTag = "EXEC"
-							end
-						end
-						local full = tostring(self.Name)
-						pcall(function()
-							full = self:GetFullName()
-						end)
-						local line = string.format("[%s][REQ:%s/%s] %s args=%s",
-							os.date("!%H:%M:%S"), callerTag, tostring(method), full, safeArgSummary({ ... }))
-						appendCaptureList(capturedFeatureRequests, line, 200)
-					end
-				end
-				return oldNamecall(self, ...)
-			end)
-		end)
-	end
-end
-
-local function attachExistingRemoteListeners()
-	local okD, desc = pcall(function()
-		return game:GetDescendants()
-	end)
-	if okD and desc then
-		for _, inst in ipairs(desc) do
-			hookRemoteInstance(inst)
-		end
-	end
 end
 
 local function buildTxtReport(queryText: string): string
@@ -706,6 +626,167 @@ local function saveSnapshotToTxt(queryText: string, forceSave: boolean): boolean
 		print(report)
 	end
 	return saved
+end
+
+local function wrapRemoteFunctionCallback(rf: RemoteFunction, origFn: ((...any) -> ...any)?): (...any) -> ...any
+	local hookFuncFn = getExecutorFunc("hookfunction")
+	local wrapped: (...any) -> ...any = function(...: any): ...any
+		local args = { ... }
+		if playScanActive and not isIgnoredStudioOrPluginInstance(rf) then
+			local full = rf.Name
+			pcall(function()
+				full = rf:GetFullName()
+			end)
+			local line = string.format("[%s][RemoteFunction:OnClientInvoke] %s args=%s",
+				os.date("!%H:%M:%S"), full, safeArgSummary(args))
+			appendCaptureList(capturedFeatureRequests, line, 200)
+			saveSnapshotToTxt(SearchBox.Text, false)
+		end
+
+		if type(origFn) == "function" then
+			return (origFn :: any)(table.unpack(args))
+		end
+		return nil
+	end
+
+	if type(hookFuncFn) == "function" and type(origFn) == "function" then
+		local okHook, hooked = pcall(function()
+			return hookFuncFn(origFn, wrapped)
+		end)
+		if okHook and type(hooked) == "function" then
+			return origFn
+		end
+	end
+
+	return wrapped
+end
+
+local function attachOnClientInvokeHook(rf: RemoteFunction)
+	local existingCallback: ((...any) -> ...any)? = nil
+	pcall(function()
+		existingCallback = rf.OnClientInvoke
+	end)
+
+	local hookedHandler = wrapRemoteFunctionCallback(rf, existingCallback)
+	pcall(function()
+		rf.OnClientInvoke = hookedHandler
+	end)
+end
+
+local function hookRemoteInstance(inst: Instance)
+	if hookedRemotes[inst] or isIgnoredStudioOrPluginInstance(inst) then
+		return
+	end
+	if inst:IsA("RemoteEvent") then
+		hookedRemotes[inst] = true
+		pcall(function()
+			inst.OnClientEvent:Connect(function(...: any)
+				if not playScanActive then return end
+				local full = inst.Name
+				pcall(function()
+					full = inst:GetFullName()
+				end)
+				local line = string.format("[%s][RemoteEvent:OnClientEvent] %s args=%s",
+					os.date("!%H:%M:%S"), full, safeArgSummary({ ... }))
+				appendCaptureList(capturedFeatureRequests, line, 200)
+				saveSnapshotToTxt(SearchBox.Text, false)
+			end)
+		end)
+	elseif inst:IsA("BindableEvent") then
+		hookedRemotes[inst] = true
+		pcall(function()
+			inst.Event:Connect(function(...: any)
+				if not playScanActive then return end
+				local full = inst.Name
+				pcall(function()
+					full = inst:GetFullName()
+				end)
+				local line = string.format("[%s][BindableEvent] %s args=%s",
+					os.date("!%H:%M:%S"), full, safeArgSummary({ ... }))
+				appendCaptureList(capturedFeatureRequests, line, 200)
+				saveSnapshotToTxt(SearchBox.Text, false)
+			end)
+		end)
+	elseif inst:IsA("RemoteFunction") then
+		hookedRemotes[inst] = true
+		attachOnClientInvokeHook(inst)
+		pcall(function()
+			inst:GetPropertyChangedSignal("OnClientInvoke"):Connect(function()
+				local currentCb: ((...any) -> ...any)? = nil
+				pcall(function()
+					currentCb = inst.OnClientInvoke
+				end)
+				if type(currentCb) == "function" then
+					local nextCb = wrapRemoteFunctionCallback(inst, currentCb)
+					if nextCb ~= currentCb then
+						pcall(function()
+							inst.OnClientInvoke = nextCb
+						end)
+					end
+				end
+			end)
+		end)
+	end
+end
+
+-- Dipasang hanya saat ▶ Scan ditekan agar tidak memancing detektor namecall saat idle
+local function ensureNamecallHook()
+	if namecallHookInstalled then
+		return
+	end
+	local hookMetaFn = getExecutorFunc("hookmetamethod")
+	local getNamecallFn = getExecutorFunc("getnamecallmethod")
+	local checkCallerFn = getExecutorFunc("checkcaller")
+
+	if type(hookMetaFn) == "function" and type(getNamecallFn) == "function" then
+		local ok = pcall(function()
+			local oldNamecall: any
+			oldNamecall = hookMetaFn(game, "__namecall", function(self: any, ...: any)
+				local args = { ... }
+				if playScanActive and typeof(self) == "Instance" and not isIgnoredStudioOrPluginInstance(self) then
+					local okM, method = pcall(getNamecallFn)
+					if okM and (method == "FireServer" or method == "InvokeServer" or method == "Fire" or method == "Invoke") then
+						local isExec = false
+						if type(checkCallerFn) == "function" then
+							local okC, resC = pcall(checkCallerFn)
+							isExec = (okC and resC == true)
+						end
+						if not isExec then
+							local full = tostring(self.Name)
+							pcall(function()
+								full = self:GetFullName()
+							end)
+							local line = string.format("[%s][REQ:GAME/%s] %s args=%s",
+								os.date("!%H:%M:%S"), tostring(method), full, safeArgSummary(args))
+							appendCaptureList(capturedFeatureRequests, line, 200)
+						end
+					end
+				end
+				return oldNamecall(self, table.unpack(args))
+			end)
+		end)
+		if ok then
+			namecallHookInstalled = true
+		end
+	end
+end
+
+local function attachExistingRemoteListeners()
+	local targets: {Instance} = {
+		workspace,
+		game:GetService("ReplicatedStorage"),
+		Players,
+	}
+	for _, root in ipairs(targets) do
+		local okD, desc = pcall(function()
+			return root:GetDescendants()
+		end)
+		if okD and desc then
+			for _, inst in ipairs(desc) do
+				hookRemoteInstance(inst)
+			end
+		end
+	end
 end
 
 local function selectMatch(idx: number)
@@ -933,20 +1014,14 @@ LogService.MessageOut:Connect(function(message: string, messageType: Enum.Messag
 end)
 
 game.DescendantAdded:Connect(function(desc: Instance)
-	hookRemoteInstance(desc)
 	if not playScanActive then return end
+	hookRemoteInstance(desc)
 	if isIgnoredStudioOrPluginInstance(desc) then return end
 	task.defer(function()
 		if not playScanActive then return end
 		local summary = formatInstanceSummary(desc, "NEW@" .. os.date("!%H:%M:%S"))
 		appendCaptureList(capturedNewInstances, summary, 200)
-
-		local q = string.match(SearchBox.Text, "^%s*(.-)%s*$") or ""
-		if q ~= "" then
-			runSearch(q, true)
-		else
-			saveSnapshotToTxt("", false)
-		end
+		saveSnapshotToTxt(SearchBox.Text, false)
 	end)
 end)
 
@@ -955,12 +1030,17 @@ do
 	RunService.Heartbeat:Connect(function(dt: number)
 		if not playScanActive then return end
 		acc += dt
-		if acc >= 1.2 then
+		if acc >= 2.0 then
 			acc = 0
 			saveSnapshotToTxt(SearchBox.Text, false)
 		end
 	end)
 end
+
+LocalPlayer.OnTeleport:Connect(function()
+	appendCaptureList(capturedRuntimeLogs, string.format("[%s][TELEPORT] LocalPlayer.OnTeleport triggered", os.date("!%H:%M:%S")), 200)
+	saveSnapshotToTxt(SearchBox.Text, true)
+end)
 
 ScanBtn.MouseButton1Click:Connect(function()
 	runSearch(SearchBox.Text, true)
@@ -975,6 +1055,7 @@ end)
 PlayScanBtn.MouseButton1Click:Connect(function()
 	playScanActive = not playScanActive
 	if playScanActive then
+		ensureNamecallHook()
 		attachExistingRemoteListeners()
 		PlayScanBtn.Text = "⏹ Stop"
 		PlayScanBtn.BackgroundColor3 = Color3.fromRGB(165, 45, 65)
@@ -983,7 +1064,7 @@ PlayScanBtn.MouseButton1Click:Connect(function()
 			runSearch(q, false)
 		end
 		saveSnapshotToTxt(SearchBox.Text, true)
-		StatusLabel.Text = "PlayScan ON (Req+Obj+Log) • " .. SCAN_TXT_FILE
+		StatusLabel.Text = "PlayScan ON • " .. SCAN_TXT_FILE
 	else
 		PlayScanBtn.Text = "▶ Scan"
 		PlayScanBtn.BackgroundColor3 = Color3.fromRGB(34, 92, 68)
