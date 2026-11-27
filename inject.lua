@@ -40,7 +40,11 @@ export type FontPreset = {
 	boldFont: Enum.Font,
 }
 
-export type JailMode = "OrbitHead" | "ShakePart" | "GravityThrow" | "PullToTarget" | "RopeBreak" | "AttackFall" | "CarryPart"
+export type SearchMatch = {
+	sourceType: string,
+	fullName: string,
+	detail: string,
+}
 
 local GUI_THEMES: {GuiTheme} = {
 	{
@@ -98,12 +102,6 @@ local CONFIG = {
 	ActiveTab = "Music",
 	ThemeIndex = 1,
 	FontIndex = 1,
-	JailEnabled = false,
-	FlingEnabled = false,
-	JailMode = "OrbitHead" :: JailMode,
-	JailSpeed = 2.5,
-	JailTargetUserId = 0,
-	JailAnchorLocked = false,
 }
 
 export type MusicTrack = {
@@ -137,6 +135,17 @@ local function getUserAvatarAsync(userId: number): string
 		return content
 	end
 	return "rbxasset://textures/ui/GuiImagePlaceholder.png"
+end
+
+local function copyTextToClipboard(text: string): boolean
+	local fn = (getgenv and getgenv().setclipboard) or (setclipboard :: any)
+	if type(fn) == "function" then
+		local ok = pcall(function()
+			fn(text)
+		end)
+		return ok
+	end
+	return false
 end
 
 -- ==========================================
@@ -248,7 +257,7 @@ local MetaLabel = Instance.new("TextLabel")
 MetaLabel.Size = UDim2.new(0, 240, 0, 11)
 MetaLabel.Position = UDim2.new(0, 48, 0, 31)
 MetaLabel.BackgroundTransparency = 1
-MetaLabel.Text = "by Ikyy • v1.4.0 • @" .. LocalPlayer.Name
+MetaLabel.Text = "by Ikyy • v1.5.0 • @" .. LocalPlayer.Name
 MetaLabel.TextColor3 = Color3.fromRGB(115, 112, 138)
 MetaLabel.TextSize = 8
 MetaLabel.Font = Enum.Font.GothamMedium
@@ -859,742 +868,300 @@ do
 end
 
 -- ==========================================
--- HALAMAN 2: JAIL + FLING (UNANCHORED PART & TOUCH FLING PHYSICS)
+-- HALAMAN 2: ID SEARCH (CARI LETAK ID MUSIK / TEKS DI GAME)
 -- ==========================================
-local JailPage = Instance.new("Frame")
-JailPage.Size = UDim2.fromScale(1, 1)
-JailPage.BackgroundTransparency = 1
-JailPage.Visible = false
-JailPage.Parent = ContentArea
-tabPages["Jail"] = JailPage
+local SearchPage = Instance.new("Frame")
+SearchPage.Name = "SearchPage"
+SearchPage.Size = UDim2.fromScale(1, 1)
+SearchPage.BackgroundTransparency = 1
+SearchPage.Visible = false
+SearchPage.Parent = ContentArea
+tabPages["Search"] = SearchPage
 
-local JailTopRow = Instance.new("Frame")
-JailTopRow.Size = UDim2.new(1, -24, 0, 24)
-JailTopRow.Position = UDim2.new(0, 12, 0, 6)
-JailTopRow.BackgroundTransparency = 1
-JailTopRow.Parent = JailPage
+local SearchHeaderLabel = Instance.new("TextLabel")
+SearchHeaderLabel.Size = UDim2.new(1, -24, 0, 16)
+SearchHeaderLabel.Position = UDim2.new(0, 12, 0, 6)
+SearchHeaderLabel.BackgroundTransparency = 1
+SearchHeaderLabel.Text = "🔎 Pencari ID Musik / Teks di Seluruh Objek"
+SearchHeaderLabel.TextColor3 = Color3.fromRGB(245, 245, 255)
+SearchHeaderLabel.TextSize = 11
+SearchHeaderLabel.Font = Enum.Font.GothamBold
+SearchHeaderLabel.TextXAlignment = Enum.TextXAlignment.Left
+SearchHeaderLabel.Parent = SearchPage
 
-local JailSwitchBtn = Instance.new("TextButton")
-JailSwitchBtn.Size = UDim2.new(0.35, -3, 1, 0)
-JailSwitchBtn.Position = UDim2.new(0, 0, 0, 0)
-JailSwitchBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 50)
-JailSwitchBtn.Text = "⚡ JAIL: OFF"
-JailSwitchBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-JailSwitchBtn.TextSize = 8
-JailSwitchBtn.Font = Enum.Font.GothamBold
-JailSwitchBtn.Parent = JailTopRow
-Instance.new("UICorner", JailSwitchBtn).CornerRadius = UDim.new(0, 6)
+local SearchInputRow = Instance.new("Frame")
+SearchInputRow.Size = UDim2.new(1, -24, 0, 26)
+SearchInputRow.Position = UDim2.new(0, 12, 0, 25)
+SearchInputRow.BackgroundTransparency = 1
+SearchInputRow.Parent = SearchPage
 
-local FlingSwitchBtn = Instance.new("TextButton")
-FlingSwitchBtn.Size = UDim2.new(0.32, -3, 1, 0)
-FlingSwitchBtn.Position = UDim2.new(0.35, 2, 0, 0)
-FlingSwitchBtn.BackgroundColor3 = Color3.fromRGB(34, 32, 50)
-FlingSwitchBtn.Text = "🌪 Fling: OFF"
-FlingSwitchBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-FlingSwitchBtn.TextSize = 8
-FlingSwitchBtn.Font = Enum.Font.GothamBold
-FlingSwitchBtn.Parent = JailTopRow
-Instance.new("UICorner", FlingSwitchBtn).CornerRadius = UDim.new(0, 6)
+local SearchBox = Instance.new("TextBox")
+SearchBox.Name = "SearchIdInput"
+SearchBox.Size = UDim2.new(0.64, -4, 1, 0)
+SearchBox.Position = UDim2.new(0, 0, 0, 0)
+SearchBox.BackgroundColor3 = Color3.fromRGB(13, 12, 21)
+SearchBox.Text = ""
+SearchBox.PlaceholderText = "Ketik ID musik (cth: 132909271866353)..."
+SearchBox.PlaceholderColor3 = Color3.fromRGB(115, 112, 142)
+SearchBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+SearchBox.TextSize = 9
+SearchBox.Font = Enum.Font.GothamMedium
+SearchBox.ClearTextOnFocus = false
+SearchBox.TextXAlignment = Enum.TextXAlignment.Left
+SearchBox.Parent = SearchInputRow
+Instance.new("UICorner", SearchBox).CornerRadius = UDim.new(0, 6)
+local SearchBoxStroke = Instance.new("UIStroke", SearchBox)
+SearchBoxStroke.Color = Color3.fromRGB(64, 56, 108)
+SearchBoxStroke.Thickness = 1
 
-local JailAnchorLockBtn = Instance.new("TextButton")
-JailAnchorLockBtn.Size = UDim2.new(0.33, -2, 1, 0)
-JailAnchorLockBtn.Position = UDim2.new(0.67, 2, 0, 0)
-JailAnchorLockBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
-JailAnchorLockBtn.Text = "🔒 Lock: OFF"
-JailAnchorLockBtn.TextColor3 = Color3.fromRGB(220, 218, 245)
-JailAnchorLockBtn.TextSize = 8
-JailAnchorLockBtn.Font = Enum.Font.GothamBold
-JailAnchorLockBtn.Parent = JailTopRow
-Instance.new("UICorner", JailAnchorLockBtn).CornerRadius = UDim.new(0, 6)
+local SearchBoxPad = Instance.new("UIPadding")
+SearchBoxPad.PaddingLeft = UDim.new(0, 8)
+SearchBoxPad.PaddingRight = UDim.new(0, 8)
+SearchBoxPad.Parent = SearchBox
 
-local JailStatusLabel = Instance.new("TextLabel")
-JailStatusLabel.Size = UDim2.new(1, -24, 0, 12)
-JailStatusLabel.Position = UDim2.new(0, 12, 0, 32)
-JailStatusLabel.BackgroundTransparency = 1
-JailStatusLabel.Text = "Scan: 0 unanchored part • Mode: OrbitHead • Fling: OFF"
-JailStatusLabel.TextColor3 = Color3.fromRGB(150, 146, 182)
-JailStatusLabel.TextSize = 8
-JailStatusLabel.Font = Enum.Font.GothamMedium
-JailStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-JailStatusLabel.Parent = JailPage
+local ScanIdBtn = Instance.new("TextButton")
+ScanIdBtn.Name = "ScanIdBtn"
+ScanIdBtn.Size = UDim2.new(0.20, -4, 1, 0)
+ScanIdBtn.Position = UDim2.new(0.64, 2, 0, 0)
+ScanIdBtn.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
+ScanIdBtn.Text = "🔍 Cari"
+ScanIdBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ScanIdBtn.TextSize = 9
+ScanIdBtn.Font = Enum.Font.GothamBold
+ScanIdBtn.Parent = SearchInputRow
+Instance.new("UICorner", ScanIdBtn).CornerRadius = UDim.new(0, 6)
 
--- Slider Speed (0.5x - 6.0x, default 2.5x)
-local JailSpeedRow = Instance.new("Frame")
-JailSpeedRow.Size = UDim2.new(1, -24, 0, 18)
-JailSpeedRow.Position = UDim2.new(0, 12, 0, 46)
-JailSpeedRow.BackgroundTransparency = 1
-JailSpeedRow.Parent = JailPage
+local ClearSearchBtn = Instance.new("TextButton")
+ClearSearchBtn.Name = "ClearSearchBtn"
+ClearSearchBtn.Size = UDim2.new(0.16, 0, 1, 0)
+ClearSearchBtn.Position = UDim2.new(0.84, 2, 0, 0)
+ClearSearchBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
+ClearSearchBtn.Text = "Hapus"
+ClearSearchBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
+ClearSearchBtn.TextSize = 8
+ClearSearchBtn.Font = Enum.Font.GothamBold
+ClearSearchBtn.Parent = SearchInputRow
+Instance.new("UICorner", ClearSearchBtn).CornerRadius = UDim.new(0, 6)
 
-local JailSpeedLabel = Instance.new("TextLabel")
-JailSpeedLabel.Size = UDim2.new(0, 84, 1, 0)
-JailSpeedLabel.BackgroundTransparency = 1
-JailSpeedLabel.Text = "🚀 Speed: 2.5x"
-JailSpeedLabel.TextColor3 = Color3.fromRGB(205, 202, 230)
-JailSpeedLabel.TextSize = 9
-JailSpeedLabel.Font = Enum.Font.GothamBold
-JailSpeedLabel.TextXAlignment = Enum.TextXAlignment.Left
-JailSpeedLabel.Parent = JailSpeedRow
+local SearchStatusLabel = Instance.new("TextLabel")
+SearchStatusLabel.Size = UDim2.new(1, -24, 0, 14)
+SearchStatusLabel.Position = UDim2.new(0, 12, 0, 54)
+SearchStatusLabel.BackgroundTransparency = 1
+SearchStatusLabel.Text = "Masukkan ID musik lalu tekan Cari (tap hasil untuk salin path)"
+SearchStatusLabel.TextColor3 = Color3.fromRGB(150, 146, 182)
+SearchStatusLabel.TextSize = 8
+SearchStatusLabel.Font = Enum.Font.GothamMedium
+SearchStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+SearchStatusLabel.TextTruncate = Enum.TextTruncate.AtEnd
+SearchStatusLabel.Parent = SearchPage
 
-local JailSpeedBg = Instance.new("Frame")
-JailSpeedBg.Size = UDim2.new(1, -90, 0, 7)
-JailSpeedBg.Position = UDim2.new(0, 88, 0.5, -3)
-JailSpeedBg.BackgroundColor3 = Color3.fromRGB(14, 13, 22)
-JailSpeedBg.BorderSizePixel = 0
-JailSpeedBg.Parent = JailSpeedRow
-Instance.new("UICorner", JailSpeedBg).CornerRadius = UDim.new(1, 0)
+local SearchResultsScroll = Instance.new("ScrollingFrame")
+SearchResultsScroll.Size = UDim2.new(1, -24, 1, -78)
+SearchResultsScroll.Position = UDim2.new(0, 12, 0, 71)
+SearchResultsScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
+SearchResultsScroll.BorderSizePixel = 0
+SearchResultsScroll.ScrollBarThickness = 3
+SearchResultsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+SearchResultsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+SearchResultsScroll.Parent = SearchPage
+Instance.new("UICorner", SearchResultsScroll).CornerRadius = UDim.new(0, 7)
+local SearchResStroke = Instance.new("UIStroke", SearchResultsScroll)
+SearchResStroke.Color = Color3.fromRGB(48, 44, 74)
+SearchResStroke.Thickness = 1
 
-local JailSpeedFill = Instance.new("Frame")
-JailSpeedFill.Size = UDim2.new(0.36, 0, 1, 0)
-JailSpeedFill.BackgroundColor3 = Color3.fromRGB(108, 86, 245)
-JailSpeedFill.BorderSizePixel = 0
-JailSpeedFill.Parent = JailSpeedBg
-Instance.new("UICorner", JailSpeedFill).CornerRadius = UDim.new(1, 0)
+local SearchResLayout = Instance.new("UIListLayout")
+SearchResLayout.Padding = UDim.new(0, 4)
+SearchResLayout.SortOrder = Enum.SortOrder.LayoutOrder
+SearchResLayout.Parent = SearchResultsScroll
 
-local JailSpeedKnob = Instance.new("TextButton")
-JailSpeedKnob.Size = UDim2.fromOffset(12, 12)
-JailSpeedKnob.Position = UDim2.new(0.36, -6, 0.5, -6)
-JailSpeedKnob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-JailSpeedKnob.Text = ""
-JailSpeedKnob.AutoButtonColor = false
-JailSpeedKnob.Parent = JailSpeedBg
-Instance.new("UICorner", JailSpeedKnob).CornerRadius = UDim.new(1, 0)
+local SearchResPad = Instance.new("UIPadding")
+SearchResPad.PaddingTop = UDim.new(0, 5)
+SearchResPad.PaddingBottom = UDim.new(0, 5)
+SearchResPad.PaddingLeft = UDim.new(0, 5)
+SearchResPad.PaddingRight = UDim.new(0, 5)
+SearchResPad.Parent = SearchResultsScroll
 
--- Pilihan Mode Akses (OrbitHead, ShakePart, GravityThrow, PullToTarget, RopeBreak, AttackFall, CarryPart)
-local JailModeGrid = Instance.new("Frame")
-JailModeGrid.Size = UDim2.new(1, -24, 0, 48)
-JailModeGrid.Position = UDim2.new(0, 12, 0, 67)
-JailModeGrid.BackgroundTransparency = 1
-JailModeGrid.Parent = JailPage
+local lastSearchMatches: {SearchMatch} = {}
 
-local JailModeLayout = Instance.new("UIGridLayout")
-JailModeLayout.CellSize = UDim2.new(0.25, -4, 0, 22)
-JailModeLayout.CellPadding = UDim2.fromOffset(4, 4)
-JailModeLayout.SortOrder = Enum.SortOrder.LayoutOrder
-JailModeLayout.Parent = JailModeGrid
-
-local JAIL_MODES: {{id: JailMode, label: string}} = {
-	{ id = "OrbitHead", label = "🌀 Orbit" },
-	{ id = "ShakePart", label = "💥 Shake" },
-	{ id = "GravityThrow", label = "🎯 Throw" },
-	{ id = "PullToTarget", label = "🧲 Pull" },
-	{ id = "RopeBreak", label = "⛓ Rope" },
-	{ id = "AttackFall", label = "⬇ Fall" },
-	{ id = "CarryPart", label = "🧳 Carry" },
-}
-
-local modeButtons: {[JailMode]: TextButton} = {}
-for idx, m in ipairs(JAIL_MODES) do
-	local btn = Instance.new("TextButton")
-	btn.Text = m.label
-	btn.TextColor3 = Color3.fromRGB(220, 218, 245)
-	btn.TextSize = 8
-	btn.BackgroundColor3 = Color3.fromRGB(24, 23, 36)
-	btn.LayoutOrder = idx
-	btn.Parent = JailModeGrid
-	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-	modeButtons[m.id] = btn
-
-	btn.MouseButton1Click:Connect(function()
-		CONFIG.JailMode = m.id
-		applyThemeAndFont()
-	end)
-end
-
--- List Pilihan User (Target Player)
-local JailTargetHeader = Instance.new("Frame")
-JailTargetHeader.Size = UDim2.new(1, -24, 0, 16)
-JailTargetHeader.Position = UDim2.new(0, 12, 0, 120)
-JailTargetHeader.BackgroundTransparency = 1
-JailTargetHeader.Parent = JailPage
-
-local JailTargetTitle = Instance.new("TextLabel")
-JailTargetTitle.Size = UDim2.new(0.75, 0, 1, 0)
-JailTargetTitle.BackgroundTransparency = 1
-JailTargetTitle.Text = "👤 Target User (Fling / Gravity Throw / Pull Target)"
-JailTargetTitle.TextColor3 = Color3.fromRGB(205, 202, 230)
-JailTargetTitle.TextSize = 9
-JailTargetTitle.Font = Enum.Font.GothamBold
-JailTargetTitle.TextXAlignment = Enum.TextXAlignment.Left
-JailTargetTitle.Parent = JailTargetHeader
-
-local RefreshUsersBtn = Instance.new("TextButton")
-RefreshUsersBtn.Size = UDim2.new(0.24, 0, 1, 0)
-RefreshUsersBtn.Position = UDim2.new(0.76, 0, 0, 0)
-RefreshUsersBtn.BackgroundColor3 = Color3.fromRGB(32, 30, 48)
-RefreshUsersBtn.Text = "↻ List"
-RefreshUsersBtn.TextColor3 = Color3.fromRGB(235, 232, 255)
-RefreshUsersBtn.TextSize = 8
-RefreshUsersBtn.Font = Enum.Font.GothamBold
-RefreshUsersBtn.Parent = JailTargetHeader
-Instance.new("UICorner", RefreshUsersBtn).CornerRadius = UDim.new(0, 5)
-
-local UserListScroll = Instance.new("ScrollingFrame")
-UserListScroll.Size = UDim2.new(1, -24, 0, 114)
-UserListScroll.Position = UDim2.new(0, 12, 0, 139)
-UserListScroll.BackgroundColor3 = Color3.fromRGB(12, 11, 18)
-UserListScroll.BorderSizePixel = 0
-UserListScroll.ScrollBarThickness = 3
-UserListScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-UserListScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-UserListScroll.Parent = JailPage
-Instance.new("UICorner", UserListScroll).CornerRadius = UDim.new(0, 7)
-local UserListStroke = Instance.new("UIStroke", UserListScroll)
-UserListStroke.Color = Color3.fromRGB(48, 44, 74)
-UserListStroke.Thickness = 1
-
-local UserListLayout = Instance.new("UIListLayout")
-UserListLayout.Padding = UDim.new(0, 3)
-UserListLayout.SortOrder = Enum.SortOrder.LayoutOrder
-UserListLayout.Parent = UserListScroll
-
-local UserListPad = Instance.new("UIPadding")
-UserListPad.PaddingTop = UDim.new(0, 4)
-UserListPad.PaddingBottom = UDim.new(0, 4)
-UserListPad.PaddingLeft = UDim.new(0, 4)
-UserListPad.PaddingRight = UDim.new(0, 4)
-UserListPad.Parent = UserListScroll
-
--- Logika Scan & Akses Unanchored Part + Touch Fling (No Visual)
-local scannedUnanchoredParts: {BasePart} = {}
-local activeAttackedParts: {[BasePart]: boolean} = {}
-local lockedAnchoredParts: {[BasePart]: boolean} = {}
-local flingCooldowns: {[number]: number} = {}
-local characterTouchConnections: {RBXScriptConnection} = {}
-
-local function getCharacterRoot(player: Player?): BasePart?
-	local plr = player or LocalPlayer
-	local char = plr.Character
-	if not char then return nil end
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if hrp and hrp:IsA("BasePart") then
-		return hrp
-	end
-	local head = char:FindFirstChild("Head")
-	if head and head:IsA("BasePart") then
-		return head
-	end
-	return nil
-end
-
-local function isDescendantOfAnyCharacter(inst: Instance): boolean
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr.Character and inst:IsDescendantOf(plr.Character) then
-			return true
-		end
-	end
-	return false
-end
-
-local function getPlayerFromHitPart(hit: BasePart?): Player?
-	if not hit or not hit.Parent then return nil end
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= LocalPlayer and plr.Character and hit:IsDescendantOf(plr.Character) then
-			return plr
-		end
-	end
-	return nil
-end
-
-local function launchPlayerFarAndHigh(targetPlr: Player, sourcePos: Vector3)
-	if not CONFIG.FlingEnabled then return end
-	local now = os.clock()
-	local lastHit = flingCooldowns[targetPlr.UserId] or 0
-	if (now - lastHit) < 0.25 then
-		return
-	end
-	flingCooldowns[targetPlr.UserId] = now
-
-	local targetChar = targetPlr.Character
-	if not targetChar then return end
-	local targetRoot = getCharacterRoot(targetPlr)
-	if not targetRoot then return end
-
-	local speed = CONFIG.JailSpeed
-	local horizVec = Vector3.new(targetRoot.Position.X - sourcePos.X, 0, targetRoot.Position.Z - sourcePos.Z)
-	local horizDir = horizVec.Magnitude > 0.05 and horizVec.Unit or Vector3.new(math.random(-10, 10), 0, math.random(-10, 10)).Unit
-
-	local farSpeed = 240 * speed
-	local highSpeed = 210 * speed
-	local launchVel = (horizDir * farSpeed) + Vector3.new(0, highSpeed, 0)
-	local spinVel = Vector3.new(320 * speed, 360 * speed, 320 * speed)
-
-	pcall(function()
-		local hum = targetChar:FindFirstChildOfClass("Humanoid")
-		if hum then
-			hum.PlatformStand = true
-			task.delay(0.35, function()
-				if hum and hum.Parent then
-					hum.PlatformStand = false
-				end
-			end)
-		end
-
-		for _, part in ipairs(targetChar:GetDescendants()) do
-			if part:IsA("BasePart") and not part.Anchored then
-				part.AssemblyLinearVelocity = launchVel
-				part.AssemblyAngularVelocity = spinVel
-			end
-		end
-
-		targetRoot.AssemblyLinearVelocity = launchVel
-		targetRoot.AssemblyAngularVelocity = spinVel
-	end)
-end
-
-local function bindLocalCharacterTouchFling(char: Model)
-	for _, conn in ipairs(characterTouchConnections) do
-		conn:Disconnect()
-	end
-	table.clear(characterTouchConnections)
-
-	local function hookPart(part: Instance)
-		if part:IsA("BasePart") then
-			local conn = part.Touched:Connect(function(hit: BasePart)
-				if not CONFIG.FlingEnabled then return end
-				local hitPlr = getPlayerFromHitPart(hit)
-				if hitPlr then
-					local myRoot = getCharacterRoot(LocalPlayer)
-					local origin = myRoot and myRoot.Position or part.Position
-					launchPlayerFarAndHigh(hitPlr, origin)
-				end
-			end)
-			table.insert(characterTouchConnections, conn)
-		end
-	end
-
-	for _, desc in ipairs(char:GetDescendants()) do
-		hookPart(desc)
-	end
-
-	local addedConn = char.DescendantAdded:Connect(function(desc: Instance)
-		hookPart(desc)
-	end)
-	table.insert(characterTouchConnections, addedConn)
-end
-
-if LocalPlayer.Character then
-	bindLocalCharacterTouchFling(LocalPlayer.Character)
-end
-LocalPlayer.CharacterAdded:Connect(function(char: Model)
-	bindLocalCharacterTouchFling(char)
-end)
-
-local function isConstraintBindingPart(inst: Instance, part: BasePart): boolean
-	if inst:IsA("RopeConstraint") or inst:IsA("AlignPosition") or inst:IsA("AlignOrientation") or inst:IsA("RodConstraint") or inst:IsA("SpringConstraint") or inst:IsA("WeldConstraint") then
-		local c = inst :: any
-		local a0 = c.Attachment0
-		local a1 = c.Attachment1
-		local p0 = c.Part0
-		local p1 = c.Part1
-		if p0 == part or p1 == part then
-			return true
-		end
-		if (a0 and a0:IsDescendantOf(part)) or (a1 and a1:IsDescendantOf(part)) then
-			return true
-		end
-	end
-	return false
-end
-
-local function detachPartFromReturnPull(part: BasePart)
-	pcall(function()
-		for _, desc in ipairs(part:GetDescendants()) do
-			if desc:IsA("RopeConstraint") or desc:IsA("AlignPosition") or desc:IsA("AlignOrientation") or desc:IsA("RodConstraint") or desc:IsA("SpringConstraint") or desc:IsA("WeldConstraint") then
-				(desc :: any).Enabled = false
-				if desc:IsA("RopeConstraint") then
-					desc.Length = 0.01
-				end
-			end
-		end
-		for _, desc in ipairs(workspace:GetDescendants()) do
-			if isConstraintBindingPart(desc, part) then
-				(desc :: any).Enabled = false
-				if desc:IsA("RopeConstraint") then
-					desc.Length = 0.01
-				end
-			end
-		end
-	end)
-end
-
-local function scanUnanchoredParts()
-	local found: {BasePart} = {}
-	local root = getCharacterRoot(LocalPlayer)
-	local originPos = root and root.Position or Vector3.zero
-
-	for _, desc in ipairs(workspace:GetDescendants()) do
-		if desc:IsA("BasePart") and not desc.Anchored and not isDescendantOfAnyCharacter(desc) then
-			table.insert(found, desc)
-			if #found >= 48 then
-				break
-			end
-		end
-	end
-
-	table.sort(found, function(a: BasePart, b: BasePart): boolean
-		return (a.Position - originPos).Magnitude < (b.Position - originPos).Magnitude
-	end)
-
-	scannedUnanchoredParts = found
-end
-
-local function clearSelfFlingVelocity()
-	local myRoot = getCharacterRoot(LocalPlayer)
-	if myRoot then
-		pcall(function()
-			myRoot.AssemblyLinearVelocity = Vector3.zero
-			myRoot.AssemblyAngularVelocity = Vector3.zero
-		end)
-	end
-end
-
-local function releasePartsToFall()
-	local dropBoost = 65 * CONFIG.JailSpeed
-	for _, part in ipairs(scannedUnanchoredParts) do
-		if part and part.Parent and part:IsA("BasePart") then
-			pcall(function()
-				part.Anchored = false
-				part.AssemblyLinearVelocity = Vector3.new(
-					math.random(-25, 25),
-					-dropBoost,
-					math.random(-25, 25)
-				)
-				part.AssemblyAngularVelocity = Vector3.new(25, 25, 25)
-			end)
-		end
-	end
-	for part, _ in pairs(activeAttackedParts) do
-		if part and part.Parent and part:IsA("BasePart") then
-			pcall(function()
-				part.Anchored = false
-				part.AssemblyLinearVelocity = Vector3.new(
-					math.random(-25, 25),
-					-dropBoost,
-					math.random(-25, 25)
-				)
-				part.AssemblyAngularVelocity = Vector3.new(25, 25, 25)
-			end)
-		end
-	end
-	table.clear(activeAttackedParts)
-	table.clear(scannedUnanchoredParts)
-end
-
-local function setAnchorLock(locked: boolean)
-	CONFIG.JailAnchorLocked = locked
-	if locked then
-		scanUnanchoredParts()
-		for _, part in ipairs(scannedUnanchoredParts) do
-			if part and part.Parent and not part.Anchored then
-				lockedAnchoredParts[part] = true
-				pcall(function()
-					part.Anchored = true
-				end)
-			end
-		end
-	else
-		for part, _ in pairs(lockedAnchoredParts) do
-			if part and part.Parent then
-				pcall(function()
-					part.Anchored = false
-				end)
-			end
-		end
-		table.clear(lockedAnchoredParts)
-	end
-	applyThemeAndFont()
-end
-
-local function renderUserList()
-	local theme = GUI_THEMES[CONFIG.ThemeIndex]
+local function renderSearchResults(matches: {SearchMatch})
 	local fontPreset = FONT_PRESETS[CONFIG.FontIndex]
 
-	for _, child in ipairs(UserListScroll:GetChildren()) do
+	for _, child in ipairs(SearchResultsScroll:GetChildren()) do
 		if child:IsA("TextButton") then
 			child:Destroy()
 		end
 	end
 
-	local others: {Player} = {}
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= LocalPlayer then
-			table.insert(others, plr)
-		end
-	end
-
-	if CONFIG.JailTargetUserId == 0 and #others > 0 then
-		CONFIG.JailTargetUserId = others[1].UserId
-	end
-
-	if #others == 0 then
-		local emptyBtn = Instance.new("TextButton")
-		emptyBtn.Size = UDim2.new(1, -4, 0, 22)
-		emptyBtn.BackgroundColor3 = Color3.fromRGB(22, 21, 34)
-		emptyBtn.Text = "  Tidak ada player lain di server"
-		emptyBtn.TextColor3 = Color3.fromRGB(165, 162, 190)
-		emptyBtn.TextSize = 8
-		emptyBtn.Font = fontPreset.font
-		emptyBtn.TextXAlignment = Enum.TextXAlignment.Left
-		emptyBtn.LayoutOrder = 1
-		emptyBtn.Parent = UserListScroll
-		Instance.new("UICorner", emptyBtn).CornerRadius = UDim.new(0, 5)
+	if #matches == 0 then
+		local emptyItem = Instance.new("TextButton")
+		emptyItem.Size = UDim2.new(1, -4, 0, 24)
+		emptyItem.BackgroundColor3 = Color3.fromRGB(22, 21, 34)
+		emptyItem.Text = "  Tidak ada kecocokan ditemukan di objek yang dapat dipindai"
+		emptyItem.TextColor3 = Color3.fromRGB(165, 162, 190)
+		emptyItem.TextSize = 8
+		emptyItem.Font = fontPreset.font
+		emptyItem.TextXAlignment = Enum.TextXAlignment.Left
+		emptyItem.LayoutOrder = 1
+		emptyItem.Parent = SearchResultsScroll
+		Instance.new("UICorner", emptyItem).CornerRadius = UDim.new(0, 5)
 		return
 	end
 
-	for idx, plr in ipairs(others) do
-		local selected = (plr.UserId == CONFIG.JailTargetUserId)
-		local uBtn = Instance.new("TextButton")
-		uBtn.Size = UDim2.new(1, -4, 0, 22)
-		uBtn.BackgroundColor3 = selected and theme.accentSoft or Color3.fromRGB(22, 21, 34)
-		uBtn.Text = string.format("  %s (@%s)", plr.DisplayName, plr.Name)
-		uBtn.TextColor3 = selected and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(190, 188, 215)
-		uBtn.TextSize = 9
-		uBtn.Font = selected and fontPreset.boldFont or fontPreset.font
-		uBtn.TextXAlignment = Enum.TextXAlignment.Left
-		uBtn.TextTruncate = Enum.TextTruncate.AtEnd
-		uBtn.LayoutOrder = idx
-		uBtn.Parent = UserListScroll
-		Instance.new("UICorner", uBtn).CornerRadius = UDim.new(0, 5)
+	for idx, item in ipairs(matches) do
+		local resBtn = Instance.new("TextButton")
+		resBtn.Size = UDim2.new(1, -4, 0, 28)
+		resBtn.BackgroundColor3 = Color3.fromRGB(22, 21, 34)
+		resBtn.Text = string.format("  #%d [%s] %s\n      %s", idx, item.sourceType, item.fullName, item.detail)
+		resBtn.TextColor3 = Color3.fromRGB(225, 223, 248)
+		resBtn.TextSize = 8
+		resBtn.Font = fontPreset.font
+		resBtn.TextXAlignment = Enum.TextXAlignment.Left
+		resBtn.TextTruncate = Enum.TextTruncate.AtEnd
+		resBtn.LayoutOrder = idx
+		resBtn.Parent = SearchResultsScroll
+		Instance.new("UICorner", resBtn).CornerRadius = UDim.new(0, 5)
 
-		uBtn.MouseButton1Click:Connect(function()
-			CONFIG.JailTargetUserId = plr.UserId
-			renderUserList()
+		resBtn.MouseButton1Click:Connect(function()
+			local copied = copyTextToClipboard(item.fullName)
+			if copied then
+				SearchStatusLabel.Text = "Disalin ke clipboard: " .. item.fullName
+			else
+				SearchStatusLabel.Text = "Letak: " .. item.fullName
+			end
+			print(string.format("[IDSearch][#%d][%s] %s (%s)", idx, item.sourceType, item.fullName, item.detail))
 		end)
 	end
 end
 
-local function applyJailSpeedFromRatio(ratio: number)
-	local clamped = math.clamp(ratio, 0, 1)
-	local minSpeed = 0.5
-	local maxSpeed = 6.0
-	local speedVal = minSpeed + (clamped * (maxSpeed - minSpeed))
-	CONFIG.JailSpeed = math.floor(speedVal * 10 + 0.5) / 10
-	local displayRatio = (CONFIG.JailSpeed - minSpeed) / (maxSpeed - minSpeed)
-	JailSpeedFill.Size = UDim2.new(displayRatio, 0, 1, 0)
-	JailSpeedKnob.Position = UDim2.new(displayRatio, -6, 0.5, -6)
-	JailSpeedLabel.Text = "🚀 Speed: " .. string.format("%.1f", CONFIG.JailSpeed) .. "x"
-end
-
-JailSwitchBtn.MouseButton1Click:Connect(function()
-	CONFIG.JailEnabled = not CONFIG.JailEnabled
-	if CONFIG.JailEnabled then
-		scanUnanchoredParts()
-	else
-		releasePartsToFall()
-	end
-	applyThemeAndFont()
-end)
-
-FlingSwitchBtn.MouseButton1Click:Connect(function()
-	CONFIG.FlingEnabled = not CONFIG.FlingEnabled
-	if CONFIG.FlingEnabled then
-		table.clear(flingCooldowns)
-		scanUnanchoredParts()
-		if LocalPlayer.Character then
-			bindLocalCharacterTouchFling(LocalPlayer.Character)
-		end
-	else
-		clearSelfFlingVelocity()
-	end
-	applyThemeAndFont()
-end)
-
-JailAnchorLockBtn.MouseButton1Click:Connect(function()
-	setAnchorLock(not CONFIG.JailAnchorLocked)
-end)
-
-RefreshUsersBtn.MouseButton1Click:Connect(function()
-	renderUserList()
-end)
-
-Players.PlayerAdded:Connect(function()
-	renderUserList()
-end)
-
-Players.PlayerRemoving:Connect(function(plr: Player)
-	flingCooldowns[plr.UserId] = nil
-	if plr.UserId == CONFIG.JailTargetUserId then
-		CONFIG.JailTargetUserId = 0
-	end
-	renderUserList()
-end)
-
--- Drag slider Jail Speed kanan-kiri
-do
-	local draggingSpeed = false
-	local function updateSpeedFromInput(inputPos: Vector2)
-		local absPos = JailSpeedBg.AbsolutePosition.X
-		local absW = math.max(1, JailSpeedBg.AbsoluteSize.X)
-		local ratio = math.clamp((inputPos.X - absPos) / absW, 0, 1)
-		applyJailSpeedFromRatio(ratio)
+local function runIdSearch(rawQuery: string)
+	local trimmed = string.match(rawQuery, "^%s*(.-)%s*$") or ""
+	if trimmed == "" then
+		SearchStatusLabel.Text = "Masukkan ID musik atau teks terlebih dahulu"
+		table.clear(lastSearchMatches)
+		renderSearchResults(lastSearchMatches)
+		return
 	end
 
-	JailSpeedBg.InputBegan:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			draggingSpeed = true
-			updateSpeedFromInput(input.Position)
-		end
+	local numericPart = string.match(trimmed, "%d+")
+	local needle = (numericPart and numericPart ~= "") and numericPart or trimmed
+	local assetNeedle = "rbxassetid://" .. needle
+	local matches: {SearchMatch} = {}
+	local scannedCount = 0
+
+	local okDesc, descendants = pcall(function()
+		return game:GetDescendants()
 	end)
 
-	JailSpeedKnob.InputBegan:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			draggingSpeed = true
-		end
-	end)
+	if okDesc and descendants then
+		for _, inst in ipairs(descendants) do
+			scannedCount += 1
 
-	UserInputService.InputChanged:Connect(function(input: InputObject)
-		if not draggingSpeed then return end
-		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-			updateSpeedFromInput(input.Position)
-		end
-	end)
-
-	UserInputService.InputEnded:Connect(function(input: InputObject)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			draggingSpeed = false
-		end
-	end)
-end
-
--- Loop eksekusi fisika JAIL & TOUCH FLING (No Visual)
-do
-	local jailClock = 0
-	local scanAccum = 0
-
-	local function getSelectedTargetPlayer(): Player?
-		for _, plr in ipairs(Players:GetPlayers()) do
-			if plr.UserId == CONFIG.JailTargetUserId and plr ~= LocalPlayer then
-				return plr
-			end
-		end
-		return nil
-	end
-
-	RunService.Heartbeat:Connect(function(dt: number)
-		jailClock += dt
-		if not CONFIG.JailEnabled and not CONFIG.FlingEnabled then
-			return
-		end
-
-		scanAccum += dt
-		if scanAccum >= 0.45 then
-			scanAccum = 0
-			scanUnanchoredParts()
-		end
-
-		local myRoot = getCharacterRoot(LocalPlayer)
-		local targetPlr = getSelectedTargetPlayer()
-		local targetRoot = getCharacterRoot(targetPlr) or myRoot
-		local speed = CONFIG.JailSpeed
-		local activeCount = #scannedUnanchoredParts
-
-		if CONFIG.FlingEnabled and myRoot then
-			pcall(function()
-				local overlapParams = OverlapParams.new()
-				overlapParams.FilterType = Enum.RaycastFilterType.Exclude
-				if LocalPlayer.Character then
-					overlapParams.FilterDescendantsInstances = { LocalPlayer.Character }
-				end
-
-				local nearParts = workspace:GetPartBoundsInRadius(myRoot.Position, 5.5, overlapParams)
-				local hitSet: {[Player]: boolean} = {}
-				for _, part in ipairs(nearParts) do
-					local hitPlr = getPlayerFromHitPart(part)
-					if hitPlr and not hitSet[hitPlr] then
-						hitSet[hitPlr] = true
-						launchPlayerFarAndHigh(hitPlr, myRoot.Position)
-					end
-				end
-
-				if targetPlr and targetRoot then
-					local distToTarget = (targetRoot.Position - myRoot.Position).Magnitude
-					if distToTarget <= 7.5 then
-						launchPlayerFarAndHigh(targetPlr, myRoot.Position)
-					end
-				end
+			local fullName = ""
+			local okName, nameRes = pcall(function()
+				return inst:GetFullName()
 			end)
-		end
+			if okName and type(nameRes) == "string" then
+				fullName = nameRes
+			else
+				fullName = inst.Name
+			end
 
-		if CONFIG.JailEnabled then
-			for i, part in ipairs(scannedUnanchoredParts) do
-				if part and part.Parent and part:IsA("BasePart") and not part.Anchored then
-					if not activeAttackedParts[part] then
-						activeAttackedParts[part] = true
-						detachPartFromReturnPull(part)
-					end
+			-- 1. Objek Sound
+			local okSound, isSound = pcall(function()
+				return inst:IsA("Sound")
+			end)
+			if okSound and isSound then
+				local okId, soundId = pcall(function()
+					return tostring(inst.SoundId)
+				end)
+				if okId and (string.find(soundId, needle, 1, true) or string.find(soundId, assetNeedle, 1, true)) then
+					table.insert(matches, {
+						sourceType = "Sound.SoundId",
+						fullName = fullName,
+						detail = soundId,
+					})
+				end
+			end
 
-					local mode = CONFIG.JailMode
-					if mode == "OrbitHead" then
-						local center = (myRoot and myRoot.Position or Vector3.zero) + Vector3.new(0, 5.5, 0)
-						local angle = jailClock * (3.2 * speed) + (i * ((math.pi * 2) / math.max(1, activeCount)))
-						local radius = 3.5 + ((i % 3) * 1.1)
-						local desiredPos = center + Vector3.new(math.cos(angle) * radius, math.sin(angle * 1.5) * 0.6, math.sin(angle) * radius)
-						local delta = desiredPos - part.Position
-						part.AssemblyLinearVelocity = delta * (12 * speed)
-						part.AssemblyAngularVelocity = Vector3.new(0, 14 * speed, 0)
-					elseif mode == "ShakePart" then
-						local shakeVec = Vector3.new(
-							math.sin(jailClock * 42 * speed + i) * 28 * speed,
-							math.cos(jailClock * 37 * speed + i * 2) * 28 * speed,
-							math.sin(jailClock * 45 * speed + i * 3) * 28 * speed
-						)
-						part.AssemblyLinearVelocity = shakeVec
-						part.AssemblyAngularVelocity = Vector3.new(26 * speed, -24 * speed, 28 * speed)
-					elseif mode == "GravityThrow" then
-						local anchorPos = targetRoot and targetRoot.Position or Vector3.zero
-						local aimPoint = anchorPos + Vector3.new(0, 1.5, 0)
-						local toTarget = aimPoint - part.Position
-						local dist = toTarget.Magnitude
-						local dir = dist > 0.01 and toTarget.Unit or Vector3.zero
-						local throwSpeed = math.min(180, math.max(36 * speed, dist * (14 * speed)))
-						part.AssemblyLinearVelocity = dir * throwSpeed
-						part.AssemblyAngularVelocity = Vector3.new(22 * speed, 22 * speed, 22 * speed)
-					elseif mode == "PullToTarget" then
-						local anchorPos = targetRoot and targetRoot.Position or Vector3.zero
-						local angle = jailClock * (2.2 * speed) + (i * 0.7)
-						local desiredPos = anchorPos + Vector3.new(math.cos(angle) * 2.2, 1.5 + (i % 3), math.sin(angle) * 2.2)
-						local delta = desiredPos - part.Position
-						part.AssemblyLinearVelocity = delta * (14 * speed)
-					elseif mode == "RopeBreak" then
-						local pullDir = (myRoot and (myRoot.Position - part.Position) or Vector3.new(0, 12, 0))
-						local unitDir = pullDir.Magnitude > 0.1 and pullDir.Unit or Vector3.new(0, 1, 0)
-						local yank = unitDir * (75 * speed) + Vector3.new(
-							math.sin(jailClock * 55 * speed + i) * 45 * speed,
-							40 * speed,
-							math.cos(jailClock * 55 * speed + i) * 45 * speed
-						)
-						part.AssemblyLinearVelocity = yank
-						part.AssemblyAngularVelocity = Vector3.new(45 * speed, 45 * speed, 45 * speed)
-					elseif mode == "AttackFall" then
-						local slamDir = Vector3.new(
-							math.sin(jailClock * 48 * speed + i) * 35 * speed,
-							-95 * speed,
-							math.cos(jailClock * 48 * speed + i) * 35 * speed
-						)
-						part.AssemblyLinearVelocity = slamDir
-						part.AssemblyAngularVelocity = Vector3.new(55 * speed, -45 * speed, 55 * speed)
-					elseif mode == "CarryPart" then
-						local baseCf = myRoot and myRoot.CFrame or CFrame.new()
-						local col = (i - 1) % 3 - 1
-						local row = math.floor((i - 1) / 3) % 3
-						local carryPos = (baseCf * CFrame.new(col * 2.2, 1.2 + (row * 1.6), -4.5)).Position
-						local toCarry = carryPos - part.Position
-						part.AssemblyLinearVelocity = toCarry * (16 * speed)
-						part.AssemblyAngularVelocity = Vector3.zero
+			-- 2. StringValue
+			local okStrVal, isStrVal = pcall(function()
+				return inst:IsA("StringValue")
+			end)
+			if okStrVal and isStrVal then
+				local okVal, valStr = pcall(function()
+					return tostring(inst.Value)
+				end)
+				if okVal and string.find(valStr, needle, 1, true) then
+					table.insert(matches, {
+						sourceType = "StringValue",
+						fullName = fullName,
+						detail = "Cocok di Value",
+					})
+				end
+			end
+
+			-- 3. Attributes pada objek
+			local okAttr, attrs = pcall(function()
+				return inst:GetAttributes()
+			end)
+			if okAttr and type(attrs) == "table" then
+				for attrName, attrVal in pairs(attrs) do
+					if type(attrVal) == "string" and string.find(attrVal, needle, 1, true) then
+						table.insert(matches, {
+							sourceType = "Attribute:" .. tostring(attrName),
+							fullName = fullName,
+							detail = "Cocok di Attribute",
+						})
 					end
 				end
 			end
-		end
 
-		local targetName = targetPlr and ("@" .. targetPlr.Name) or "Any Touch"
-		local jailStateText = CONFIG.JailEnabled and ("JAIL: ON (" .. tostring(activeCount) .. " part)") or "JAIL: OFF"
-		local flingStateText = CONFIG.FlingEnabled and "Fling: ON" or "Fling: OFF"
-		JailStatusLabel.Text = string.format("%s • %s • %s • Target: %s", jailStateText, flingStateText, CONFIG.JailMode, targetName)
-	end)
+			-- 4. TextBox / TextLabel
+			local okUi, isUiText = pcall(function()
+				return inst:IsA("TextBox") or inst:IsA("TextLabel")
+			end)
+			if okUi and isUiText then
+				local okTxt, txtVal = pcall(function()
+					return tostring(inst.Text)
+				end)
+				if okTxt and string.find(txtVal, needle, 1, true) then
+					table.insert(matches, {
+						sourceType = inst.ClassName .. ".Text",
+						fullName = fullName,
+						detail = "Cocok di Text",
+					})
+				end
+			end
+		end
+	end
+
+	lastSearchMatches = matches
+	SearchStatusLabel.Text = string.format("ID '%s' • %d cocok (%d objek dicek)", needle, #matches, scannedCount)
+	renderSearchResults(matches)
+	print(string.format("[IDSearch] Query='%s' | Cocok=%d | Dicek=%d", needle, #matches, scannedCount))
+	for i, m in ipairs(matches) do
+		print(string.format("[IDSearch][#%d][%s] %s -> %s", i, m.sourceType, m.fullName, m.detail))
+	end
 end
 
-renderUserList()
-applyJailSpeedFromRatio((CONFIG.JailSpeed - 0.5) / (6.0 - 0.5))
+ScanIdBtn.MouseButton1Click:Connect(function()
+	runIdSearch(SearchBox.Text)
+end)
+
+SearchBox.FocusLost:Connect(function(enterPressed: boolean)
+	if enterPressed then
+		runIdSearch(SearchBox.Text)
+	end
+end)
+
+ClearSearchBtn.MouseButton1Click:Connect(function()
+	SearchBox.Text = ""
+	table.clear(lastSearchMatches)
+	renderSearchResults(lastSearchMatches)
+	SearchStatusLabel.Text = "Hasil dibersihkan • Masukkan ID musik lalu tekan Cari"
+end)
+
+renderSearchResults(lastSearchMatches)
 
 -- ==========================================
 -- HALAMAN 3: ABOUT CREATOR & TOOLS
@@ -1639,11 +1206,11 @@ AboutText.BackgroundTransparency = 1
 AboutText.Text = table.concat({
 	"Creator       : Ikyy (@" .. LocalPlayer.Name .. " | ID: " .. tostring(LocalPlayer.UserId) .. ")",
 	"Tools         : Plugin Studio Lite (Delta Executor Edition)",
-	"Versi         : v1.4.0",
+	"Versi         : v1.5.0",
 	"",
 	"Fitur Aktif:",
 	"• Music Player: Pemutar musik default dengan equalizer beat, loop loading, volume slider, dan tombol << / ▶⏸ / >>.",
-	"• JAIL & Fling: Akses fisika unanchored part (Orbit, Shake, Throw, Pull, Rope, Fall, Carry, Anchor Lock) + Touch Fling jauh & tinggi.",
+	"• ID Search   : Pencarian lokasi ID musik / teks pada Sound, StringValue, Attribute, dan UI di seluruh objek.",
 	"• Settings    : Pengaturan warna tema GUI dan pilihan font secara langsung.",
 	"• About       : Informasi kreator dan versi tools.",
 }, "\n")
@@ -1803,27 +1370,9 @@ applyThemeAndFont = function()
 	EqStroke.Color = theme.stroke
 	VolSliderFill.BackgroundColor3 = theme.accent
 	PlayPauseBtn.BackgroundColor3 = theme.accent
-	JailSpeedFill.BackgroundColor3 = theme.accent
-
-	JailSwitchBtn.BackgroundColor3 = CONFIG.JailEnabled and theme.accent or Color3.fromRGB(34, 32, 50)
-	JailSwitchBtn.Text = CONFIG.JailEnabled and "⚡ JAIL: ON" or "⚡ JAIL: OFF"
-
-	FlingSwitchBtn.BackgroundColor3 = CONFIG.FlingEnabled and theme.accent or Color3.fromRGB(34, 32, 50)
-	FlingSwitchBtn.Text = CONFIG.FlingEnabled and "🌪 Fling: ON" or "🌪 Fling: OFF"
-
-	JailAnchorLockBtn.BackgroundColor3 = CONFIG.JailAnchorLocked and theme.accentSoft or Color3.fromRGB(32, 30, 48)
-	JailAnchorLockBtn.Text = CONFIG.JailAnchorLocked and "🔒 Lock: ON" or "🔒 Lock: OFF"
-
-	if not CONFIG.JailEnabled and not CONFIG.FlingEnabled then
-		JailStatusLabel.Text = string.format("JAIL: OFF • Fling: OFF • Mode: %s", CONFIG.JailMode)
-	end
-
-	for modeId, mBtn in pairs(modeButtons) do
-		local active = (modeId == CONFIG.JailMode)
-		mBtn.BackgroundColor3 = active and theme.accentSoft or Color3.fromRGB(24, 23, 36)
-		mBtn.TextColor3 = active and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(220, 218, 245)
-		mBtn.Font = active and fontPreset.boldFont or fontPreset.font
-	end
+	SearchBoxStroke.Color = theme.stroke
+	ScanIdBtn.BackgroundColor3 = theme.accent
+	SearchResStroke.Color = theme.stroke
 
 	for name, btn in pairs(tabButtons) do
 		local active = (name == CONFIG.ActiveTab)
@@ -1842,13 +1391,11 @@ applyThemeAndFont = function()
 	PrevTrackBtn.Font = fontPreset.boldFont
 	PlayPauseBtn.Font = fontPreset.boldFont
 	NextTrackBtn.Font = fontPreset.boldFont
-	JailSwitchBtn.Font = fontPreset.boldFont
-	FlingSwitchBtn.Font = fontPreset.boldFont
-	JailAnchorLockBtn.Font = fontPreset.boldFont
-	JailStatusLabel.Font = fontPreset.font
-	JailSpeedLabel.Font = fontPreset.boldFont
-	JailTargetTitle.Font = fontPreset.boldFont
-	RefreshUsersBtn.Font = fontPreset.boldFont
+	SearchHeaderLabel.Font = fontPreset.boldFont
+	SearchBox.Font = fontPreset.font
+	ScanIdBtn.Font = fontPreset.boldFont
+	ClearSearchBtn.Font = fontPreset.boldFont
+	SearchStatusLabel.Font = fontPreset.font
 	AboutTitle.Font = fontPreset.boldFont
 	SettingsTitle.Font = fontPreset.boldFont
 	ColorSectionLabel.Font = fontPreset.boldFont
@@ -1870,12 +1417,12 @@ applyThemeAndFont = function()
 	end
 
 	renderMusicPlaylist()
-	renderUserList()
+	renderSearchResults(lastSearchMatches)
 end
 
 -- Navigasi Sidebar
 createNavButton("Music", "🎵  Music", 1).MouseButton1Click:Connect(function() switchTab("Music") end)
-createNavButton("Jail", "⛓  JAIL", 2).MouseButton1Click:Connect(function() switchTab("Jail") end)
+createNavButton("Search", "🔎  ID Search", 2).MouseButton1Click:Connect(function() switchTab("Search") end)
 createNavButton("Settings", "🎨  Settings", 3).MouseButton1Click:Connect(function() switchTab("Settings") end)
 createNavButton("About", "ℹ  About", 4).MouseButton1Click:Connect(function() switchTab("About") end)
 
