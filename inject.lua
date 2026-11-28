@@ -110,8 +110,8 @@ local function safeArgSummary(args: {any}): string
 		elseif t == "string" then
 			local s = tostring(v)
 			s = string.gsub(s, "[\r\n]+", " ")
-			if #s > 60 then
-				s = string.sub(s, 1, 60) .. "..."
+			if #s > 50 then
+				s = string.sub(s, 1, 50) .. "..."
 			end
 			table.insert(parts, string.format("%q", s))
 		elseif t == "table" then
@@ -204,7 +204,7 @@ local MetaLabel = Instance.new("TextLabel")
 MetaLabel.Size = UDim2.new(1, -90, 0, 12)
 MetaLabel.Position = UDim2.new(0, 14, 0, 24)
 MetaLabel.BackgroundTransparency = 1
-MetaLabel.Text = "by Ikyy • Auto Exec Scan + Console + TXT • @" .. LocalPlayer.Name
+MetaLabel.Text = "by Ikyy • Safe Auto Exec Scan + TXT • @" .. LocalPlayer.Name
 MetaLabel.TextColor3 = Color3.fromRGB(120, 116, 148)
 MetaLabel.TextSize = 8
 MetaLabel.Font = Enum.Font.GothamMedium
@@ -492,7 +492,7 @@ ResPad.PaddingRight = UDim.new(0, 5)
 ResPad.Parent = ResultsScroll
 
 -- ==========================================
--- LOGIKA SCAN, AUTO EXECUTOR EXEC HOOK & AUTO-SAVE TXT
+-- LOGIKA SCAN, SAFE EXECUTOR EXEC HOOK & AUTO-SAVE TXT
 -- ==========================================
 local lastMatches: {SearchMatch} = {}
 local selectedIndex: number? = nil
@@ -502,8 +502,10 @@ local capturedNewInstances: {string} = {}
 local capturedFeatureRequests: {string} = {}
 local capturedExecutorExecs: {string} = {}
 local hookedRemotes: {[Instance]: boolean} = {}
-local hookedExecutorFuncs: {[string]: boolean} = {}
 local lastSavedSnapshot = ""
+local isSavingSnapshot = false
+local pendingFlush = false
+local lastFlushClock = 0
 
 local function appendCaptureList(list: {string}, line: string, maxItems: number)
 	table.insert(list, line)
@@ -543,7 +545,7 @@ local function buildTxtReport(queryText: string): string
 	}
 
 	if #capturedExecutorExecs == 0 then
-		table.insert(lines, "(Belum ada permintaan eksekusi script/loadstring/remote dari executor lain terekam)")
+		table.insert(lines, "(Belum ada permintaan eksekusi script/remote dari executor lain terekam)")
 	else
 		for _, execLine in ipairs(capturedExecutorExecs) do
 			table.insert(lines, execLine)
@@ -594,28 +596,54 @@ local function buildTxtReport(queryText: string): string
 	return table.concat(lines, "\n")
 end
 
-local function saveSnapshotToTxt(queryText: string, forceSave: boolean): boolean
-	local report = buildTxtReport(queryText)
-	if not forceSave and report == lastSavedSnapshot then
+local function flushSnapshotNow(queryText: string, forceSave: boolean): boolean
+	if isSavingSnapshot then
+		pendingFlush = true
 		return false
 	end
-	lastSavedSnapshot = report
-	local saved = writeScanTxt(report)
-	if saved then
-		print("[StudioLiteTXT] Tersimpan otomatis ke -> " .. SCAN_TXT_FILE)
-	else
-		print("[StudioLiteTXT] Executor tanpa writefile; ringkasan log dicetak ke console:")
-		print(report)
+	isSavingSnapshot = true
+	pendingFlush = false
+
+	local saved = false
+	local ok, err = pcall(function()
+		local report = buildTxtReport(queryText)
+		if not forceSave and report == lastSavedSnapshot then
+			return
+		end
+		lastSavedSnapshot = report
+		saved = writeScanTxt(report)
+	end)
+
+	isSavingSnapshot = false
+	lastFlushClock = os.clock()
+
+	if not ok and err then
+		warn("[StudioLiteTXT] Gagal simpan snapshot: " .. tostring(err))
 	end
+
+	if pendingFlush then
+		pendingFlush = false
+		task.defer(function()
+			flushSnapshotNow(SearchBox.Text, false)
+		end)
+	end
+
 	return saved
 end
 
--- Selalu aktif tanpa perlu menekan tombol ▶ Scan
+local function requestSnapshotSave(queryText: string, forceSave: boolean)
+	if forceSave or (os.clock() - lastFlushClock >= 0.6) then
+		flushSnapshotNow(queryText, forceSave)
+	else
+		pendingFlush = true
+	end
+end
+
 local function recordExecutorExecution(kind: string, detail: string)
 	local line = string.format("[%s][EXEC:%s] %s", os.date("!%H:%M:%S"), kind, detail)
-	appendCaptureList(capturedExecutorExecs, line, 200)
+	appendCaptureList(capturedExecutorExecs, line, 120)
 	print(line)
-	saveSnapshotToTxt(SearchBox.Text, false)
+	requestSnapshotSave(SearchBox.Text, false)
 end
 
 local function hookRemoteInstance(inst: Instance)
@@ -633,7 +661,7 @@ local function hookRemoteInstance(inst: Instance)
 				end)
 				local line = string.format("[%s][RemoteEvent:OnClientEvent] %s args=%s",
 					os.date("!%H:%M:%S"), full, safeArgSummary({ ... }))
-				appendCaptureList(capturedFeatureRequests, line, 200)
+				appendCaptureList(capturedFeatureRequests, line, 150)
 			end)
 		end)
 	elseif inst:IsA("BindableEvent") then
@@ -647,36 +675,9 @@ local function hookRemoteInstance(inst: Instance)
 				end)
 				local line = string.format("[%s][BindableEvent] %s args=%s",
 					os.date("!%H:%M:%S"), full, safeArgSummary({ ... }))
-				appendCaptureList(capturedFeatureRequests, line, 200)
+				appendCaptureList(capturedFeatureRequests, line, 150)
 			end)
 		end)
-	end
-end
-
-local function attachExecutorHooks()
-	local hookFn = getExecutorFunc("hookfunction")
-	local env = (getgenv and getgenv()) or _G
-	if type(hookFn) ~= "function" or not env then
-		return
-	end
-
-	local targetGlobals = { "loadstring" }
-	for _, fnName in ipairs(targetGlobals) do
-		if not hookedExecutorFuncs[fnName] and type((env :: any)[fnName]) == "function" then
-			hookedExecutorFuncs[fnName] = true
-			pcall(function()
-				local origFn: any
-				origFn = hookFn((env :: any)[fnName], function(...: any)
-					local chunkName = ""
-					local args = { ... }
-					if type(args[2]) == "string" and args[2] ~= "" then
-						chunkName = " chunk=" .. string.format("%q", args[2])
-					end
-					recordExecutorExecution(fnName, "payload=" .. safeArgSummary({ args[1] }) .. chunkName)
-					return origFn(...)
-				end)
-			end)
-		end
 	end
 end
 
@@ -698,8 +699,8 @@ do
 					end
 
 					if method == "FireServer" or method == "InvokeServer" or method == "Fire" or method == "Invoke" then
-						local callerTag = isExecCaller and "EXEC" or "GAME"
 						if isExecCaller or playScanActive then
+							local callerTag = isExecCaller and "EXEC" or "GAME"
 							local full = tostring(self.Name)
 							pcall(function()
 								full = self:GetFullName()
@@ -707,7 +708,7 @@ do
 							local argsSummary = safeArgSummary({ ... })
 							local reqLine = string.format("[%s][REQ:%s/%s] %s args=%s",
 								os.date("!%H:%M:%S"), callerTag, tostring(method), full, argsSummary)
-							appendCaptureList(capturedFeatureRequests, reqLine, 200)
+							appendCaptureList(capturedFeatureRequests, reqLine, 150)
 
 							if isExecCaller then
 								recordExecutorExecution("RemoteCall/" .. tostring(method), full .. " args=" .. argsSummary)
@@ -769,9 +770,7 @@ local function attachExistingRemoteListeners()
 	end
 end
 
--- Aktifkan hook executor sejak awal tanpa menunggu tombol ▶ Scan
-attachExecutorHooks()
-saveSnapshotToTxt("", true)
+flushSnapshotNow("", true)
 
 local function selectMatch(idx: number)
 	local item = lastMatches[idx]
@@ -783,7 +782,7 @@ local function selectMatch(idx: number)
 	SelectedPathLabel.Text = "Path: " .. item.fullName
 
 	local copied = copyTextToClipboard(item.fullName)
-	local txtSaved = saveSnapshotToTxt(SearchBox.Text, false)
+	local txtSaved = flushSnapshotNow(SearchBox.Text, false)
 	local extraMsg = copied and " • Path disalin" or ""
 	if txtSaved then
 		extraMsg = extraMsg .. " • TXT tersimpan"
@@ -802,7 +801,7 @@ local function renderResults(matches: {SearchMatch})
 		local emptyBtn = Instance.new("TextButton")
 		emptyBtn.Size = UDim2.new(1, -4, 0, 26)
 		emptyBtn.BackgroundColor3 = Color3.fromRGB(22, 21, 34)
-		emptyBtn.Text = "  Belum ada hasil cocok (Exec scan aktif otomatis; tekan ▶ Scan untuk playtest)"
+		emptyBtn.Text = "  Belum ada hasil cocok (Exec auto-scan aktif; tekan ▶ Scan untuk playtest)"
 		emptyBtn.TextColor3 = Color3.fromRGB(165, 162, 190)
 		emptyBtn.TextSize = 8
 		emptyBtn.Font = Enum.Font.GothamMedium
@@ -859,7 +858,7 @@ local function runSearch(rawQuery: string, autoSaveTxt: boolean)
 		renderResults(lastMatches)
 		StatusLabel.Text = "Exec Auto-Scan ON • Ketik ID / nama objek lalu tekan Cari"
 		if autoSaveTxt then
-			saveSnapshotToTxt("", false)
+			requestSnapshotSave("", false)
 		end
 		return
 	end
@@ -985,7 +984,7 @@ local function runSearch(rawQuery: string, autoSaveTxt: boolean)
 	else
 		StatusLabel.Text = string.format("'%s' • 0 cocok (%d objek dicek)", trimmed, checkedCount)
 		if autoSaveTxt then
-			saveSnapshotToTxt(trimmed, false)
+			requestSnapshotSave(trimmed, false)
 		end
 	end
 end
@@ -996,8 +995,8 @@ LogService.MessageOut:Connect(function(message: string, messageType: Enum.Messag
 		return
 	end
 	local entry = string.format("[%s][%s] %s", os.date("!%H:%M:%S"), messageType.Name, message)
-	appendCaptureList(capturedRuntimeLogs, entry, 200)
-	saveSnapshotToTxt(SearchBox.Text, false)
+	appendCaptureList(capturedRuntimeLogs, entry, 150)
+	requestSnapshotSave(SearchBox.Text, false)
 end)
 
 game.DescendantAdded:Connect(function(desc: Instance)
@@ -1014,25 +1013,20 @@ game.DescendantAdded:Connect(function(desc: Instance)
 	task.defer(function()
 		if not playScanActive then return end
 		local summary = formatInstanceSummary(desc, "NEW@" .. os.date("!%H:%M:%S"))
-		appendCaptureList(capturedNewInstances, summary, 200)
-
-		local q = string.match(SearchBox.Text, "^%s*(.-)%s*$") or ""
-		if q ~= "" then
-			runSearch(q, true)
-		else
-			saveSnapshotToTxt("", false)
-		end
+		appendCaptureList(capturedNewInstances, summary, 150)
+		requestSnapshotSave(SearchBox.Text, false)
 	end)
 end)
 
 do
 	local acc = 0
 	RunService.Heartbeat:Connect(function(dt: number)
-		if not playScanActive then return end
 		acc += dt
 		if acc >= 1.2 then
 			acc = 0
-			saveSnapshotToTxt(SearchBox.Text, false)
+			if pendingFlush or playScanActive then
+				flushSnapshotNow(SearchBox.Text, false)
+			end
 		end
 	end)
 end
@@ -1057,12 +1051,12 @@ PlayScanBtn.MouseButton1Click:Connect(function()
 		if q ~= "" then
 			runSearch(q, false)
 		end
-		saveSnapshotToTxt(SearchBox.Text, true)
+		flushSnapshotNow(SearchBox.Text, true)
 		StatusLabel.Text = "PlayScan ON + Exec Auto-Scan • " .. SCAN_TXT_FILE
 	else
 		PlayScanBtn.Text = "▶ Scan"
 		PlayScanBtn.BackgroundColor3 = Color3.fromRGB(34, 92, 68)
-		saveSnapshotToTxt(SearchBox.Text, true)
+		flushSnapshotNow(SearchBox.Text, true)
 		StatusLabel.Text = "PlayScan OFF (Exec Auto-Scan tetap ON) • " .. SCAN_TXT_FILE
 	end
 end)
